@@ -5,6 +5,7 @@ from pigrocrm.core.auth.pat_service import PatService
 from pigrocrm.core.config import get_settings
 from pigrocrm.core.db import create_engine_from_settings, session_factory
 from pigrocrm.core.errors import DomainError
+from pigrocrm_mcp import analytics
 from pigrocrm_mcp.context import ScopedSessionProvider
 from pigrocrm_mcp.server import build_server
 
@@ -34,7 +35,13 @@ def main() -> int:
             print(f"Token non valido: {exc.message}", file=sys.stderr)
             return 1
 
-    build_server(provider, lambda: actor).run("stdio")
+    # `finally`, so the last tool call's event leaves before the process does: the
+    # adapter schedules captures on the server's loop, and `run` returning tears that
+    # loop down. Without a key there is no client and `shutdown` does nothing.
+    try:
+        build_server(provider, lambda: actor).run("stdio")
+    finally:
+        analytics.shutdown()
     return 0
 
 

@@ -3,9 +3,8 @@
 The web reports pageviews and the activation events (ORB-184); the MCP is the surface
 the onboarding spec sells first, and until this module nothing recorded whether an
 agent used it. PostHog's own adapter wraps the `MCPServer` and emits `$mcp_tool_call`,
-`$mcp_tools_list`, `$mcp_initialize` and `$mcp_exception` with the tool name, the
-parameters, the response, the duration and the error flag; this module decides three
-things around it.
+`$mcp_tools_list` and `$mcp_initialize` with the tool name, the parameters, the
+response, the duration and the error flag; this module decides four things around it.
 
 - **Off by default.** An empty `PIGROCRM_POSTHOG_KEY` builds no client and changes
   nothing: a self-hosted CRM measures nothing unless its operator says so, and the test
@@ -13,19 +12,29 @@ things around it.
   (`shared/analytics/posthog.ts` carries the same one for the browsers), read from the
   environment rather than imported because this process runs in the API image.
 - **The same identity as the web.** The actor's user id is the `distinct_id` and the
-  installation's slug is the `spazio` group, so a customer created from Claude and one
-  created from the UI land on the same person and the same space. An actor with no id
-  (the fixtures' `mcp` admin) stays anonymous.
-- **No schema change.** The adapter would inject a required `context` argument on every
-  tool to capture the agent's intent; that alters every tool's input schema, which the
-  surface tests pin and which every connected agent has already learned. Off.
+  space's slug is the `spazio` group, so a customer created from Claude and one created
+  from the UI land on the same person and the same space. An actor with no id (the
+  fixtures' `mcp` admin) stays anonymous.
+- **No schema change, no error-tracking noise.** The adapter would inject a required
+  `context` argument on every tool to capture the agent's intent; that alters every
+  tool's input schema, which the surface tests pin and which every connected agent has
+  already learned. Off. It would also file every exception a tool raises as an
+  `$exception` for Error Tracking; `_guard` raises on purpose to hand an agent «cliente
+  non trovato», and that is guidance, not a defect. Off too: `$mcp_tool_call` keeps
+  `$mcp_is_error` and the message regardless.
+- **One client per process, flushed at exit.** The HTTP transport builds one server per
+  space; each shares the one client built here, and `shutdown()` at the end of the
+  process (the stdio `main`, the HTTP lifespan) is what gets the last call's event out
+  before the loop is torn down.
 
 Design: `docs/design/2026-09-12-posthog-analytics-design.md`, ORB-186.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import threading
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from pigrocrm.core.config import Settings
 from pigrocrm_mcp.context import ActorProvider
@@ -38,13 +47,19 @@ if TYPE_CHECKING:
 GROUP_TYPE = "spazio"
 ROOT_GROUP = "root"
 
+_client: Posthog | None = None
+_client_key: tuple[str, str] | None = None
+_lock = threading.Lock()
+
 
 def space_group(settings: Settings) -> str:
     """The `spazio` group key: the installation's slug, `root` when it has none."""
     return settings.root_slug or ROOT_GROUP
 
 
-def identity_for(actor_provider: ActorProvider, spazio: str) -> Any:
+def identity_for(
+    actor_provider: ActorProvider, spazio: str
+) -> Callable[[object, object], UserIdentity | None]:
     """The callback the adapter calls per request: the actor of *this* call.
 
     Reads the provider each time rather than once, because the HTTP transport
@@ -67,12 +82,32 @@ def identity_for(actor_provider: ActorProvider, spazio: str) -> Any:
 
 
 def build_client(settings: Settings) -> Posthog | None:
-    """A client when the installation has a key, `None` when it has not."""
+    """The process's one client when the installation has a key, `None` when it has not.
+
+    One per process rather than one per server: the HTTP transport builds a server per
+    space, and a consumer thread per space would each claim the SDK's single one-second
+    exit budget. Keyed by key and host so a test that changes settings gets a fresh one.
+    """
+    global _client, _client_key
     if not settings.posthog_key:
         return None
-    from posthog import Posthog
+    wanted = (settings.posthog_key, settings.posthog_host)
+    with _lock:
+        if _client is None or _client_key != wanted:
+            from posthog import Posthog
 
-    return Posthog(settings.posthog_key, host=settings.posthog_host)
+            _client = Posthog(settings.posthog_key, host=settings.posthog_host)
+            _client_key = wanted
+        return _client
+
+
+def shutdown() -> None:
+    """Flush and stop the process's client, if one was built. Safe to call twice."""
+    global _client, _client_key
+    with _lock:
+        client, _client, _client_key = _client, None, None
+    if client is not None:
+        client.shutdown()
 
 
 def install(
@@ -80,12 +115,16 @@ def install(
     settings: Settings,
     actor_provider: ActorProvider,
     client: Posthog | None = None,
+    space: str | None = None,
 ) -> bool:
     """Wrap `mcp` for PostHog when the installation asks for it; answers whether it did.
 
     `client` is injectable so a test can hand one whose `capture` it observes; every
-    other caller lets `build_client` decide from the settings. Idempotent per server
-    instance, like the adapter underneath.
+    other caller lets `build_client` decide from the settings. `space` is the slug of
+    the space this server serves: the HTTP transport builds one server per space and
+    names it; the stdio process serves the installation itself and leaves it to
+    `space_group`. Idempotent per server instance, like the adapter underneath: a second
+    call on the same server keeps the first client.
     """
     resolved = client if client is not None else build_client(settings)
     if resolved is None:
@@ -98,7 +137,8 @@ def install(
         resolved,
         MCPAnalyticsOptions(
             context=False,
-            identify=identity_for(actor_provider, space_group(settings)),
+            enable_exception_autocapture=False,
+            identify=identity_for(actor_provider, space or space_group(settings)),
         ),
     )
     return True

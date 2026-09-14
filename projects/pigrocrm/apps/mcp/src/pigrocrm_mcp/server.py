@@ -60,6 +60,7 @@ def build_server(
     settings: Settings | None = None,
     *,
     middleware: Sequence[ServerMiddleware[Any]] | None = None,
+    space: str | None = None,
 ) -> MCPServer:
     # One session per logical call (Task 4A-1, residual R1). `_guard` opens the
     # scope via `session_provider.scope()` when the provider exposes one --
@@ -349,6 +350,8 @@ def build_server(
             drive_privileged_tools.register(mcp, context, _guard, resolved_settings)
     # Last, once every tool and resource is registered, so the wrapper sees them all.
     # A no-op without `PIGROCRM_POSTHOG_KEY` (see `analytics.py`), which is what every
-    # test and every self-hosted installation without a key gets.
-    analytics.install(mcp, resolved_settings, actor_provider)
+    # test and every self-hosted installation without a key gets. `space` is the slug
+    # the HTTP transport builds this server for; the stdio process leaves it `None` and
+    # the group is the installation's own.
+    analytics.install(mcp, resolved_settings, actor_provider, space=space)
     return mcp

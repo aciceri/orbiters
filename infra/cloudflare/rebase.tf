@@ -112,3 +112,15 @@ resource "cloudflare_dns_record" "rebase_send_txt" {
   ttl      = 1
   comment  = "Resend (migration 2026-09-14)"
 }
+
+# Google Search Console's proof of ownership for the domain property (ORB-195). The
+# token is per Google account and per property; it is not a secret.
+resource "cloudflare_dns_record" "rebase_apex_google_site_verification_txt" {
+  provider = cloudflare.rebase
+  zone_id  = local.rebase_zone_id
+  name     = "letsrebase.com"
+  type     = "TXT"
+  content  = "\"google-site-verification=ClhNGnYHY95wDv2fWqKoRz60_7wVXZw7SI0UciLQWsc\""
+  ttl      = 1
+  comment  = "Search Console domain property (2026-09-14)"
+}

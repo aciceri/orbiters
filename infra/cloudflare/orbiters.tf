@@ -111,3 +111,16 @@ resource "cloudflare_dns_record" "orbiters_send_txt" {
   content  = "\"v=spf1 include:amazonses.com ~all\""
   ttl      = 1
 }
+
+# A second Search Console proof for the old domain, on Ivan's Google account, so the
+# change of address to letsrebase.com can be filed from the same account (ORB-195).
+# The older `orbiters_apex_txt` token above belongs to whoever verified it first.
+resource "cloudflare_dns_record" "orbiters_apex_google_site_verification_txt" {
+  provider = cloudflare.orbiters
+  zone_id  = local.orbiters_zone_id
+  name     = "joinorbiters.com"
+  type     = "TXT"
+  content  = "\"google-site-verification=SOVUef2NjtqTiv0XpZ9WPuMkEtA4ytN6i2W5VhqXzGc\""
+  ttl      = 1
+  comment  = "Search Console domain property, change of address (2026-09-14)"
+}

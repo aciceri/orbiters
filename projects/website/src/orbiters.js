@@ -1,4 +1,4 @@
-/* Orbiters: the field of tiles, and the one form.
+/* rebase: the field of tiles, and the one form.
  *
  * The page is complete without this file: the grid is CSS, the box is HTML. What is
  * added here is the drifting field on the canvas -- painted by the shared field.js,
@@ -192,7 +192,7 @@
           }
           if (!response.ok) throw new Error(String(response.status))
           form.hidden = true
-          say('Sei in orbita. Ti scriviamo noi.', 'done')
+          say('Sei dentro. Ti scriviamo noi.', 'done')
           /* After the 201: the conversion is the signup stored, not the click. */
           measure(id)
         })

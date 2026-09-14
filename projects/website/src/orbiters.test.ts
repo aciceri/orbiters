@@ -13,10 +13,10 @@ function meta(name: string): string | undefined {
 describe('orbiters.html', () => {
   it('is in Italian, names itself, and describes itself', () => {
     expect(html).toMatch(/<html lang="it">/)
-    expect(html.match(/<title>([^<]+)<\/title>/)?.[1]).toContain('Orbiters')
+    expect(html.match(/<title>([^<]+)<\/title>/)?.[1]).toContain('rebase')
     expect((meta('description') ?? '').length).toBeGreaterThan(40)
     expect(meta('og:type')).toBe('website')
-    expect(meta('og:title')).toContain('Orbiters')
+    expect(meta('og:title')).toContain('rebase')
   })
 
   it('has one form, and it asks for four things, three of them required', () => {
@@ -48,7 +48,7 @@ describe('orbiters.html', () => {
     expect(inputs.every((tag) => tag.includes('aria-describedby="note"'))).toBe(true)
     expect(html).toContain('Profilo LinkedIn (facoltativo)')
     expect(html).toContain('placeholder="https://www.linkedin.com/in/\u2026"')
-    expect(html).toMatch(/<button type="submit">Entra in orbita<\/button>/)
+    expect(html).toMatch(/<button type="submit">Entra in rebase<\/button>/)
   })
 
   it('does not post the form anywhere without the script', () => {
@@ -73,7 +73,7 @@ describe('orbiters.html', () => {
     // waiting list: the page says so, and says what we will write about, in the same
     // words as the privacy policy.
     expect(text).toContain('Iscriviti e sei dentro')
-    expect(text).toContain('solo di Orbiters')
+    expect(text).toContain('solo di rebase')
     expect(html).not.toMatch(/appena apriamo|Lascia l'email|lista d'attesa/)
     // ORB-24: the reader is named in the words of docs/design/positioning.md, and
     // "freelance" is no longer the claim. It may still appear as the fiscal category in
@@ -85,7 +85,7 @@ describe('orbiters.html', () => {
     }
     expect(text).toMatch(/\bCTO\b/)
     expect(html.match(/<title>([^<]+)<\/title>/)?.[1]).toContain('freelance')
-    expect(meta('og:title')).toBe('Orbiters — freelance, ma non da soli')
+    expect(meta('og:title')).toBe('rebase — freelance, ma non da soli')
     const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/)?.[1] ?? ''
     expect(h1.replace(/<[^>]+>/g, ' ').toLowerCase()).not.toContain('freelance')
     expect(h1).toMatch(/data-roles="[^"]*\|Freelance"/)
@@ -107,7 +107,7 @@ describe('orbiters.html', () => {
   it('says where the email goes and how to get out', () => {
     expect(html).toMatch(/href="\/privacy"/)
     const privacy = readFileSync(join(__dirname, 'privacy.html'), 'utf-8')
-    expect(privacy).toContain('Orbiters')
+    expect(privacy).toContain('rebase')
     // Since ORB-145 the community page lives at "/orbiters" and "/" is the landing
     // (path-map-plugin.ts); either is a way back. Pinned on the link's own text ("letsrebase.com", the
     // paragraph explaining where the signup's data goes) rather than a bare `"/"`,
@@ -400,7 +400,7 @@ describe('the form, once the script has hold of it', () => {
     // No `oppref` key when the URL carried none, for the reason `utm` has none: an
     // absent value is absent, not an empty string in a column.
     expect(body).not.toHaveProperty('oppref')
-    expect(note().textContent).toBe('Sei in orbita. Ti scriviamo noi.')
+    expect(note().textContent).toBe('Sei dentro. Ti scriviamo noi.')
     expect((document.getElementById('signup') as HTMLFormElement).hidden).toBe(true)
   })
 
@@ -472,7 +472,7 @@ describe('the form, once the script has hold of it', () => {
     mount()
     fill(filled)
     await submit()
-    expect(note().textContent).toBe('Sei in orbita. Ti scriviamo noi.')
+    expect(note().textContent).toBe('Sei dentro. Ti scriviamo noi.')
   })
 
   it('measures nothing when the API refused the signup', async () => {
@@ -501,7 +501,7 @@ describe('the form, once the script has hold of it', () => {
     mount()
     fill(filled)
     await submit()
-    expect(note().textContent).toBe('Sei in orbita. Ti scriviamo noi.')
+    expect(note().textContent).toBe('Sei dentro. Ti scriviamo noi.')
   })
 
   it.each([

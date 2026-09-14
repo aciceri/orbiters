@@ -117,12 +117,12 @@ describe('FreelancerWizard', () => {
     expect(note).toHaveTextContent('Completa l’iscrizione per scaricare la guida per diventare un freelance tech.')
     expect(note).toHaveTextContent('lo trovi nella tua area appena sei dentro')
     // The wizard itself is untouched: same heading, same first question.
-    expect(screen.getByRole('heading', { level: 1, name: 'Entra in Orbiters' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Entra in rebase' })).toBeInTheDocument()
   })
 
   it('shows no such note to whoever arrives without the key', async () => {
     mount()
-    await screen.findByRole('heading', { level: 1, name: 'Entra in Orbiters' })
+    await screen.findByRole('heading', { level: 1, name: 'Entra in rebase' })
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
 

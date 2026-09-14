@@ -31,7 +31,7 @@ async def domain_error_handler(request: Request, exc: Exception) -> JSONResponse
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Orbiters API", version="0.1.0")
+    app = FastAPI(title="rebase API", version="0.1.0")
     app.add_exception_handler(DomainError, domain_error_handler)
     app.include_router(signups.router)
     app.include_router(freelancers.router)

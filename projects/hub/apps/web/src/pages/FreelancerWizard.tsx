@@ -244,7 +244,7 @@ export function FreelancerWizard() {
     <>
       {perk === 'guida' && <GuideBanner />}
       <Wizard
-        title="Entra in Orbiters"
+        title="Entra in rebase"
         steps={FREELANCER_STEPS}
         value={value}
         set={(patch) => setValue((current) => ({ ...current, ...patch }))}

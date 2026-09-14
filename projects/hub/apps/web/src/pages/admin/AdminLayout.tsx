@@ -36,7 +36,7 @@ export function AdminLayout() {
       <aside className="flex w-56 shrink-0 flex-col gap-6 bg-[var(--color-prussian-blue)] p-4 text-[var(--color-paper)]">
         <Link to="/admin/freelance" className="inline-flex items-center gap-2.5 px-2 font-semibold">
           <BrandMark className="size-3.5 [&>span:nth-child(1)]:bg-[var(--color-paper)] [&>span:nth-child(4)]:bg-[var(--color-paper)]" />
-          Orbiters
+          rebase
         </Link>
         <nav className="flex flex-col gap-1">
           {NAV.map(({ to, label, icon: Icon }) => (

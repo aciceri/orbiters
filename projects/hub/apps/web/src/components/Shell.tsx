@@ -30,7 +30,7 @@ export function Shell({ children, panel = true }: { children: ReactNode; panel?:
           className="inline-flex items-center gap-2.5 bg-[var(--landing-surface)] p-[var(--landing-link-pad)] text-lg font-medium tracking-tight"
         >
           <BrandMark className="size-3.5" />
-          Orbiters
+          rebase
         </Link>
         <nav className="flex items-center gap-4 text-sm">
           <Link to="/io" className="text-muted-foreground underline-offset-2 hover:underline">

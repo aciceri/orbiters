@@ -219,9 +219,9 @@ in più. Non serve solo per sentirsi meno soli, anche se aiuta anche quello: ser
 perché la domanda che ti costerebbe un errore, fatta alla persona giusta prima di
 agire invece che dopo, te lo fa evitare del tutto.
 
-## Cos'è Orbiters
+## Cos'è rebase
 
-Orbiters è la community di chi fa software in proprio: developer, AI engineer, CTO e
+rebase è la community di chi fa software in proprio: developer, AI engineer, CTO e
 fractional CTO, costruita da chi fa lo stesso lavoro. Dentro trovi progetti portati
 da persone che conoscono l'azienda che li propone, non presi da una bacheca, persone
 che hanno già avuto la stessa telefonata difficile che stai per avere tu, e

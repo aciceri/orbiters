@@ -42,7 +42,7 @@ class FakeHttp:
 def test_resend_posts_one_json_object_with_the_bearer_key() -> None:
     http = FakeHttp()
     sender = ResendSender(KEY, FROM, http=http)
-    mail = Mail(to="ada@studio.it", subject="Il tuo accesso a Orbiters", text="ciao")
+    mail = Mail(to="ada@studio.it", subject="Il tuo accesso a rebase", text="ciao")
     assert sender.send(mail) is True
     method, url, headers, body = http.calls[0]
     assert (method, url) == ("POST", RESEND_URL)
@@ -51,7 +51,7 @@ def test_resend_posts_one_json_object_with_the_bearer_key() -> None:
     assert json.loads(body) == {
         "from": FROM,
         "to": ["ada@studio.it"],
-        "subject": "Il tuo accesso a Orbiters",
+        "subject": "Il tuo accesso a rebase",
         "text": "ciao",
     }
 
@@ -89,7 +89,7 @@ def test_no_key_means_no_sender() -> None:
 def test_the_magic_link_mail_carries_the_link_and_how_long_it_lasts() -> None:
     mail = magic_link_mail("ada@studio.it", "https://letsrebase.com/hub/entra?t=abc", 15)
     assert mail.to == "ada@studio.it"
-    assert mail.subject == "Il tuo accesso a Orbiters"
+    assert mail.subject == "Il tuo accesso a rebase"
     assert "https://letsrebase.com/hub/entra?t=abc" in mail.text
     assert "15 minuti" in mail.text
     assert "una volta sola" in mail.text
@@ -126,7 +126,7 @@ WIZARD = "https://letsrebase.com/hub/freelance"
 
 
 def _common(mail: Mail) -> None:
-    assert mail.subject == "La tua area su Orbiters è aperta"
+    assert mail.subject == "La tua area su rebase è aperta"
     assert "PigroCRM, gratis" in mail.text and "I primi passi da freelance" in mail.text
     assert "disponibili dopo il login" in mail.text
     assert "https://www.linkedin.com/company/joinorbiters" in mail.text

@@ -549,6 +549,13 @@ a.avatar:hover {
   margin-bottom: 1rem;
 }
 
+/* The wordmark is «rebase», lowercase even where the deck uppercases its kickers
+   (ORB-194, Ivan 2026-09-14). */
+.deck .kicker-brand {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
 .deck .kicker::before {
   display: none;
 }

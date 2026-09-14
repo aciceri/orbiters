@@ -18,6 +18,7 @@ vi.mock('@orbiters/analytics/browser', () => ({
   resetUser: vi.fn(),
 }))
 import { identifyUser, resetUser } from '@orbiters/analytics/browser'
+import { ME_KEY } from '@/lib/auth'
 
 const IVAN = { id: 'a1', email: 'ivan@orbiters.it', nome: 'Ivan', attivo: true, created_at: '2026-09-10T10:00:00Z' }
 
@@ -34,11 +35,13 @@ function mount() {
     routeTree: root.addChildren([login, area.addChildren([freelance])]),
     history: createMemoryHistory({ initialEntries: ['/admin/freelance'] }),
   })
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider client={client}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   )
+  return client
 }
 
 afterEach(() => {
@@ -53,6 +56,16 @@ describe('the admin frame and PostHog (ORB-185)', () => {
     await screen.findByRole('heading', { name: 'Dentro' })
     expect(identifyUser).toHaveBeenCalledTimes(1)
     expect(identifyUser).toHaveBeenCalledWith('a1', { email: 'ivan@orbiters.it', nome: 'Ivan', ruolo: 'admin' })
+  })
+
+  it('identifies the same admin once, however many times the session is fetched again', async () => {
+    // A fresh Response per call: a body can be read once, and this test reads two.
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => answer(200, IVAN))
+    const client = mount()
+    await screen.findByRole('heading', { name: 'Dentro' })
+    await client.invalidateQueries({ queryKey: ME_KEY })
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
+    expect(identifyUser).toHaveBeenCalledTimes(1)
   })
 
   it('identifies nobody without a session, and sends the visitor to the login', async () => {

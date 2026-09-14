@@ -21,24 +21,28 @@ export function readPerkParam(search: string): string | null {
 }
 
 /**
- * The three funnel events of one wizard. `wizard_iniziato` once per mount, whatever
- * the page re-renders for; `onStep` for the engine to call on every step it shows,
- * including the first and the review (`passo === passi`), so a breakdown by `passo`
- * needs no special case; `completed` for the page to call once the API said yes.
+ * The three funnel events of one wizard. `onStep` is for the engine to call on every
+ * step it shows, including the first and the review (`passo === passi`), so a
+ * breakdown by `passo` needs no special case; its first call also sends
+ * `wizard_iniziato`, once per mount, whatever the page re-renders for. `completed` is
+ * for the page to call once the API said yes.
  */
 export function useWizardAnalytics(tipo: WizardKind, search: string) {
   const perk = readPerkParam(search)
   const base = useMemo(() => ({ tipo, ...(perk ? { perk } : {}) }), [tipo, perk])
   const started = useRef(false)
 
-  useEffect(() => {
-    if (started.current) return
-    started.current = true
-    capture('wizard_iniziato', base)
-  }, [base])
-
+  // `wizard_iniziato` rides on the first step rather than on an effect of its own: a
+  // child's effects commit before its parent's, so a separate effect would land
+  // `wizard_passo { passo: 0 }` first and a funnel could tie on the timestamps.
   const onStep = useCallback(
-    (passo: number, passi: number) => capture('wizard_passo', { ...base, passo, passi }),
+    (passo: number, passi: number) => {
+      if (!started.current) {
+        started.current = true
+        capture('wizard_iniziato', base)
+      }
+      capture('wizard_passo', { ...base, passo, passi })
+    },
     [base],
   )
   const completed = useCallback(() => capture('wizard_completato', base), [base])

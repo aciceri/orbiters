@@ -32,22 +32,29 @@ export function initAnalytics(options: AnalyticsOptions = {}): boolean {
     active = false
     return false
   }
-  posthog.init(POSTHOG_KEY, {
-    api_host: POSTHOG_HOST,
-    defaults: '2026-08-30',
-    person_profiles: 'identified_only',
-    capture_pageview: 'history_change',
-    autocapture: true,
-    session_recording: {
-      maskAllInputs: true,
-      ...(options.maskText ? { maskTextSelector: '*' } : {}),
-    },
-  })
-  // Called rather than configured: `internal_or_test_user_hostname` exists as an
-  // option, but it did not take effect when tried live against array.js 1.430.2 on
-  // 2026-09-12 (the running config still showed the SDK's own default for it, and the
-  // events arrived unmarked). The explicit call is what the option ends up making.
-  if (isInternalHost(hostname)) posthog.setInternalOrTestUser()
+  try {
+    posthog.init(POSTHOG_KEY, {
+      api_host: POSTHOG_HOST,
+      defaults: '2026-08-30',
+      person_profiles: 'identified_only',
+      capture_pageview: 'history_change',
+      autocapture: true,
+      session_recording: {
+        maskAllInputs: true,
+        ...(options.maskText ? { maskTextSelector: '*' } : {}),
+      },
+    })
+    // Called rather than configured: `internal_or_test_user_hostname` exists as an
+    // option, but it did not take effect when tried live against array.js 1.430.2 on
+    // 2026-09-12 (the running config still showed the SDK's own default for it, and the
+    // events arrived unmarked). The explicit call is what the option ends up making.
+    if (isInternalHost(hostname)) posthog.setInternalOrTestUser()
+  } catch {
+    // Both SPAs call this before their first render: a blank page is worse than no
+    // analytics, so an SDK that throws leaves the page silent and rendered.
+    active = false
+    return false
+  }
   active = true
   return true
 }

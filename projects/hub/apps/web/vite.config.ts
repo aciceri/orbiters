@@ -9,6 +9,16 @@ export default defineConfig({
   // paths and does not inherit it.
   base: '/hub/',
   plugins: [react(), tailwindcss()],
+  build: {
+    rolldownOptions: {
+      output: {
+        // posthog-js is a third of the bundle and changes only when it is bumped: in a
+        // chunk of its own, a release of the hub does not make every browser fetch it
+        // again, and the app's own chunk stays under Vite's 500 kB warning.
+        codeSplitting: { groups: [{ name: 'posthog', test: /node_modules[\\/]posthog-js/ }] },
+      },
+    },
+  },
   resolve: { alias: { '@': path.resolve(import.meta.dirname, './src') } },
   server: {
     port: 5180,

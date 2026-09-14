@@ -19,6 +19,7 @@ vi.mock('@orbiters/analytics/browser', () => ({
   resetUser: vi.fn(),
 }))
 import { capture, identifyUser, resetUser } from '@orbiters/analytics/browser'
+import { MEMBER_KEY } from '@/lib/member'
 
 function answer(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -65,11 +66,13 @@ function mount() {
     routeTree: root.addChildren([io.addChildren([index]), accedi]),
     history: createMemoryHistory({ initialEntries: ['/io'] }),
   })
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider client={client}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   )
+  return client
 }
 
 afterEach(() => {
@@ -130,6 +133,16 @@ describe('what the area reports to PostHog (ORB-185)', () => {
     await screen.findAllByText('Ada Lovelace')
     expect(identifyUser).toHaveBeenCalledTimes(1)
     expect(identifyUser).toHaveBeenCalledWith('f1', { email: 'ada@studio.it', nome: 'Ada' })
+  })
+
+  it('identifies the same person once, however many times the profile is fetched again', async () => {
+    // A fresh Response per call: a body can be read once, and this test reads two.
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => answer(200, PROFILE))
+    const client = mount()
+    await screen.findAllByText('Ada Lovelace')
+    await client.invalidateQueries({ queryKey: MEMBER_KEY })
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
+    expect(identifyUser).toHaveBeenCalledTimes(1)
   })
 
   it('counts the guide on the click and leaves the download to the link', async () => {

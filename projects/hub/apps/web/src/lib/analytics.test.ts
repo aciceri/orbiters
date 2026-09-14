@@ -10,4 +10,8 @@ describe('readPerkParam', () => {
     expect(readPerkParam('?perk=%20')).toBeNull()
     expect(readPerkParam('')).toBeNull()
   })
+
+  it('caps the value at 200 characters, the way a UTM is capped', () => {
+    expect(readPerkParam(`?perk=${'a'.repeat(201)}`)).toBe('a'.repeat(200))
+  })
 })

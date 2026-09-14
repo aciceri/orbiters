@@ -8,6 +8,7 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FREELANCER_STEPS, FreelancerWizard, readPerk } from './FreelancerWizard'
 
@@ -18,8 +19,10 @@ vi.mock('@orbiters/analytics/browser', () => ({
 }))
 import { capture } from '@orbiters/analytics/browser'
 
-/** The wizard mounted on its own little router, so `navigate` has somewhere to go. */
-function mount(path = '/freelance?utm_source=linkedin&da=pigrocrm') {
+/** The wizard mounted on its own little router, so `navigate` has somewhere to go.
+ *  `strict` wraps it the way `main.tsx` does, so React 19 simulates the unmount and
+ *  remount of every effect. */
+function mount(path = '/freelance?utm_source=linkedin&da=pigrocrm', { strict = false } = {}) {
   const root = createRootRoute({ component: () => <Outlet /> })
   const freelance = createRoute({ getParentRoute: () => root, path: '/freelance', component: FreelancerWizard })
   const grazie = createRoute({
@@ -32,7 +35,8 @@ function mount(path = '/freelance?utm_source=linkedin&da=pigrocrm') {
     routeTree: root.addChildren([freelance, grazie]),
     history: createMemoryHistory({ initialEntries: [path] }),
   })
-  render(<RouterProvider router={router} />)
+  const app = <RouterProvider router={router} />
+  render(strict ? <StrictMode>{app}</StrictMode> : app)
   return router
 }
 
@@ -151,11 +155,17 @@ describe('FreelancerWizard', () => {
 describe('what the wizard reports to PostHog (ORB-185)', () => {
   it('reports wizard_iniziato once, with the kind and the perk the URL carries', async () => {
     const user = userEvent.setup()
-    mount('/freelance?perk=guida&utm_source=linkedin')
+    // Under StrictMode the engine's step effect runs, is cleaned up and runs again on
+    // mount: the guard against a second `wizard_iniziato` is what this exercises.
+    mount('/freelance?perk=guida&utm_source=linkedin', { strict: true })
     const nome = await screen.findByLabelText('Nome')
     expect(captured('wizard_iniziato')).toEqual([{ tipo: 'freelance', perk: 'guida' }])
-    // The first step on screen is a step reached, with the same properties.
-    expect(captured('wizard_passo')).toEqual([{ tipo: 'freelance', perk: 'guida', passo: 0, passi: 8 }])
+    // Started first, then the first step on screen, with the same properties: a funnel
+    // reads the two in this order and never ties on the timestamps.
+    expect(vi.mocked(capture).mock.calls.slice(0, 2)).toEqual([
+      ['wizard_iniziato', { tipo: 'freelance', perk: 'guida' }],
+      ['wizard_passo', { tipo: 'freelance', perk: 'guida', passo: 0, passi: 8 }],
+    ])
 
     // Typing re-renders the page; the person did not start twice.
     await user.type(nome, 'Ada')

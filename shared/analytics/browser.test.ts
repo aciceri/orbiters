@@ -88,6 +88,16 @@ describe('on a real host', () => {
     expect(init.mock.calls[0]?.[1]?.session_recording).not.toHaveProperty('maskTextSelector')
   })
 
+  it('stays silent, and lets the page render, when the SDK throws on init', () => {
+    init.mockImplementationOnce(() => {
+      throw new Error('storage is not available')
+    })
+    expect(initAnalytics({ hostname: 'pigro.joinorbiters.com' })).toBe(false)
+    expect(analyticsActive()).toBe(false)
+    capture('cliente_creato')
+    expect(posthog.capture).not.toHaveBeenCalled()
+  })
+
   it('passes identify, group, capture and reset through', () => {
     initAnalytics({ hostname: 'pigro.joinorbiters.com' })
     identifyUser('u1', { email: 'a@b.it', nome: 'Ada' })

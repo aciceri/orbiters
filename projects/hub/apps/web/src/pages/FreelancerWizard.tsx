@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
+import { readPerkParam, useWizardAnalytics } from '@/lib/analytics'
 import { ApiError, applyAsFreelancer, type FreelancerApplication } from '@/lib/api'
 import { resolveAttribution } from '@/lib/utm'
 import { ChoiceField, FileField, LinksField, TextField } from '@/wizard/fields'
@@ -186,7 +187,7 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
  *  landing's «Entra e scaricala» button carries (ORB-154), so the wizard can say why it
  *  is worth finishing. Anything else is nobody's business and reads as no perk. */
 export function readPerk(search: string): 'guida' | null {
-  return new URLSearchParams(search).get('perk') === 'guida' ? 'guida' : null
+  return readPerkParam(search) === 'guida' ? 'guida' : null
 }
 
 /** One line above the wizard for whoever came for the guide: what finishing buys them,
@@ -216,6 +217,7 @@ export function FreelancerWizard() {
   // is whatever this page was opened with.
   const searchStr = useLocation({ select: (location) => location.searchStr })
   const perk = readPerk(searchStr)
+  const analytics = useWizardAnalytics('freelance', searchStr)
   const [value, setValue] = useState<FreelancerApplication>(EMPTY)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<{ message: string; step?: string } | null>(null)
@@ -225,6 +227,7 @@ export function FreelancerWizard() {
     setSubmitError(null)
     try {
       await applyAsFreelancer(value, resolveAttribution(searchStr))
+      analytics.completed()
       void navigate({ to: '/grazie', search: { chi: 'freelance' } })
     } catch (error) {
       const failure = error instanceof ApiError ? error : null
@@ -249,6 +252,7 @@ export function FreelancerWizard() {
         submitting={submitting}
         submitError={submitError}
         submitLabel="Invia la candidatura"
+        onStep={analytics.onStep}
       />
     </>
   )

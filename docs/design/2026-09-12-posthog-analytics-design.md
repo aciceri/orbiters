@@ -127,6 +127,9 @@ on history change. Events, in the wizards and the member area:
   `perk` from the query string (`?perk=guida` is how the site's guide section arrives).
   `wizard_passo` is what makes «where do they leave» (ORB-122) a funnel, and the
   milestone «Three screens instead of eight» needs that baseline before the grouping.
+  It fires for every step the engine shows, backward moves included, so a funnel takes
+  the first in-order occurrence of each step and a «last `passo` per person» reading is
+  not «where they left».
 - `guida_scaricata`, on the click of «Scarica la guida» in `pages/member/Area.tsx`. The
   PDF is served by `GET /api/hub/me/guida` behind the member cookie, so this is the only
   place a download can be counted; the site only links to the wizard.

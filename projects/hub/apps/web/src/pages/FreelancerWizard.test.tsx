@@ -8,11 +8,21 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FREELANCER_STEPS, FreelancerWizard, readPerk } from './FreelancerWizard'
 
-/** The wizard mounted on its own little router, so `navigate` has somewhere to go. */
-function mount(path = '/freelance?utm_source=linkedin&da=pigrocrm') {
+vi.mock('@orbiters/analytics/browser', () => ({
+  capture: vi.fn(),
+  identifyUser: vi.fn(),
+  resetUser: vi.fn(),
+}))
+import { capture } from '@orbiters/analytics/browser'
+
+/** The wizard mounted on its own little router, so `navigate` has somewhere to go.
+ *  `strict` wraps it the way `main.tsx` does, so React 19 simulates the unmount and
+ *  remount of every effect. */
+function mount(path = '/freelance?utm_source=linkedin&da=pigrocrm', { strict = false } = {}) {
   const root = createRootRoute({ component: () => <Outlet /> })
   const freelance = createRoute({ getParentRoute: () => root, path: '/freelance', component: FreelancerWizard })
   const grazie = createRoute({
@@ -25,11 +35,41 @@ function mount(path = '/freelance?utm_source=linkedin&da=pigrocrm') {
     routeTree: root.addChildren([freelance, grazie]),
     history: createMemoryHistory({ initialEntries: [path] }),
   })
-  render(<RouterProvider router={router} />)
+  const app = <RouterProvider router={router} />
+  render(strict ? <StrictMode>{app}</StrictMode> : app)
   return router
 }
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.clearAllMocks()
+})
+
+/** The eight answers, up to the review screen. */
+async function walkToReview(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(await screen.findByLabelText('Nome'), 'Ada')
+  await user.type(screen.getByLabelText('Cognome'), 'Lovelace{Enter}')
+  await user.type(screen.getByLabelText('Email'), 'ada@studio.it{Enter}')
+  await user.keyboard('{Enter}') // LinkedIn, optional
+  const cv = new File(['%PDF-1.7'], 'Ada CV.pdf', { type: 'application/pdf' })
+  await user.upload(screen.getByLabelText('CV'), cv)
+  await user.click(screen.getByRole('button', { name: /Avanti/ }))
+  await user.type(screen.getByLabelText('Tariffa a giornata'), '450{Enter}')
+  await user.type(screen.getByLabelText('Posizione'), 'Backend developer{Enter}')
+  await user.click(screen.getByRole('radio', { name: /Da remoto/ }))
+  await user.click(screen.getByRole('button', { name: /Rivedi|Avanti/ }))
+  await user.type(screen.getByLabelText('Link aggiuntivi'), 'https://github.com/ada')
+  await user.click(screen.getByRole('button', { name: /Rivedi/ }))
+  expect(screen.getByRole('heading', { name: 'Tutto giusto?' })).toBeInTheDocument()
+}
+
+/** What was captured under one event name, in order. */
+function captured(event: string) {
+  return vi
+    .mocked(capture)
+    .mock.calls.filter(([name]) => name === event)
+    .map(([, properties]) => properties)
+}
 
 describe('the freelancer steps', () => {
   const base = FREELANCER_STEPS.reduce(
@@ -93,21 +133,7 @@ describe('FreelancerWizard', () => {
     )
     const router = mount()
 
-    await user.type(await screen.findByLabelText('Nome'), 'Ada')
-    await user.type(screen.getByLabelText('Cognome'), 'Lovelace{Enter}')
-    await user.type(screen.getByLabelText('Email'), 'ada@studio.it{Enter}')
-    await user.keyboard('{Enter}') // LinkedIn, optional
-    const cv = new File(['%PDF-1.7'], 'Ada CV.pdf', { type: 'application/pdf' })
-    await user.upload(screen.getByLabelText('CV'), cv)
-    await user.click(screen.getByRole('button', { name: /Avanti/ }))
-    await user.type(screen.getByLabelText('Tariffa a giornata'), '450{Enter}')
-    await user.type(screen.getByLabelText('Posizione'), 'Backend developer{Enter}')
-    await user.click(screen.getByRole('radio', { name: /Da remoto/ }))
-    await user.click(screen.getByRole('button', { name: /Rivedi|Avanti/ }))
-    await user.type(screen.getByLabelText('Link aggiuntivi'), 'https://github.com/ada')
-    await user.click(screen.getByRole('button', { name: /Rivedi/ }))
-
-    expect(screen.getByRole('heading', { name: 'Tutto giusto?' })).toBeInTheDocument()
+    await walkToReview(user)
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument()
     expect(screen.getByText('Ada CV.pdf')).toBeInTheDocument()
 
@@ -123,5 +149,69 @@ describe('FreelancerWizard', () => {
     expect(body.get('utm_source')).toBe('linkedin')
     expect(body.get('origine')).toBe('pigrocrm')
     expect(body.getAll('links')).toEqual(['https://github.com/ada'])
+  })
+})
+
+describe('what the wizard reports to PostHog (ORB-185)', () => {
+  it('reports wizard_iniziato once, with the kind and the perk the URL carries', async () => {
+    const user = userEvent.setup()
+    // Under StrictMode the engine's step effect runs, is cleaned up and runs again on
+    // mount: the guard against a second `wizard_iniziato` is what this exercises.
+    mount('/freelance?perk=guida&utm_source=linkedin', { strict: true })
+    const nome = await screen.findByLabelText('Nome')
+    expect(captured('wizard_iniziato')).toEqual([{ tipo: 'freelance', perk: 'guida' }])
+    // Started first, then the first step on screen, with the same properties: a funnel
+    // reads the two in this order and never ties on the timestamps.
+    expect(vi.mocked(capture).mock.calls.slice(0, 2)).toEqual([
+      ['wizard_iniziato', { tipo: 'freelance', perk: 'guida' }],
+      ['wizard_passo', { tipo: 'freelance', perk: 'guida', passo: 0, passi: 8 }],
+    ])
+
+    // Typing re-renders the page; the person did not start twice.
+    await user.type(nome, 'Ada')
+    expect(captured('wizard_iniziato')).toHaveLength(1)
+  })
+
+  it('reports every step the person reaches, by index, and no perk when the URL has none', async () => {
+    const user = userEvent.setup()
+    mount('/freelance')
+    await user.type(await screen.findByLabelText('Nome'), 'Ada')
+    await user.type(screen.getByLabelText('Cognome'), 'Lovelace{Enter}')
+    await user.type(screen.getByLabelText('Email'), 'ada@studio.it{Enter}')
+    await user.click(screen.getByRole('button', { name: 'Indietro' }))
+    expect(captured('wizard_passo').map((p) => p?.passo)).toEqual([0, 1, 2, 1])
+    expect(captured('wizard_passo')[0]).toEqual({ tipo: 'freelance', passo: 0, passi: 8 })
+  })
+
+  it('reports wizard_completato once the API accepted the candidacy, with the review as the last step', async () => {
+    const user = userEvent.setup({ applyAccept: false })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 201 }),
+    )
+    const router = mount('/freelance?perk=guida')
+    await walkToReview(user)
+    expect(captured('wizard_passo').at(-1)).toEqual({ tipo: 'freelance', perk: 'guida', passo: 8, passi: 8 })
+    expect(captured('wizard_completato')).toEqual([])
+
+    await user.click(screen.getByRole('button', { name: /Invia/ }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/grazie'))
+    expect(captured('wizard_completato')).toEqual([{ tipo: 'freelance', perk: 'guida' }])
+  })
+
+  it('reports nothing completed when the API refused, and the jump back as a step', async () => {
+    const user = userEvent.setup({ applyAccept: false })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ detail: [{ loc: ['body', 'email'], msg: 'Questo indirizzo è già iscritto.' }] }),
+        { status: 422 },
+      ),
+    )
+    const router = mount()
+    await walkToReview(user)
+    await user.click(screen.getByRole('button', { name: /Invia/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Questo indirizzo è già iscritto.')
+    expect(router.state.location.pathname).toBe('/freelance')
+    expect(captured('wizard_completato')).toEqual([])
+    expect(captured('wizard_passo').at(-1)).toEqual({ tipo: 'freelance', passo: 1, passi: 8 })
   })
 })

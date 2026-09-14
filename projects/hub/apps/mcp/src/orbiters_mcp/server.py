@@ -33,7 +33,7 @@ from orbiters_core.service import LIST_LIMIT_DEFAULT, SignupService
 SessionFactory = sessionmaker[Session]
 
 INSTRUCTIONS = (
-    "Orbiters, la community di freelance di joinorbiters.com. Gli strumenti leggono chi "
+    "Orbiters, la community di freelance di letsrebase.com. Gli strumenti leggono chi "
     "ha chiesto di entrare (iscrizioni), i freelance che hanno compilato il profilo con il "
     "CV e le aziende che cercano persone; possono cambiare lo stato di una candidatura, "
     "annotarla e lasciare un commento datato nel suo thread; da un'iscrizione possono "
@@ -52,7 +52,7 @@ def build_server(factory: SessionFactory) -> MCPServer:
 
     @mcp.tool()
     def list_signups(limit: int = LIST_LIMIT_DEFAULT) -> dict[str, Any]:
-        """Chi ha lasciato nome, cognome ed email su joinorbiters.com per entrare nella
+        """Chi ha lasciato nome, cognome ed email su letsrebase.com per entrare nella
         community Orbiters, dal più recente, con il profilo LinkedIn quando l'ha dato.
         Solo lettura. `nome` e `cognome` sono vuoti solo per le iscrizioni raccolte
         quando il form chiedeva la sola email. `totale` conta tutta la lista anche

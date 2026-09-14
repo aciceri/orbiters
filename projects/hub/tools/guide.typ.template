@@ -11,7 +11,7 @@
 // template is the fork both mechanisms exist to prevent.
 //
 // What the page borrows from `landing.css`, so a reader who has just left
-// joinorbiters.com recognises where the file came from: the paper ground with the
+// letsrebase.com recognises where the file came from: the paper ground with the
 // grid drawn on it (`body`, 16px cell, the line at 7% ink), the opaque white panel
 // with a 2px edge and a stepped shadow the colour of the ink and no blur (`.box`), the
 // saturated square before a section title (`.kicker::before`), body text at weight 300

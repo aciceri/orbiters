@@ -2512,6 +2512,6 @@ Comment on ORB-170 with the PR link and the two verification results (the 401 cu
 - [ ] **Step 5: After merge (whoever does it): preview**
 
 ```
-curl -i https://preview.pigro.joinorbiters.com/mcp -X POST -d '{}'     # 401, WWW-Authenticate: Bearer
+curl -i https://preview.pigro.letsrebase.com/mcp -X POST -d '{}'     # 401, WWW-Authenticate: Bearer
 ```
 Then `claude mcp add` against the preview with a token minted there, `describe_schema` and one `create_customer` whose timeline entry reads «Agente AI». Only then `Done`, with the evidence in the card.

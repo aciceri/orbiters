@@ -105,7 +105,7 @@ STEP = 8
 # Every layout table in a mail is this: no spacing, no borders of its own, invisible to
 # a screen reader.
 TABLE = 'role="presentation" cellpadding="0" cellspacing="0" border="0"'
-SITE = "https://joinorbiters.com"
+SITE = "https://letsrebase.com"
 
 
 def _quiet_link(href: str, label: str) -> str:

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * Pins the `.site` scope added by ORB-73 (`docs/design/DECISIONS.md`, 2026-09-10): the
- * chooser, the two wizards and the thanks page follow `joinorbiters.com`'s own visual
+ * chooser, the two wizards and the thanks page follow `letsrebase.com`'s own visual
  * system rather than the application's, and the admin area must not drift with it.
  * These assertions check the rules the decision creates -- no radius, no blur shadow,
  * a solid ink line -- rather than restating every literal, the way

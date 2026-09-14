@@ -107,7 +107,7 @@ describe('the api client', () => {
   it('reads the spaces of PigroCRM from the hub, never from the CRM directly', async () => {
     // ORB-142: the token stays on the server; the browser only ever talks to the hub.
     const spy = vi.spyOn(globalThis, 'fetch')
-    spy.mockResolvedValueOnce(answer(200, { totale: 1, items: [{ slug: 'studio-ada', owner_email: 'ada@studio.it', created_at: '2026-09-10T09:00:00Z', url: 'https://pigro.joinorbiters.com/studio-ada/app/', membro: null }] }))
+    spy.mockResolvedValueOnce(answer(200, { totale: 1, items: [{ slug: 'studio-ada', owner_email: 'ada@studio.it', created_at: '2026-09-10T09:00:00Z', url: 'https://pigro.letsrebase.com/studio-ada/app/', membro: null }] }))
     const spaces = await admin.pigroSpaces()
     expect(spy.mock.calls[0]![0]).toBe('/api/hub/pigro/istanze')
     expect(spaces.items[0]!.slug).toBe('studio-ada')

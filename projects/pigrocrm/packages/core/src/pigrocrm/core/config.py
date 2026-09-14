@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     # `ORBITERS_PIGRO_REGISTRY_TOKEN`: since ORB-173 it travels in both directions. Empty
     # token, unreachable hub, anything but a 200: the answer is «not a member» and the
     # signup goes on. The community is the fast lane, never a gate.
-    hub_url: str = "https://joinorbiters.com"
+    hub_url: str = "https://letsrebase.com"
     jwt_secret: str = "change-me-in-production-please-set-a-real-secret"
     access_token_minutes: int = 15
     # Six months, sliding: `/api/auth/refresh` consumes the old jti and issues a new row
@@ -181,8 +181,8 @@ class Settings(BaseSettings):
     # with a sentence rather than pretend. `repr=False` for the same reason as the Google
     # secret above: a Settings object reaches logs and tracebacks.
     resend_api_key: str = Field(default="", repr=False)
-    # joinorbiters.com already carries SPF and DKIM for Resend (the hub sends from it).
-    mail_from: str = "PigroCRM <ciao@joinorbiters.com>"
+    # letsrebase.com already carries SPF and DKIM for Resend (the hub sends from it).
+    mail_from: str = "PigroCRM <ciao@letsrebase.com>"
     # How long a link by mail is good for. Fifteen, like the hub's.
     magic_link_minutes: int = Field(default=15, ge=1, le=120)
 

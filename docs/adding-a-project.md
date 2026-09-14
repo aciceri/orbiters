@@ -258,8 +258,8 @@ rows.
 | website | web 8082 | web 8083 |
 | hub (`orbiters`, `orbiters-preview`) | api 8084, web 8085, Postgres 55435 | api 8086, web 8087, Postgres 55436 |
 
-Since 2026-09-10 preview has public names too: `preview.joinorbiters.com` mirrors the
-website plus hub map, `preview.pigro.joinorbiters.com` mirrors the CRM's. So a new
+Since 2026-09-10 preview has public names too: `preview.letsrebase.com` mirrors the
+website plus hub map, `preview.pigro.letsrebase.com` mirrors the CRM's. So a new
 project's preview gets a vhost as well as a production one, the two files stay the same
 shape, and only the ports differ.
 
@@ -275,7 +275,7 @@ own. The consequence for a new project: if its preview would expose something th
 not be read by whoever finds the URL, that is a reason to keep the surface off preview,
 not a reason to put a password back.
 
-TLS on the preview names is a **certificate of their own**, `preview.joinorbiters.com`,
+TLS on the preview names is a **certificate of their own**, `preview.letsrebase.com`,
 covering both of them, rather than two more names on the production certificate. The
 reason is blast radius: `certbot --nginx --expand` reinstalls the certificate into every
 vhost whose `server_name` it matches, which means it rewrites the two production files

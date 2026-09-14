@@ -93,7 +93,7 @@ describe('/io', () => {
     expect(screen.getByRole('link', { name: /Ada CV\.pdf/ })).toHaveAttribute('href', '/api/hub/me/cv')
     expect(screen.getByRole('link', { name: /Apri PigroCRM/ })).toHaveAttribute(
       'href',
-      'https://pigro.joinorbiters.com/app/registrati',
+      'https://pigro.letsrebase.com/app/registrati',
     )
     expect(screen.getByRole('link', { name: /Scarica la guida/ })).toHaveAttribute(
       'href',

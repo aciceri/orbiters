@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # The page where the conversion happens, required by the API for a `web` event and
     # taken from here rather than from the request: a `source_url` that arrives from the
     # client is a string the caller chose, forwarded to a third party as it came.
-    signup_url: str = "https://joinorbiters.com/"
+    signup_url: str = "https://letsrebase.com/"
     # Whether to also send OpenAI the SHA-256 of the address. It improves attribution,
     # and a hash of an email is still that person's identifier: whoever runs the site
     # decides, and the default is no.
@@ -47,10 +47,10 @@ class Settings(BaseSettings):
     # link request with a 503 sentence rather than pretending a mail went out: the key
     # lives in the server's `.env` only (`.env.example`).
     resend_api_key: str = ""
-    mail_from: str = "Orbiters <ciao@joinorbiters.com>"
+    mail_from: str = "Rebase <ciao@letsrebase.com>"
     # Where the SPA answers, for the link in the mail: `{hub_url}/entra?t=...`. Local
     # development points it at the Vite dev server.
-    hub_url: str = "https://joinorbiters.com/hub"
+    hub_url: str = "https://letsrebase.com/hub"
     magic_link_minutes: int = 15
     # Sliding, as the admin's.
     member_session_days: int = 30
@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     # token, which PigroCRM reads as `PIGROCRM_REGISTRY_TOKEN`. Empty means the page
     # answers 503 with a sentence, like the member area without a mail key. The URL is
     # also where a space is linked: `{pigro_api_url}/<slug>/app/`.
-    pigro_api_url: str = "https://pigro.joinorbiters.com"
+    pigro_api_url: str = "https://pigro.letsrebase.com"
     pigro_registry_token: str = ""
 
 

@@ -26,7 +26,7 @@ from orbiters_core.conversions import (
 PIXEL_ID = "9r6qrnPxBV8WDVGtpuaqxh"
 KEY = "sk-svcacct-non-una-chiave-vera"
 EVENT_ID = "8f14e45f-ceea-467a-9f36-dcd8b0eba0b1"
-SIGNUP_URL = "https://joinorbiters.com/"
+SIGNUP_URL = "https://letsrebase.com/"
 
 
 class FakeHttp:

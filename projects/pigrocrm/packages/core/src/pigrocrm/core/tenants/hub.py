@@ -38,7 +38,7 @@ LOOKUP_PATH = "/api/hub/members/lookup"
 HTTP_TIMEOUT_SECONDS = 5
 # The answer is three short fields; anything longer is not the hub talking.
 MAX_BODY_BYTES = 4096
-USER_AGENT = "pigrocrm/0.1 (+https://pigro.joinorbiters.com)"
+USER_AGENT = "pigrocrm/0.1 (+https://pigro.letsrebase.com)"
 
 # (method, url, headers, body) -> (status, body). Narrower than the Gmail and Drive
 # seams: no response header is read, and there is no retry to inform.

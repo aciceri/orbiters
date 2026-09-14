@@ -1,6 +1,6 @@
 # website
 
-joinorbiters.com: the public site. Today that is the Orbiters landing at `/`, the
+letsrebase.com: the public site. Today that is the Orbiters landing at `/`, the
 community page with its signup form at `/orbiters`, and the two policy pages
 (`/privacy`, `/termini`); it is called `website` rather than `landing` because it is
 expected to grow past those.
@@ -26,7 +26,7 @@ pnpm --filter website lint
 
 | Page | Served at | What it is |
 |---|---|---|
-| `src/index.html` | `joinorbiters.com/` | The Orbiters landing: two doors into the hub, how it works, the four voices, the perks. Since 2026-09-11 (ORB-145) |
+| `src/index.html` | `letsrebase.com/` | The Orbiters landing: two doors into the hub, how it works, the four voices, the perks. Since 2026-09-11 (ORB-145) |
 | `src/pigrocrm.html` | `/pigrocrm` | PigroCRM's own page (ORB-159): one door into Orbiters beside a drawn Claude conversation, the four things inside, the guide, the closing box. Its own `pigrocrm.css` on top of `landing.css` |
 | `src/orbiters.html` | `/orbiters` | The community page and its signup form, the front door until 2026-09-11 |
 | `src/privacy.html` | `/privacy` | Privacy notice |
@@ -76,14 +76,14 @@ thing twice, once for production and once for the dev and preview servers. Chang
 and change the other: `path-map-plugin.test.ts` reads `nginx.conf` and fails until you
 have.
 
-`deploy/joinorbiters.conf` is the host's vhost: it terminates TLS and sends everything
+`deploy/letsrebase.conf` is the host's vhost: it terminates TLS and sends everything
 here except what belongs to the other tenants of the origin: `/hub/`, `/api/hub/` and
 `/api/orbiters/signups` go to the Orbiters hub (`projects/hub`), `/health` stays on
-PigroCRM's stack, and `/app` and `/app/` redirect to `pigro.joinorbiters.com`, which is
+PigroCRM's stack, and `/app` and `/app/` redirect to `pigro.letsrebase.com`, which is
 the CRM.
 
 Deploys are `deploy-website.yml`: preview on a push to `main` that touched this project,
 production on a `website-v<semver>` tag. Until 2026-09-09 this project had no deployable
 of its own and was carried inside the CRM's web image; the four public paths that
-answered on `pigro.joinorbiters.com` are now 301s to this site, so a policy page has one
+answered on `pigro.letsrebase.com` are now 301s to this site, so a policy page has one
 canonical copy.

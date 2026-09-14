@@ -52,7 +52,7 @@ describe('on a developer machine', () => {
 
 describe('on a real host', () => {
   it('initialises the shared project with the shared policy', () => {
-    expect(initAnalytics({ hostname: 'pigro.joinorbiters.com' })).toBe(true)
+    expect(initAnalytics({ hostname: 'pigro.letsrebase.com' })).toBe(true)
     expect(analyticsActive()).toBe(true)
     expect(init).toHaveBeenCalledTimes(1)
     const [key, config] = init.mock.calls[0] ?? []
@@ -74,17 +74,17 @@ describe('on a real host', () => {
   it('marks the preview stacks as internal, so their events exist and can be filtered out', () => {
     // As a call, not as the `internal_or_test_user_hostname` option: the SDK's defaults
     // overwrote that option live (browser.ts says where and when).
-    expect(initAnalytics({ hostname: 'preview.pigro.joinorbiters.com' })).toBe(true)
+    expect(initAnalytics({ hostname: 'preview.pigro.letsrebase.com' })).toBe(true)
     expect(posthog.setInternalOrTestUser).toHaveBeenCalledTimes(1)
     expect(init.mock.calls[0]?.[1]).not.toHaveProperty('internal_or_test_user_hostname')
   })
 
   it('masks every text node only when asked, which is what the CRM asks', () => {
-    initAnalytics({ hostname: 'pigro.joinorbiters.com', maskText: true })
+    initAnalytics({ hostname: 'pigro.letsrebase.com', maskText: true })
     expect(init.mock.calls[0]?.[1]?.session_recording?.maskTextSelector).toBe('*')
     vi.clearAllMocks()
     __resetAnalyticsForTests()
-    initAnalytics({ hostname: 'joinorbiters.com' })
+    initAnalytics({ hostname: 'letsrebase.com' })
     expect(init.mock.calls[0]?.[1]?.session_recording).not.toHaveProperty('maskTextSelector')
   })
 
@@ -92,14 +92,14 @@ describe('on a real host', () => {
     init.mockImplementationOnce(() => {
       throw new Error('storage is not available')
     })
-    expect(initAnalytics({ hostname: 'pigro.joinorbiters.com' })).toBe(false)
+    expect(initAnalytics({ hostname: 'pigro.letsrebase.com' })).toBe(false)
     expect(analyticsActive()).toBe(false)
     capture('cliente_creato')
     expect(posthog.capture).not.toHaveBeenCalled()
   })
 
   it('passes identify, group, capture and reset through', () => {
-    initAnalytics({ hostname: 'pigro.joinorbiters.com' })
+    initAnalytics({ hostname: 'pigro.letsrebase.com' })
     identifyUser('u1', { email: 'a@b.it', nome: 'Ada' })
     identifyGroup('spazio', 'studio', { nome: 'Studio' })
     capture('cliente_creato', { via: 'ui' })

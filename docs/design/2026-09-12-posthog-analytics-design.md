@@ -12,7 +12,7 @@ ORB-185 hub, ORB-186 CRM MCP, ORB-187 warehouse sources and dashboards).
 Ivan, on 2026-09-12, from the options put to him:
 
 - **PostHog Cloud EU**, one project for every surface. Data in Europe; a visitor of
-  joinorbiters.com who later opens a space on pigro.joinorbiters.com is one person.
+  letsrebase.com who later opens a space on pigro.letsrebase.com is one person.
 - **Consent gate on the site, identified tracking behind the logins.** The public
   pages load nothing before the visitor says yes, through the notice that already
   exists for the ChatGPT Ads pixel. Inside the CRM and the hub, after the login, there

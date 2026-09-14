@@ -104,7 +104,7 @@ jobs:
       # would report a healthy deploy with the database on the floor. This one reads
       # the registry, so it fails when Postgres does.
       health-url: http://127.0.0.1:8081/api/tenants/zzz-healthcheck/disponibile
-      url: https://preview.pigro.joinorbiters.com
+      url: https://preview.pigro.letsrebase.com
     secrets: inherit
 
   production:
@@ -123,5 +123,5 @@ jobs:
       compose-dir: projects/pigrocrm
       compose-project: pigrocrm
       health-url: http://127.0.0.1:8080/api/tenants/zzz-healthcheck/disponibile
-      url: https://pigro.joinorbiters.com
+      url: https://pigro.letsrebase.com
     secrets: inherit

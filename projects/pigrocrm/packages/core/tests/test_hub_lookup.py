@@ -24,7 +24,7 @@ def _settings(**overrides: object) -> Settings:
     values: dict[str, object] = {
         "jwt_secret": "test-secret-for-the-core-test-suite-only",
         "registry_token": TOKEN,
-        "hub_url": "https://joinorbiters.com/",
+        "hub_url": "https://letsrebase.com/",
         "_env_file": None,
     }
     values.update(overrides)
@@ -55,7 +55,7 @@ def test_a_member_comes_back_with_the_two_names_and_one_post_left_with_the_beare
     assert found == MemberLookup(membro=True, nome="Ada", cognome="Lovelace")
     # The address is in the body and nowhere in the URL: no access log keeps it.
     assert [(m, u) for m, u, _, _ in hub.calls] == [
-        ("POST", f"https://joinorbiters.com{LOOKUP_PATH}")
+        ("POST", f"https://letsrebase.com{LOOKUP_PATH}")
     ]
     method, url, headers, body = hub.calls[0]
     assert json.loads(body) == {"email": "ada@studio.it"}

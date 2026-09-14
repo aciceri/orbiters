@@ -1,0 +1,115 @@
+/**
+ * Draws the image a link to this site shares with, and writes it to
+ * `src/public/assets/share-card.png` (ORB-112).
+ *
+ * Not part of the build, and run by hand: the card is a static asset committed to the
+ * repository, as the card asked, so a visitor's share never waits on a render and the
+ * file that ships is the file somebody looked at. This script exists so that the next
+ * person who has to change the wordmark, the claim or the palette changes one line and
+ * runs `pnpm --filter website build:share-card` instead of opening a design tool.
+ *
+ * The colours are read out of `shared/brand/palette.css` and the typeface out of
+ * `shared/brand/fonts`, never restated here: a hex typed into this file would be the
+ * fork that `palette-plugin.ts` exists to prevent, one directory away. `share-card.test.ts`
+ * fails this file if a hex appears in it.
+ *
+ * 1200x630 is what every client that shows a large card wants (LinkedIn, WhatsApp,
+ * Slack, X). `deviceScaleFactor: 1`, so the pixels are the CSS pixels laid out below.
+ */
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { chromium } from '@playwright/test'
+
+const here = dirname(fileURLToPath(import.meta.url))
+const brand = join(here, '..', '..', '..', 'shared', 'brand')
+const out = join(here, '..', 'src', 'public', 'assets', 'share-card.png')
+
+export const WIDTH = 1200
+export const HEIGHT = 630
+
+/** The tokens this card paints with, read from the shared palette. */
+function palette() {
+  const css = readFileSync(join(brand, 'palette.css'), 'utf-8')
+  const token = (name) => {
+    const value = css.match(new RegExp(`--color-${name}:\\s*(#[0-9a-fA-F]{3,8});`))?.[1]
+    if (!value) throw new Error(`shared/brand/palette.css declares no --color-${name}`)
+    return value
+  }
+  return { ink: token('prussian-blue'), gold: token('royal-gold'), melon: token('watermelon') }
+}
+
+function markup() {
+  const { ink, gold, melon } = palette()
+  const font = readFileSync(join(brand, 'fonts', 'outfit-variable-latin.woff2')).toString('base64')
+  // The mark on the ink ground, which is where the four tiles need the treatment
+  // `pitch.css` already gives them in its dark slides: the two Prussian Blue tiles are
+  // drawn white, because on their own colour they would not be there at all.
+  return `<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @font-face {
+        font-family: 'Outfit';
+        font-weight: 300 700;
+        src: url(data:font/woff2;base64,${font}) format('woff2');
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        width: ${WIDTH}px;
+        height: ${HEIGHT}px;
+        background-color: ${ink};
+        /* The faint grid the whole visual system sits on, at the scale of a card this
+           size rather than of a page. */
+        background-image:
+          linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+        background-size: 42px 42px;
+        color: #ffffff;
+        font-family: 'Outfit', sans-serif;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 30px;
+        padding: 96px;
+      }
+      /* Four tiles, at the scale of the card: white, gold, watermelon, white. */
+      .glyph {
+        width: 44px;
+        height: 44px;
+        background-color: #ffffff;
+        box-shadow:
+          44px 0 0 ${gold},
+          0 44px 0 ${melon},
+          44px 44px 0 #ffffff;
+        margin-bottom: 44px;
+      }
+      .wordmark { font-size: 128px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; }
+      /* One line, never two: the claim is a sentence and a card that breaks it after
+         «da» reads as a layout accident. At this size it measures about 640px of the
+         1008px the padding leaves. */
+      .claim { font-size: 54px; font-weight: 300; line-height: 1.1; white-space: nowrap; }
+      .foot { font-size: 30px; font-weight: 400; color: ${gold}; letter-spacing: 0.01em; }
+    </style>
+  </head>
+  <body>
+    <div class="glyph"></div>
+    <p class="wordmark">Orbiters</p>
+    <p class="claim">freelance, ma non da soli</p>
+    <p class="foot">letsrebase.com</p>
+  </body>
+</html>`
+}
+
+const browser = await chromium.launch()
+const page = await browser.newPage({
+  viewport: { width: WIDTH, height: HEIGHT },
+  deviceScaleFactor: 1,
+})
+await page.setContent(markup(), { waitUntil: 'load' })
+await page.evaluate(() => document.fonts.ready)
+mkdirSync(dirname(out), { recursive: true })
+writeFileSync(out, await page.screenshot({ type: 'png' }))
+await browser.close()
+console.log(`share-card.png: ${WIDTH}x${HEIGHT} -> ${out}`)

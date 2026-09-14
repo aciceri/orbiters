@@ -37,3 +37,7 @@ data/
 # Screenshots I take while reviewing pages
 *.png
 !**/public/*.png
+# The site's share card, drawn by projects/website/scripts/share-card.mjs and
+# committed: it sits a directory deeper because nginx serves /assets and nothing
+# else at the root (ORB-112).
+!**/public/assets/*.png

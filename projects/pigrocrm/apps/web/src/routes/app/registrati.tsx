@@ -221,7 +221,7 @@ export function SignupPage({ go = (url) => window.location.assign(url) }: { go?:
                   onChange={(event) => setEmail(event.target.value)}
                 />
                 <p className="text-muted-foreground text-sm">
-                  Se sei nella community Orbiters, usa la stessa. È anche il tuo modo di entrare:
+                  Se sei nella community rebase, usa la stessa. È anche il tuo modo di entrare:
                   niente password, un link via mail.
                 </p>
               </div>
@@ -292,7 +292,7 @@ export function SignupPage({ go = (url) => window.location.assign(url) }: { go?:
               </div>
               {member && !member.membro && (
                 <p className="text-muted-foreground text-sm">
-                  Non sei ancora nella community Orbiters? Puoi entrare comunque: nella mail ti
+                  Non sei ancora nella community rebase? Puoi entrare comunque: nella mail ti
                   raccontiamo cos’è.
                 </p>
               )}

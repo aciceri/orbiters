@@ -1,11 +1,11 @@
 {
   "output": "projects/hub/packages/core/src/orbiters_core/perks/orbiters-guida-primi-passi-freelance.pdf",
-  "bytes": 49194,
+  "bytes": 49055,
   "pages": 6,
-  "sha256": "d6c99b34d333cb53703ae92d97797d2c62f9bff53eed9c16a853eeff497afcab",
+  "sha256": "eb17a3603a89f3e8c9ef42b751752b624267c2d5ce3962863ccf435545d7a321",
   "sources": {
-    "projects/hub/content/guida-primi-passi-freelance.md": "5f7ecde19f583a86d70c48b1e0ef8aec0ba4f50dc2f77393371cbbfa18e35752",
-    "projects/hub/tools/guide.typ.template": "d870784a4c4e20c3afce96db867f36149a13fb854bcad8a911196d159615f1f4",
+    "projects/hub/content/guida-primi-passi-freelance.md": "00d44445e90d2dbcdfdc8ef37b9eab2de297b7b445c01b8d345fb5d8f2780a98",
+    "projects/hub/tools/guide.typ.template": "956569b84ce6681cef78749b681c988b4f834f70f82db38c0eb5fe3f5459ae2b",
     "shared/brand/palette.css": "393a0675891ead3430beaa8371082abe50d54c55cf24d43298a594f47e71a00b",
     "shared/brand/fonts/outfit-variable-latin.woff2": "6c18d579fd87c3776be068b762cbc83fde3acb543d49eabd3ade842eb987e887",
     "projects/hub/tools/build_guide_pdf.py": "eab714783bfb467e6060cba533bce114d3f63e040d0a54ebaf269a00c1825899"

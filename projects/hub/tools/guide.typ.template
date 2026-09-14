@@ -62,7 +62,7 @@
     grid(
       columns: (1fr, auto),
       align: (left + horizon, right + horizon),
-      [Orbiters · $shorttitle$],
+      [rebase · $shorttitle$],
       [#counter(page).display()],
     )
   },
@@ -118,7 +118,7 @@
   set page(footer: none)
   v(1fr)
   cover[
-    #text(size: 11pt, weight: 500, fill: ink)[#mark() #h(4pt) Orbiters]
+    #text(size: 11pt, weight: 500, fill: ink)[#mark() #h(4pt) rebase]
     #v(14pt)
     #text(size: 24pt, weight: 500, fill: ink)[
       #set par(leading: 0.28em)

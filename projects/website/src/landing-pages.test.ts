@@ -29,7 +29,7 @@ describe.each(PAGES)('%s', (name) => {
     // its title, the perk, regardless of Ivan's separate «freelance» exception
     // (ORB-24, positioning.md line 85); see the brand-link assertion below for the
     // same title/brand split.
-    expect(title).toContain(name === 'index.html' ? 'PigroCRM' : 'Orbiters')
+    expect(title).toContain(name === 'index.html' ? 'PigroCRM' : 'rebase')
     const description = meta(page, 'description') ?? ''
     expect(description.length).toBeGreaterThan(40)
     // The trap named in spec 9.2: the previous system's index.html still carries "Studio Rossi is
@@ -41,7 +41,7 @@ describe.each(PAGES)('%s', (name) => {
     // All three pages' og:title already begins "Orbiters" (index.html's own title
     // keeps the "Con PigroCRM gratis" suffix, but its og:title does not repeat it),
     // so this one assertion covers every page in PAGES with no ternary.
-    expect(meta(page, 'og:title')).toContain('Orbiters')
+    expect(meta(page, 'og:title')).toContain('rebase')
     expect(meta(page, 'og:description')).toBeTruthy()
     expect(meta(page, 'og:type')).toBe('website')
   })
@@ -95,7 +95,7 @@ describe.each(PAGES)('%s', (name) => {
     // as Orbiters now; the titolare del trattamento the two legal pages name, and
     // the substance of what each policy says, did not move with the brand.
     expect(page).toMatch(
-      /<a class="brand" href="\/"><span class="glyph" aria-hidden="true"><\/span>Orbiters<\/a>/,
+      /<a class="brand" href="\/"><span class="glyph" aria-hidden="true"><\/span>rebase<\/a>/,
     )
   })
 
@@ -189,7 +189,7 @@ describe('index.html', () => {
     // hub's route, which is code, and in the <title> and og:title, which Ivan kept on
     // 2026-09-09 for continuity. It is gone from the claim, the descriptions and the CTAs.
     expect(page.match(/<title>([^<]+)<\/title>/)?.[1]).toContain('freelance')
-    expect(meta(page, 'og:title')).toBe('Orbiters — freelance, ma non da soli')
+    expect(meta(page, 'og:title')).toBe('rebase — freelance, ma non da soli')
     const headlines = [
       meta(page, 'description'),
       meta(page, 'og:description'),

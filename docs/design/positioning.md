@@ -1,10 +1,12 @@
-# Positioning: who Orbiters is for
+# Positioning: who rebase is for
 
 The source every public surface writes from. A page, a meta description, a wizard step
 or an MCP tool description that says who we are for says it in these words; if the
 words here are wrong, this file changes first and the surfaces follow.
 
-Decided with Ivan on 2026-09-09 (ORB-24). The wording of what a visitor reads is his;
+Decided with Ivan on 2026-09-09 (ORB-24). Since 2026-09-14 the name is **rebase**, written
+lowercase everywhere a person reads it, including at the start of a sentence (ORB-194);
+«Orbiters» survives only in code identifiers and in history. The wording of what a visitor reads is his;
 this page is what the copy is checked against.
 
 ## Who it is for

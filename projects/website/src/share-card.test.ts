@@ -31,7 +31,7 @@ const CARD_PATH = `/assets/${CARD_FILE}`
 const CARD_URL = `https://letsrebase.com${CARD_PATH}`
 const CARD_ON_DISK = join(__dirname, 'public', 'assets', CARD_FILE)
 const CARD_ALT =
-  'Il marchio Orbiters, quattro tessere su fondo blu, con il claim «freelance, ma non da soli»'
+  'Il marchio rebase, quattro tessere su fondo blu, con il claim «freelance, ma non da soli»'
 const WIDTH = 1200
 const HEIGHT = 630
 
@@ -54,7 +54,7 @@ describe.each(PAGES)('%s shares with the card', (name) => {
   const page = html[name]
 
   it('names the site, the image and the card type', () => {
-    expect(meta(page, 'og:site_name')).toBe('Orbiters')
+    expect(meta(page, 'og:site_name')).toBe('rebase')
     expect(meta(page, 'og:image')).toBe(CARD_URL)
     expect(meta(page, 'og:image:type')).toBe('image/png')
     expect(meta(page, 'og:image:width')).toBe(String(WIDTH))

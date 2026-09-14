@@ -77,6 +77,8 @@ body {
 .dark .foot { color: rgba(255,255,255,0.7); } .dark .foot span { background: transparent; }
 .kicker { color: var(--melon); font-weight: 600; font-size: 38px; letter-spacing: 0.12em; text-transform: uppercase; }
 .dark .kicker { color: var(--gold); }
+/* The wordmark stays lowercase inside an uppercase kicker (ORB-194). */
+.kicker .lower { text-transform: none; letter-spacing: 0.02em; }
 .accent { color: var(--melon); }
 .dark .accent { color: var(--gold); }
 

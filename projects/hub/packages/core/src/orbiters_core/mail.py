@@ -155,7 +155,7 @@ def _frame(title: str, body: str) -> str:
     gap = "&nbsp;&nbsp;&nbsp;"
     footer = gap.join(
         (
-            _quiet_link(f"{SITE}/", "Orbiters"),
+            _quiet_link(f"{SITE}/", "rebase"),
             _quiet_link(f"{SITE}/privacy", "Privacy"),
             _quiet_link(f"{SITE}/termini", "Termini"),
         )
@@ -177,7 +177,7 @@ def _frame(title: str, body: str) -> str:
             '<tr><td style="padding:0 0 20px 0;">',
             f"<table {TABLE}><tr>",
             f'<td valign="middle" style="padding-right:10px;">{_mark()}</td>',
-            f'<td valign="middle" style="{name}">Orbiters</td>',
+            f'<td valign="middle" style="{name}">rebase</td>',
             "</tr></table>",
             "</td></tr>",
             f"<tr><td {step}>",
@@ -200,14 +200,14 @@ def magic_link_mail(to: str, link: str, minutes: int) -> Mail:
     text = (
         "Ciao,\n"
         "\n"
-        "questo è il link per entrare nella tua area su Orbiters:\n"
+        "questo è il link per entrare nella tua area su rebase:\n"
         "\n"
         f"{link}\n"
         "\n"
         f"Vale {minutes} minuti e funziona una volta sola. Se non l'hai chiesto tu, ignora "
         "questa mail: non succede niente.\n"
         "\n"
-        "Noi di Orbiters\n"
+        "Noi di rebase\n"
     )
     # The link is the only variable and it goes into an attribute and into text: escaped
     # both times, so a token that is not ours cannot close the tag it sits in.
@@ -218,21 +218,21 @@ def magic_link_mail(to: str, link: str, minutes: int) -> Mail:
         (
             '<p style="margin:0 0 20px 0;">Ciao,</p>',
             '<p style="margin:0 0 24px 0;">'
-            "questo è il link per entrare nella tua area su Orbiters.</p>",
+            "questo è il link per entrare nella tua area su rebase.</p>",
             _button(safe_link, "Entra nella tua area"),
             f'<p {small}word-break:break-all;">'
             "Se il bottone non si apre, copia questo indirizzo nel browser:<br>"
             f"{_quiet_link(safe_link, safe_link)}</p>",
             f"<p {paragraph}>Vale {minutes} minuti e funziona una volta sola. "
             "Se non l'hai chiesto tu, ignora questa mail: non succede niente.</p>",
-            f"<p {paragraph}>Noi di Orbiters</p>",
+            f"<p {paragraph}>Noi di rebase</p>",
         )
     )
     return Mail(
         to=to,
-        subject="Il tuo accesso a Orbiters",
+        subject="Il tuo accesso a rebase",
         text=text,
-        html=_frame("Il tuo accesso a Orbiters", body),
+        html=_frame("Il tuo accesso a rebase", body),
     )
 
 
@@ -297,24 +297,24 @@ def welcome_mail(
         f"<li {li}>{e(PIGROCRM_LINE)}</li><li>{e(GUIDE_LINE)}</li></ul>"
     )
     linkedin_text = (
-        "Un'altra cosa: segui la pagina LinkedIn di Orbiters, "
+        "Un'altra cosa: segui la pagina LinkedIn di rebase, "
         f"{LINKEDIN_PAGE}. Oggi pomeriggio esce il post con le prime job post per "
         "Forward Deployed Engineer.\n"
     )
     linkedin_html = (
         f"<p {paragraph}>Un'altra cosa: segui "
-        f"{_quiet_link(LINKEDIN_PAGE, 'la pagina LinkedIn di Orbiters')}. Oggi pomeriggio "
+        f"{_quiet_link(LINKEDIN_PAGE, 'la pagina LinkedIn di rebase')}. Oggi pomeriggio "
         "esce il post con le prime job post per Forward Deployed Engineer.</p>"
     )
     safe_accedi = e(accedi_link, quote=True)
     enter_text = (
-        "la tua area su Orbiters è aperta. Si entra con la tua email, senza password: ti "
+        "la tua area su rebase è aperta. Si entra con la tua email, senza password: ti "
         "mandiamo un link e sei dentro.\n"
         "\n"
         f"{accedi_link}\n"
     )
     enter_html = (
-        '<p style="margin:0 0 24px 0;">la tua area su Orbiters è aperta. Si entra con la '
+        '<p style="margin:0 0 24px 0;">la tua area su rebase è aperta. Si entra con la '
         "tua email, senza password: ti mandiamo un link e sei dentro.</p>"
         + _button(safe_accedi, "Entra nella tua area")
         + f'<p {small}word-break:break-all;">'
@@ -379,7 +379,7 @@ def welcome_mail(
         assert wizard_link is not None
         safe_wizard = e(wizard_link, quote=True)
         intro = (
-            "la tua area su Orbiters è aperta, ma la tua scheda non siamo riusciti a "
+            "la tua area su rebase è aperta, ma la tua scheda non siamo riusciti a "
             "prepararla noi: in pubblico non c'era abbastanza. Compilala tu, ci vogliono "
             "cinque minuti."
         )
@@ -399,7 +399,7 @@ def welcome_mail(
 
     text = (
         f"{greeting}\n\n" + middle_text + "\n" + perks_text + "\n" + linkedin_text + "\n"
-        "Noi di Orbiters\n"
+        "Noi di rebase\n"
     )
     body = "\n".join(
         (
@@ -407,12 +407,12 @@ def welcome_mail(
             middle_html,
             perks_html,
             linkedin_html,
-            f"<p {paragraph}>Noi di Orbiters</p>",
+            f"<p {paragraph}>Noi di rebase</p>",
         )
     )
     return Mail(
         to=to,
-        subject="La tua area su Orbiters è aperta",
+        subject="La tua area su rebase è aperta",
         text=text,
-        html=_frame("La tua area su Orbiters è aperta", body),
+        html=_frame("La tua area su rebase è aperta", body),
     )

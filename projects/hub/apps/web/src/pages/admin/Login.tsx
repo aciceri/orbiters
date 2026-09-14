@@ -32,7 +32,7 @@ export function AdminLogin() {
       <form onSubmit={submit} className="w-full max-w-sm space-y-5 rounded-2xl border bg-card p-6">
         <h1 className="inline-flex items-center gap-2.5 text-xl font-semibold">
           <BrandMark className="size-3.5" />
-          Orbiters · admin
+          rebase · admin
         </h1>
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>

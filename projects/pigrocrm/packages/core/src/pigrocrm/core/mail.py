@@ -249,7 +249,7 @@ def welcome_mail(to: str, entra_url: str, login_url: str, *, membro: bool) -> Ma
     durable session and closes whatever somebody else may have opened with this email at
     the signup. Then how to come back (the login, the email, a link), the assistant in
     one sentence, the three first steps, and for whoever is not in the community yet a
-    paragraph on Orbiters. No name in the greeting: what the signup asked is the space's
+    paragraph on rebase. No name in the greeting: what the signup asked is the space's
     name, not the person's. Every value from outside is escaped in the HTML."""
     e = html_escape.escape
     greeting = "Ciao,"
@@ -266,7 +266,7 @@ def welcome_mail(to: str, entra_url: str, login_url: str, *, membro: bool) -> Ma
         "registrare le ore, preparare un'offerta, riassumere la settimana."
     )
     orbiters = (
-        "PigroCRM è il perk della community Orbiters, developer e CTO freelance in Italia: "
+        "PigroCRM è il perk della community rebase, developer e CTO freelance in Italia: "
         "progetti da aziende vere e persone che ci sono già passate. Se vuoi entrarci: "
         f"{HUB_WIZARD_URL}"
     )
@@ -301,7 +301,7 @@ def welcome_mail(to: str, entra_url: str, login_url: str, *, membro: bool) -> Ma
             + "".join(f"<li {li}>{e(step)}</li>" for step in steps)
             + "</ol>",
             (
-                f"<p {paragraph}>PigroCRM è il perk della community Orbiters, developer e CTO "
+                f"<p {paragraph}>PigroCRM è il perk della community rebase, developer e CTO "
                 "freelance in Italia: progetti da aziende vere e persone che ci sono già "
                 f"passate. Se vuoi entrarci: {_quiet_link(HUB_WIZARD_URL, HUB_WIZARD_URL)}</p>"
                 if not membro

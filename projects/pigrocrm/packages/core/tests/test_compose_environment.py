@@ -94,6 +94,11 @@ def _shared_environment() -> dict[str, str]:
     gets; `test_both_python_services_share_the_one_environment_block` is what keeps that
     claim honest too.
     """
+    return {match.group(1): match.group(2) for match in _LINE.finditer(_shared_environment_block())}
+
+
+def _shared_environment_block() -> str:
+    """The anchor's text, header line included, up to the next top-level key."""
     text = COMPOSE.read_text()
     anchor = text[text.index("\nx-api-environment:") + 1 :]
     # Up to the next top-level key (`services:`), so `services:` and everything under it
@@ -101,8 +106,7 @@ def _shared_environment() -> dict[str, str]:
     # header line, which the same pattern would otherwise match at offset zero.
     after_header = anchor.index("\n") + 1
     end = re.search(r"^[a-z][a-z0-9_-]*:", anchor[after_header:], re.MULTILINE)
-    block = anchor[: after_header + end.start()] if end else anchor
-    return {match.group(1): match.group(2) for match in _LINE.finditer(block)}
+    return anchor[: after_header + end.start()] if end else anchor
 
 
 def _service_block(name: str) -> str:
@@ -124,6 +128,27 @@ def test_the_environment_block_is_really_being_read() -> None:
     """If this fails, every other test in this file is asserting nothing."""
     assert COMPOSE.is_file(), COMPOSE
     assert _forwarded() >= _CANARIES, sorted(_forwarded())
+
+
+def test_the_anchor_block_is_flat_yaml() -> None:
+    """Every line of the anchor sits at exactly two spaces, comments included.
+
+    `_LINE` accepts any indentation, so a variable pasted at six spaces (a conflict
+    resolved by hand from a service's own `environment:` block, 2026-09-14, ORB-186)
+    passed every test here while `docker compose build` refused the file with «yaml:
+    line 12: did not find expected key» on the trunk. No PyYAML in this environment,
+    on purpose (see `_shared_environment`), so the check is the one YAML rule a mapping
+    of scalars has: one indentation, and each line a `key: value` or a comment.
+    """
+    text = COMPOSE.read_text()
+    first_line = text[: text.index("\nx-api-environment:")].count("\n") + 3
+    for number, line in enumerate(_shared_environment_block().splitlines()[1:], start=first_line):
+        if not line.strip():
+            continue
+        # `number` is the file's own line, the one compose's error names.
+        assert line.startswith("  ") and not line.startswith("   "), (number, line)
+        body = line[2:]
+        assert body.startswith("#") or re.match(r"^[A-Z0-9_]+: \S", body), (number, line)
 
 
 @pytest.mark.parametrize("field", sorted(Settings.model_fields))

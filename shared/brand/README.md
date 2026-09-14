@@ -1,13 +1,17 @@
 # @orbiters/brand
 
-The palette, the typeface and the four-tile mark. One source, no copies, read by every
-Orbiters surface.
+The palette, the typeface, the four-tile mark and the wordmark. One source, no copies,
+read by every surface.
 
 | File | What it holds | Who reads it |
 |---|---|---|
 | `palette.css` | Six colours and `--font-sans`, in a Tailwind `@theme` block | The CRM's `tokens.css` imports it; the website extracts it at build time |
 | `font.css` + `fonts/` | Outfit, self-hosted, one variable file for the 300-700 range | Both surfaces |
 | `mark.ts` | The order of the four tiles, and how each surface names them | Both surfaces' tests |
+| `wordmark.svg` | «rebase», as outlines | Any surface that shows the name, and every export |
+| `lockup.svg` | The mark at cap height, then the word | The same, plus the social pictures |
+| `wordmark-paper.svg`, `lockup-paper.svg` | The same two on a dark ground | The landing's dark bands, a dark slide |
+| `tools/build-wordmark.py` | How the four SVGs were drawn, and the only way to redraw them | Nobody at build time: run it by hand when the face changes |
 
 ## Why a package rather than a file in one of the projects
 
@@ -33,3 +37,35 @@ suites will tell you if something drifted: the application's `tokens.test.ts` ch
 contrast ratios against the values, the website's `landing-tokens.test.ts` checks that
 no stylesheet restates them, and `palette-plugin.test.ts` asserts the exact set of
 seven tokens the website receives.
+
+## The wordmark, and why it is not a font
+
+The name is set in Space Grotesk 700 at -0.035em, decided on 2026-09-14
+(`docs/design/DECISIONS.md`), and it ships as outlines. Serving a second webfont would
+put 20-odd KB on the critical path of every page and let the one string a visitor uses
+to tell where they are arrive late and reflow; a display face is also the one thing on
+a page that never needs to be text, since the markup carries the name in the `aria-label`
+and in a `<title>`. So `--font-sans` stays Outfit and the logotype is a picture.
+
+`wordmark.svg` is the word alone, `lockup.svg` is the mark and the word together, with
+the tile at half the cap height and the gap at three quarters of the tile, so a consumer
+sets one width and the pair holds. Neither carries a `width` or a `height`: the same file
+is the 18px chip in the header and a 1584px LinkedIn cover. All four spell their colours
+as literal hex, which is the one place in the system where that is right, because an SVG
+opened as a file resolves no custom property; `landing-style.test.ts` holds those hexes
+to `palette.css` and the four tiles to `BRAND_TILES`.
+
+`wordmark-paper.svg` and `lockup-paper.svg` are the same geometry for a dark ground:
+the word in `--color-paper`, and in the lockup the two ink tiles too, since on Prussian
+Blue those tiles *are* the ground, which is the mark's own rule (`mark.ts`). Two files
+rather than a CSS override because a surface that uses the asset as an `<img>` or a
+`background-image` cannot recolour it, and the landing already alternates dark bands.
+
+## Changing the face, the weight or the tracking
+
+Edit the three constants at the top of `tools/build-wordmark.py` and run it. It fetches
+the variable font from google/fonts, refuses it unless it checksums to `FONT_SHA256`,
+instances the weight, shapes the word through HarfBuzz so the kerning is the font's own,
+and rewrites all four SVGs. Never hand-edit an SVG: the next run would silently undo it.
+The source font is not committed, because nothing serves it and the artefacts are the
+files it produces.

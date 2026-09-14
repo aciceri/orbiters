@@ -228,3 +228,73 @@ describe('the landing shares the product system', () => {
     expect(rule('.quiet-link')).not.toMatch(/border-width|min-height|display:/)
   })
 })
+
+describe('the wordmark is an asset, not a second webfont', () => {
+  const names = ['wordmark.svg', 'wordmark-paper.svg', 'lockup.svg', 'lockup-paper.svg'] as const
+  const svg = Object.fromEntries(
+    names.map((name) => [
+      name,
+      readFileSync(fileURLToPath(import.meta.resolve(`@orbiters/brand/${name}`)), 'utf-8'),
+    ]),
+  ) as Record<(typeof names)[number], string>
+  // The palette's own values, so a colour changed in one place fails here rather
+  // than leaving the generated assets a stale copy of it.
+  const hex = Object.fromEntries(
+    [...appTokens.matchAll(/(--color-[\w-]+):\s*([^;]+);/g)].map((match) => [match[1], match[2]?.trim()]),
+  ) as Record<string, string>
+  const ink = hex['--color-prussian-blue']
+  const paper = hex['--color-paper']
+
+  it('draws «rebase» as outlines, so no page loads a display face to read the name', () => {
+    // The decision (docs/design/DECISIONS.md, 2026-09-14) is a face for the wordmark
+    // and Outfit for everything else. A `<text>` element or a font-family in any of
+    // these files would put Space Grotesk back on the critical path of every page,
+    // and the name would reflow once it arrived.
+    for (const name of names) {
+      expect(svg[name], name).not.toMatch(/<text|font-family|@font-face/)
+      expect(svg[name], name).toMatch(/<path[^>]+ d="M/)
+    }
+  })
+
+  it('scales to whatever a consumer asks for: a viewBox and no fixed size', () => {
+    // A social export at 1584x396 and the 18px header chip are the same file. A
+    // width or height attribute here would make one of the two wrong.
+    for (const name of names) {
+      expect(svg[name], name).toMatch(/<svg[^>]+viewBox="0 0 [\d.]+ [\d.]+"/)
+      expect(svg[name], name).not.toMatch(/<svg[^>]+(width|height)=/)
+    }
+  })
+
+  it('signs both lockups with the same four tiles, in the same reading order', () => {
+    // The fourth surface that draws the mark, after the app's component, the
+    // website's `.glyph` and the favicon, and the first that cannot use a var():
+    // an SVG opened as a file resolves no custom property, so the hexes are literal
+    // here and this is what keeps them from drifting off palette.css. On a dark
+    // ground the two ink tiles are the ground, which is the mark's own rule, so the
+    // paper cut repaints exactly those two and invents no fifth colour.
+    for (const [name, tileInk] of [
+      ['lockup.svg', ink],
+      ['lockup-paper.svg', paper],
+    ] as const) {
+      const drawn = [...svg[name].matchAll(/<rect[^>]+fill="([^"]+)"/g)].map((match) => match[1])
+      const expected = BRAND_TILES.map((tile) =>
+        tile === 'ink' ? tileInk : hex[BRAND_TILE_VARS[tile].replace(/var\(|\)/g, '')],
+      )
+      expect(expected, name).not.toContain(undefined)
+      expect(drawn, name).toEqual(expected)
+    }
+  })
+
+  it('inks the word with the palette, not with a colour of its own', () => {
+    for (const [name, colour] of [
+      ['wordmark.svg', ink],
+      ['lockup.svg', ink],
+      ['wordmark-paper.svg', paper],
+      ['lockup-paper.svg', paper],
+    ] as const) {
+      expect(colour, name).toBeTruthy()
+      const fills = [...svg[name].matchAll(/<path[^>]+fill="([^"]+)"/g)].map((match) => match[1])
+      expect(fills, name).toEqual([colour])
+    }
+  })
+})

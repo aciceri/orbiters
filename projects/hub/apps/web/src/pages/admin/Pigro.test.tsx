@@ -13,14 +13,14 @@ const ADA = {
   slug: 'studio-ada',
   owner_email: 'ada@studio.it',
   created_at: '2026-09-10T09:00:00Z',
-  url: 'https://pigro.joinorbiters.com/studio-ada/app/',
+  url: 'https://pigro.letsrebase.com/studio-ada/app/',
   membro: { id: 'f-1', nome: 'Ada', cognome: 'Lovelace' },
 }
 const BOB = {
   slug: 'bob-dev',
   owner_email: 'bob@example.org',
   created_at: '2026-09-09T09:00:00Z',
-  url: 'https://pigro.joinorbiters.com/bob-dev/app/',
+  url: 'https://pigro.letsrebase.com/bob-dev/app/',
   membro: null,
 }
 
@@ -45,14 +45,14 @@ describe('the Istanze Pigro page', () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 2, items: [ADA, BOB] }))
     mount()
     const space = await screen.findByRole('link', { name: 'studio-ada' })
-    expect(space).toHaveAttribute('href', 'https://pigro.joinorbiters.com/studio-ada/app/')
+    expect(space).toHaveAttribute('href', 'https://pigro.letsrebase.com/studio-ada/app/')
     expect(spy.mock.calls[0]![0]).toBe('/api/hub/pigro/istanze')
     // Ada is a member: her name links to her card, and her address is beside it.
     expect(screen.getByRole('link', { name: 'Ada Lovelace' })).toHaveAttribute('href', '/admin/freelance/f-1')
     expect(screen.getByText('ada@studio.it')).toBeInTheDocument()
     // Bob is not: the address is all there is, and nothing claims otherwise.
     expect(screen.getByText('bob@example.org')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /bob/i })).toHaveAttribute('href', 'https://pigro.joinorbiters.com/bob-dev/app/')
+    expect(screen.getByRole('link', { name: /bob/i })).toHaveAttribute('href', 'https://pigro.letsrebase.com/bob-dev/app/')
     expect(screen.getByRole('heading', { name: /Istanze Pigro/ })).toHaveTextContent('2')
   })
 

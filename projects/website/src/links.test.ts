@@ -38,7 +38,7 @@ import { REDIRECTS, route } from './path-map-plugin'
  *   still 301 to a page that exists, and all three are "wrong" only in that sense,
  *   which is exactly why nothing before this test noticed them.
  * - A path under `ELSEWHERE` (`/app/`, `/hub/...`) resolves to another tenant of the
- *   origin, named in `deploy/joinorbiters.conf` and served by a container this suite
+ *   origin, named in `deploy/letsrebase.conf` and served by a container this suite
  *   never runs, so the check stops at "the path map hands it away" and does not, and
  *   cannot, follow it further.
  */
@@ -68,7 +68,7 @@ function idsOn(page: string): Set<string> {
  *  to it on a page is a fixture that leaked into the markup (ORB-116, after ORB-97 on
  *  the hub). */
 // `www.linkedin.com` since ORB-151: the four voices link to their public profiles.
-const EXTERNAL_HOSTS = ['github.com', 'pigro.joinorbiters.com', 'openai.com', 'posthog.com', 'humancraft.tech', 'www.linkedin.com']
+const EXTERNAL_HOSTS = ['github.com', 'pigro.letsrebase.com', 'openai.com', 'posthog.com', 'humancraft.tech', 'www.linkedin.com']
 
 function checkExternal(href: string): string | undefined {
   let url: URL

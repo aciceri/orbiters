@@ -1,6 +1,6 @@
 /* The cookie notice, driven in a DOM.
  *
- * @vitest-environment-options { "url": "https://joinorbiters.com/" }
+ * @vitest-environment-options { "url": "https://letsrebase.com/" }
  *
  * On the site's own host, not jsdom's default `localhost`: PostHog is silent on
  * localhost by design (see `measured` below), and these tests are about what a visitor's
@@ -154,15 +154,15 @@ describe('once somebody accepts', () => {
       session_recording: { maskAllInputs: true },
     })
     stub.capture('iscrizione_community')
-    // joinorbiters.com is a visitor's host, so nothing was queued before this call.
+    // letsrebase.com is a visitor's host, so nothing was queued before this call.
     expect(stub[0]).toEqual(['capture', 'iscrizione_community'])
     // The preview stacks would have queued `setInternalOrTestUser` first: the rule is
     // the same as `shared/analytics`'s, and it is applied where the init is.
     const { internal } = (window as unknown as { __consent: Consent }).__consent
-    expect(internal('preview.joinorbiters.com')).toBe(true)
-    expect(internal('preview.pigro.joinorbiters.com')).toBe(true)
-    expect(internal('joinorbiters.com')).toBe(false)
-    expect(internal('www.joinorbiters.com')).toBe(false)
+    expect(internal('preview.letsrebase.com')).toBe(true)
+    expect(internal('preview.pigro.letsrebase.com')).toBe(true)
+    expect(internal('letsrebase.com')).toBe(false)
+    expect(internal('www.letsrebase.com')).toBe(false)
     expect(js).toContain('if (internal(window.location.hostname)) stub.setInternalOrTestUser()')
   })
 
@@ -192,7 +192,7 @@ describe('where PostHog stays silent even after a yes', () => {
     for (const host of ['localhost', '127.0.0.1', '[::1]', '0.0.0.0', '']) {
       expect(measured(host), host).toBe(false)
     }
-    for (const host of ['joinorbiters.com', 'www.joinorbiters.com', 'preview.joinorbiters.com']) {
+    for (const host of ['letsrebase.com', 'www.letsrebase.com', 'preview.letsrebase.com']) {
       expect(measured(host), host).toBe(true)
     }
     // And the rule is applied where the script is created, before any request.

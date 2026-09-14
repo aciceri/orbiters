@@ -57,11 +57,11 @@ describe('the public frame', () => {
     mount()
     expect(await screen.findByRole('link', { name: 'Privacy' })).toHaveAttribute(
       'href',
-      'https://joinorbiters.com/privacy',
+      'https://letsrebase.com/privacy',
     )
     expect(screen.getByRole('link', { name: 'Termini' })).toHaveAttribute(
       'href',
-      'https://joinorbiters.com/termini',
+      'https://letsrebase.com/termini',
     )
   })
 })

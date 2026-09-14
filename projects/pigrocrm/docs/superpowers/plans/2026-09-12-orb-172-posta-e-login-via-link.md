@@ -32,7 +32,7 @@
 - Test: `packages/core/tests/test_mail.py` (nuovo)
 
 **Interfaces:**
-- Produces: `Settings.resend_api_key: str` (`PIGROCRM_RESEND_API_KEY`, `repr=False`), `Settings.mail_from: str = "PigroCRM <ciao@joinorbiters.com>"`, `Settings.magic_link_minutes: int = 15`; in `mail.py`: `Mail(to, subject, text, html=None)`, `EmailSender` (Protocol, `send(mail) -> bool`), `RecordingSender` (`.sent: list[Mail]`), `ResendSender(api_key, sender, http=None)`, `sender_from_settings(settings) -> EmailSender | None`, `HttpCall = Callable[[str, str, dict[str, str], bytes], tuple[int, bytes]]`, `urllib_call`, e `magic_link_mail(to: str, links: Sequence[tuple[str, str]], minutes: int) -> Mail` dove ogni link è `(etichetta, url)`.
+- Produces: `Settings.resend_api_key: str` (`PIGROCRM_RESEND_API_KEY`, `repr=False`), `Settings.mail_from: str = "PigroCRM <ciao@letsrebase.com>"`, `Settings.magic_link_minutes: int = 15`; in `mail.py`: `Mail(to, subject, text, html=None)`, `EmailSender` (Protocol, `send(mail) -> bool`), `RecordingSender` (`.sent: list[Mail]`), `ResendSender(api_key, sender, http=None)`, `sender_from_settings(settings) -> EmailSender | None`, `HttpCall = Callable[[str, str, dict[str, str], bytes], tuple[int, bytes]]`, `urllib_call`, e `magic_link_mail(to: str, links: Sequence[tuple[str, str]], minutes: int) -> Mail` dove ogni link è `(etichetta, url)`.
 
 - [ ] **Step 1: Il test**
 
@@ -129,8 +129,8 @@ In `config.py`, dopo il blocco Gmail (dopo `google_app_unverified`), aggiungere:
     # with a sentence rather than pretend. `repr=False` for the same reason as the Google
     # secret above: a Settings object reaches logs and tracebacks.
     resend_api_key: str = Field(default="", repr=False)
-    # joinorbiters.com already carries SPF and DKIM for Resend (the hub sends from it).
-    mail_from: str = "PigroCRM <ciao@joinorbiters.com>"
+    # letsrebase.com already carries SPF and DKIM for Resend (the hub sends from it).
+    mail_from: str = "PigroCRM <ciao@letsrebase.com>"
     # How long a link by mail is good for. Fifteen, like the hub's.
     magic_link_minutes: int = Field(default=15, ge=1, le=120)
 ```
@@ -141,9 +141,9 @@ In `.env.example`, dopo il blocco `PIGROCRM_REGISTRY_TOKEN`:
 # --- Outbound mail (spec 2026-09-12 §6.1). Resend sends the login link («Mandami il
 # link») and the welcome mail of a new space. Leave the key empty and the CRM sends
 # nothing: those endpoints answer 503 with a sentence, the password login still works.
-# The sender must be on a domain Resend verified; joinorbiters.com already is.
+# The sender must be on a domain Resend verified; letsrebase.com already is.
 PIGROCRM_RESEND_API_KEY=
-PIGROCRM_MAIL_FROM=PigroCRM <ciao@joinorbiters.com>
+PIGROCRM_MAIL_FROM=PigroCRM <ciao@letsrebase.com>
 ```
 
 - [ ] **Step 4: `mail.py`**
@@ -258,7 +258,7 @@ CTA = "#e5133e"
 FONT = "Outfit, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif"
 STEP = 8
 TABLE = 'role="presentation" cellpadding="0" cellspacing="0" border="0"'
-SITE = "https://joinorbiters.com"
+SITE = "https://letsrebase.com"
 
 
 def _quiet_link(href: str, label: str) -> str:
@@ -1420,4 +1420,4 @@ git commit -m "docs(pigrocrm): the decision on entering with the email, and the 
 
 - [ ] **Step 4: Rebase, numero della migrazione, push, PR**
 
-`git fetch origin && git rebase origin/main`; se `origin/main` ha una `0034`, rinumerare la propria in `0035` (nome del file, `revision`, `down_revision`) e ricontrollare `test_tenants.py -k provisioning`. Push del branch `ivansala/orb-172-pigrocrm-asks-for-a-password-the-community-never-gave-sends`. PR con titolo `feat(api): one enters PigroCRM with a link by mail, and the password stays as a second way`, corpo nelle quattro sezioni del template; in «Anything a reviewer should look at twice»: la revoca alla prima entrata, la scelta del 503 senza mittente, l'`_origin` che preferisce `PIGROCRM_PUBLIC_URL`; Screenshots: coppia prima/dopo della pagina di login (ricetta in `docs/pr-screenshots/README.md` e nella memoria: stack proprio su porte non 8000). Su Linear: `In Review` + commento con l'URL. Poi la revisione, il merge con merge commit, `Done` con l'evidenza, e la nota a Ivan che in produzione servono `PIGROCRM_RESEND_API_KEY` e, se non c'è, `PIGROCRM_PUBLIC_URL=https://pigro.joinorbiters.com` in `/opt/pigrocrm/.env`.
+`git fetch origin && git rebase origin/main`; se `origin/main` ha una `0034`, rinumerare la propria in `0035` (nome del file, `revision`, `down_revision`) e ricontrollare `test_tenants.py -k provisioning`. Push del branch `ivansala/orb-172-pigrocrm-asks-for-a-password-the-community-never-gave-sends`. PR con titolo `feat(api): one enters PigroCRM with a link by mail, and the password stays as a second way`, corpo nelle quattro sezioni del template; in «Anything a reviewer should look at twice»: la revoca alla prima entrata, la scelta del 503 senza mittente, l'`_origin` che preferisce `PIGROCRM_PUBLIC_URL`; Screenshots: coppia prima/dopo della pagina di login (ricetta in `docs/pr-screenshots/README.md` e nella memoria: stack proprio su porte non 8000). Su Linear: `In Review` + commento con l'URL. Poi la revisione, il merge con merge commit, `Done` con l'evidenza, e la nota a Ivan che in produzione servono `PIGROCRM_RESEND_API_KEY` e, se non c'è, `PIGROCRM_PUBLIC_URL=https://pigro.letsrebase.com` in `/opt/pigrocrm/.env`.

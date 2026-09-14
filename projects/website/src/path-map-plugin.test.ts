@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { ELSEWHERE, PAGES, REDIRECTS, route } from './path-map-plugin'
 
 const nginx = readFileSync(join(__dirname, '..', 'deploy', 'nginx.conf'), 'utf-8')
-const vhost = readFileSync(join(__dirname, '..', 'deploy', 'joinorbiters.conf'), 'utf-8')
+const vhost = readFileSync(join(__dirname, '..', 'deploy', 'letsrebase.conf'), 'utf-8')
 
 /** The exact-match locations of nginx.conf, as two maps shaped like the plugin's own. */
 function nginxMap(conf: string): { pages: Record<string, string>; redirects: Record<string, string> } {
@@ -39,7 +39,7 @@ describe('the path map, against deploy/nginx.conf', () => {
 
   it('names only tenants the host vhost actually routes away from the container', () => {
     for (const prefix of Object.keys(ELSEWHERE)) {
-      expect(vhost, `${prefix} in joinorbiters.conf`).toMatch(
+      expect(vhost, `${prefix} in letsrebase.conf`).toMatch(
         new RegExp(`^\\s*location\\s+(?:=|\\^~)?\\s*${prefix}[/\\s]`, 'm'),
       )
     }

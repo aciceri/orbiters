@@ -390,7 +390,7 @@ jobs:
     with:
       filter: web
 
-  # joinorbiters.com, the website. Its own project, so its own job: static pages with
+  # letsrebase.com, the website. Its own project, so its own job: static pages with
   # no framework, which is why this one costs seconds where the application's gate
   # costs minutes. It shares `shared/brand` with the application, so a change there
   # runs both.

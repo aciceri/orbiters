@@ -12,7 +12,7 @@ prose reviewed on its own terms, not markup or code.
 `../tools/build_guide_pdf.py` typesets this Markdown with pandoc and Typst into
 `../packages/core/src/orbiters_core/perks/`, from where `GET /api/hub/me/guida` hands it
 to a resolved member session and 401s everybody else. It is a perk, so there is no public
-URL for it: the landing on `joinorbiters.com` announces it and links to the wizard.
+URL for it: the landing on `letsrebase.com` announces it and links to the wizard.
 
 Read that script's docstring before changing anything here: the PDF is a **committed**
 artefact, so editing a word in this directory and stopping there leaves a download that
@@ -33,5 +33,5 @@ machine carrying those three can do.
 
 Structure this file is read for, rather than free-form prose: the `# ` title and the
 paragraph under it become the cover, everything from the first `## ` on is the body, and
-a root-relative link is made absolute against `https://joinorbiters.com`, because a PDF
+a root-relative link is made absolute against `https://letsrebase.com`, because a PDF
 has no origin to resolve one against.

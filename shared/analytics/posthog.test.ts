@@ -28,21 +28,21 @@ describe('which hosts send events', () => {
 
   it('sends from every real host, preview included', () => {
     for (const host of [
-      'joinorbiters.com',
-      'www.joinorbiters.com',
-      'pigro.joinorbiters.com',
-      'preview.joinorbiters.com',
-      'preview.pigro.joinorbiters.com',
+      'letsrebase.com',
+      'www.letsrebase.com',
+      'pigro.letsrebase.com',
+      'preview.letsrebase.com',
+      'preview.pigro.letsrebase.com',
     ]) {
       expect(analyticsEnabled(host), host).toBe(true)
     }
   })
 
   it('marks the two preview stacks as internal and nothing else', () => {
-    expect(isInternalHost('preview.joinorbiters.com')).toBe(true)
-    expect(isInternalHost('preview.pigro.joinorbiters.com')).toBe(true)
-    expect(isInternalHost('joinorbiters.com')).toBe(false)
-    expect(isInternalHost('pigro.joinorbiters.com')).toBe(false)
+    expect(isInternalHost('preview.letsrebase.com')).toBe(true)
+    expect(isInternalHost('preview.pigro.letsrebase.com')).toBe(true)
+    expect(isInternalHost('letsrebase.com')).toBe(false)
+    expect(isInternalHost('pigro.letsrebase.com')).toBe(false)
     // A RegExp, because that is what posthog-js's `internal_or_test_user_hostname`
     // takes for a pattern; a string there would mean exact equality with one host.
     expect(INTERNAL_HOSTS).toBeInstanceOf(RegExp)

@@ -2,7 +2,7 @@
 
 Orbiters, the freelance community, as a product of its own: the signup form the
 community site collects, the freelancer and company wizards, and the admin area that
-reads them. Served at `joinorbiters.com/hub/`. Split out of PigroCRM on 2026-09-09 so
+reads them. Served at `letsrebase.com/hub/`. Split out of PigroCRM on 2026-09-09 so
 the two products change independently — its own settings (`ORBITERS_*`), its own
 Postgres, its own Alembic history, its own API and MCP server. Nothing here imports
 PigroCRM, and PigroCRM imports nothing from here.
@@ -43,7 +43,7 @@ to the same path.
 packages/core/   orbiters_core: models, Alembic migrations, services, the ad conversion
 apps/api/        orbiters_api: FastAPI, one process, its own database
 apps/mcp/        orbiters_mcp: stdio, the same services in process
-apps/web/        pnpm package `hub`: the SPA at joinorbiters.com/hub/
+apps/web/        pnpm package `hub`: the SPA at letsrebase.com/hub/
 ```
 
 `packages/core` imports neither adapter, and neither adapter imports the other.

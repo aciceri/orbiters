@@ -502,7 +502,7 @@ def pigro(client: TestClient) -> Iterator[FakePigro]:
     # Both values declared, so a developer's shell exporting `ORBITERS_PIGRO_API_URL`
     # cannot change what the assertion below expects.
     client.app.dependency_overrides[get_settings] = lambda: Settings(  # type: ignore[attr-defined]
-        pigro_api_url="https://pigro.joinorbiters.com",
+        pigro_api_url="https://pigro.letsrebase.com",
         pigro_registry_token=PIGRO_TOKEN,
         _env_file=None,  # type: ignore[call-arg]
     )
@@ -530,7 +530,7 @@ def test_the_spaces_come_from_the_crm_with_the_token_and_name_the_member_who_own
 
     # One GET to the CRM, the token as a bearer, and nothing else in the request.
     assert [(method, url) for method, url, _ in pigro.calls] == [
-        ("GET", "https://pigro.joinorbiters.com/api/tenants/")
+        ("GET", "https://pigro.letsrebase.com/api/tenants/")
     ]
     assert pigro.calls[0][2]["Authorization"] == f"Bearer {PIGRO_TOKEN}"
 
@@ -538,7 +538,7 @@ def test_the_spaces_come_from_the_crm_with_the_token_and_name_the_member_who_own
     assert body["totale"] == 2
     ada, bob = body["items"]
     assert ada["slug"] == "studio-ada"
-    assert ada["url"] == "https://pigro.joinorbiters.com/studio-ada/app/"
+    assert ada["url"] == "https://pigro.letsrebase.com/studio-ada/app/"
     assert ada["owner_email"] == "ada@studio.it"
     assert ada["created_at"].startswith("2026-09-10")
     # Ada filled in the wizard, so her space names her and points at her card.

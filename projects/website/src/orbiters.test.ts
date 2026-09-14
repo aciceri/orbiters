@@ -109,17 +109,17 @@ describe('orbiters.html', () => {
     const privacy = readFileSync(join(__dirname, 'privacy.html'), 'utf-8')
     expect(privacy).toContain('Orbiters')
     // Since ORB-145 the community page lives at "/orbiters" and "/" is the landing
-    // (path-map-plugin.ts); either is a way back. Pinned on the link's own text ("joinorbiters.com", the
+    // (path-map-plugin.ts); either is a way back. Pinned on the link's own text ("letsrebase.com", the
     // paragraph explaining where the signup's data goes) rather than a bare `"/"`,
     // which the header brand and the footer's "Home" link also match and would pass
     // even if this specific back-link were ever removed.
-    expect(privacy).toMatch(/href="\/(?:orbiters)?">joinorbiters\.com</)
+    expect(privacy).toMatch(/href="\/(?:orbiters)?">letsrebase\.com</)
   })
 
   it('no longer signs itself as a PigroCRM project, and offers no login', () => {
     // Until 2026-09-09 a footer said "Un progetto PigroCRM" and linked "Accedi" to
     // /app/. Since the split the site is Orbiters first and the login belongs to the
-    // CRM at pigro.joinorbiters.com, so the community page has no reason to point at
+    // CRM at pigro.letsrebase.com, so the community page has no reason to point at
     // either. ORB-19 removed the footer, and this keeps it from coming back.
     expect(html).not.toContain('Un progetto PigroCRM')
     expect(html).not.toMatch(/href="\/app\/"/)

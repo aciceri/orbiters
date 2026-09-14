@@ -87,10 +87,10 @@ jobs:
       # The API's probe touches the database (SELECT 1), so a green deploy means
       # Postgres is up and migrated, not only that uvicorn answered. The `url` is the
       # preview name, behind basic auth, which since 2026-09-10 serves this stack's
-      # `/hub/` the way joinorbiters.com serves production's. Ports: §7 of
+      # `/hub/` the way letsrebase.com serves production's. Ports: §7 of
       # docs/adding-a-project.md.
       health-url: http://127.0.0.1:8086/health
-      url: https://preview.joinorbiters.com/hub/
+      url: https://preview.letsrebase.com/hub/
     secrets: inherit
 
   production:
@@ -106,5 +106,5 @@ jobs:
       compose-dir: projects/hub
       compose-project: orbiters
       health-url: http://127.0.0.1:8084/health
-      url: https://joinorbiters.com/hub/
+      url: https://letsrebase.com/hub/
     secrets: inherit

@@ -228,3 +228,117 @@ describe('the landing shares the product system', () => {
     expect(rule('.quiet-link')).not.toMatch(/border-width|min-height|display:/)
   })
 })
+
+describe('the wordmark is an asset, not a second webfont', () => {
+  const names = ['wordmark.svg', 'wordmark-paper.svg', 'lockup.svg', 'lockup-paper.svg'] as const
+  const svg = Object.fromEntries(
+    names.map((name) => [
+      name,
+      readFileSync(fileURLToPath(import.meta.resolve(`@orbiters/brand/${name}`)), 'utf-8'),
+    ]),
+  ) as Record<(typeof names)[number], string>
+  // The palette's own values, so a colour changed in one place fails here rather
+  // than leaving the generated assets a stale copy of it.
+  const hex = Object.fromEntries(
+    [...appTokens.matchAll(/(--color-[\w-]+):\s*([^;]+);/g)].map((match) => [match[1], match[2]?.trim()]),
+  ) as Record<string, string>
+  const ink = hex['--color-prussian-blue']
+  const paper = hex['--color-paper']
+
+  it('draws «rebase» as outlines, so no page loads a display face to read the name', () => {
+    // The decision (docs/design/DECISIONS.md, 2026-09-14) is a face for the wordmark
+    // and Outfit for everything else. A `<text>` element or a font-family in any of
+    // these files would put Space Grotesk back on the critical path of every page,
+    // and the name would reflow once it arrived.
+    for (const name of names) {
+      expect(svg[name], name).not.toMatch(/<text|font-family|@font-face/)
+      expect(svg[name], name).toMatch(/<path[^>]+ d="M/)
+    }
+  })
+
+  it('scales to whatever a consumer asks for: a viewBox and no fixed size', () => {
+    // A social export at 1584x396 and the 18px header chip are the same file. A
+    // width or height attribute here would make one of the two wrong.
+    for (const name of names) {
+      expect(svg[name], name).toMatch(/<svg[^>]+viewBox="0 0 [\d.]+ [\d.]+"/)
+      expect(svg[name], name).not.toMatch(/<svg[^>]+(width|height)=/)
+    }
+  })
+
+  it('signs both lockups with the same four tiles, in the same reading order', () => {
+    // The fourth surface that draws the mark, after the app's component, the
+    // website's `.glyph` and the favicon. An SVG opened as a file resolves no custom
+    // property, so its hexes are literal, the way `orbiters-logo.svg` already spells
+    // them; what is new here is that a test holds them to `palette.css`. On a dark
+    // ground the two ink tiles are the ground, which is the mark's own rule, so the
+    // paper cut repaints exactly those two and invents no fifth colour.
+    for (const [name, tileInk] of [
+      ['lockup.svg', ink],
+      ['lockup-paper.svg', paper],
+    ] as const) {
+      const drawn = [...svg[name].matchAll(/<rect[^>]+fill="([^"]+)"/g)].map((match) => match[1])
+      const expected = BRAND_TILES.map((tile) =>
+        tile === 'ink' ? tileInk : hex[BRAND_TILE_VARS[tile].replace(/var\(|\)/g, '')],
+      )
+      expect(expected, name).not.toContain(undefined)
+      expect(drawn, name).toEqual(expected)
+    }
+  })
+
+  it('inks the word with the palette, not with a colour of its own', () => {
+    for (const [name, colour] of [
+      ['wordmark.svg', ink],
+      ['lockup.svg', ink],
+      ['wordmark-paper.svg', paper],
+      ['lockup-paper.svg', paper],
+    ] as const) {
+      expect(colour, name).toBeTruthy()
+      const fills = [...svg[name].matchAll(/<path[^>]+fill="([^"]+)"/g)].map((match) => match[1])
+      expect(fills, name).toEqual([colour])
+    }
+  })
+
+  it('stands the mark on the word\'s baseline, at the proportions the README sells', () => {
+    // The only arithmetic in the generator: the tile is half the cap height, the gap
+    // three quarters of the tile, and the mark sits on the baseline. A regression in
+    // `build-wordmark.py` would move those without touching a single colour, and the
+    // lockup would still look like a lockup in a diff.
+    for (const name of ['lockup.svg', 'lockup-paper.svg'] as const) {
+      const rects = [...svg[name].matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)"/g)]
+      const tiles = rects.map((match) => match.slice(1, 4).map(Number) as [number, number, number])
+      const tile = tiles[0]?.[2] ?? 0
+      expect(tile, name).toBeGreaterThan(0)
+      // A 2x2 field of squares at the origin, and nothing outside the viewBox.
+      expect(tiles.map(([x, y]) => [x, y]), name).toEqual([
+        [0, 0],
+        [tile, 0],
+        [0, tile],
+        [tile, tile],
+      ])
+      expect(svg[name], name).toMatch(/<rect[^>]+width="([\d.]+)" height="\1"/)
+      const baseline = Number(svg[name].match(/translate\([-\d.]+ ([\d.]+)\)/)?.[1])
+      const penX = Number(svg[name].match(/translate\(([-\d.]+) [-\d.]+\)/)?.[1])
+      // `wordmark.svg` starts the word's ink at x=0, so its own pen offset is the
+      // side bearing of the `r`: the difference between the two is where the ink
+      // starts here, which is what the eye measures as the gap.
+      const bearing = Number(svg['wordmark.svg'].match(/translate\(([-\d.]+) [-\d.]+\)/)?.[1])
+      // The mark's bottom edge is the baseline the word sits on, and the word's ink
+      // starts three quarters of a tile past the mark.
+      expect(baseline, name).toBe(tile * 2)
+      expect(penX - bearing, name).toBeCloseTo(tile * 2 + tile * 0.75, 1)
+      const boxHeight = Number(svg[name].match(/viewBox="0 0 [\d.]+ ([\d.]+)"/)?.[1])
+      expect(boxHeight, name).toBeGreaterThanOrEqual(baseline)
+    }
+  })
+
+  it('draws the very same word in all four files', () => {
+    // One run writes all four. Regenerating after a change to the face or the
+    // tracking and committing three of them is the drift this catches, and so is a
+    // hand-edit of one file, which the README forbids for this reason.
+    const drawn = names.map((name) => svg[name].match(/ d="([^"]+)"/)?.[1])
+    expect(drawn[0]).toBeTruthy()
+    for (const [index, path] of drawn.entries()) {
+      expect(path, names[index]).toBe(drawn[0])
+    }
+  })
+})

@@ -50,6 +50,7 @@ from pigrocrm.core.tenants import (
     SpaceRegistry,
     split_tenant_prefix,
 )
+from pigrocrm_mcp import analytics
 from pigrocrm_mcp.actor_scope import ACTOR_STATE_KEY, ActorFromRequest, RequestActorProvider
 from pigrocrm_mcp.context import ScopedSessionProvider
 from pigrocrm_mcp.server import build_server
@@ -125,8 +126,11 @@ class McpHttpApp:
                 await owner  # re-raises whatever a space's lifespan failed with
             finally:
                 # Under the `finally` too: a space whose lifespan failed is exactly the
-                # process that must still give its engines back.
+                # process that must still give its engines back. The PostHog client
+                # after the spaces, in a thread: every space's last events are queued
+                # by then, and `shutdown` blocks on the network.
                 self._registry.dispose()
+                await anyio.to_thread.run_sync(analytics.shutdown)
 
     async def _own(self, running: anyio.Event, shutdown: anyio.Event) -> None:
         async with anyio.create_task_group() as task_group:
@@ -277,6 +281,7 @@ class McpHttpApp:
             storage,
             auth.settings,
             middleware=[ActorFromRequest()],
+            space=slug,
         )
         starlette = server.streamable_http_app(
             streamable_http_path=MCP_PATH,

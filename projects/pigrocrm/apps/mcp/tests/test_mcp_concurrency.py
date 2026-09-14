@@ -59,6 +59,7 @@ from sqlalchemy import Engine, delete, text
 from sqlalchemy.orm import Session
 
 from pigrocrm.core.actor import Actor
+from pigrocrm.core.config import Settings
 from pigrocrm.core.customers.models import Customer
 from pigrocrm.core.dashboard.schemas import PeriodoQuery
 from pigrocrm.core.db import session_factory, today_local
@@ -339,10 +340,18 @@ async def test_the_transport_really_dispatches_ten_calls_at_once(
         barrier.wait(timeout=BARRIER_TIMEOUT)
         return ADMIN
 
+    # The barrier counts on one `actor_provider` read per call, from the tool's thread.
+    # With PostHog installed (ORB-186) the identity callback reads it once more, on the
+    # event loop, before the tool is dispatched: the first such read would block the
+    # loop waiting for nine others that cannot come. A developer's shell may export the
+    # key for a live check; this test measures the transport, so it runs without one.
+    settings = Settings(_env_file=None, posthog_key="")  # type: ignore[call-arg]
+
     server = build_server(
         ScopedSessionProvider(session_factory(mcp_engine)),
         actor_provider,
         LocalFileStorage(tmp_path),
+        settings,
     )
     results = await _gather_calls(server, "get_economic_dashboard", {})
     assert all(not result.is_error for result in results), [

@@ -43,17 +43,22 @@ seven tokens the website receives.
 The name is set in Space Grotesk 700 at -0.035em, decided on 2026-09-14
 (`docs/design/DECISIONS.md`), and it ships as outlines. Serving a second webfont would
 put 20-odd KB on the critical path of every page and let the one string a visitor uses
-to tell where they are arrive late and reflow; a display face is also the one thing on
-a page that never needs to be text, since the markup carries the name in the `aria-label`
-and in a `<title>`. So `--font-sans` stays Outfit and the logotype is a picture.
+to tell where they are arrive late and reflow. So `--font-sans` stays Outfit and the
+logotype is a picture.
+
+A picture still has to say the name. Inlined, each file's own `role="img"` and `<title>`
+carry it. Referenced as an `<img>` those are outside the page's accessibility tree and
+are ignored, so that consumer writes `alt="rebase"`; as a `background-image` the name
+has to be in text beside it.
 
 `wordmark.svg` is the word alone, `lockup.svg` is the mark and the word together, with
 the tile at half the cap height and the gap at three quarters of the tile, so a consumer
 sets one width and the pair holds. Neither carries a `width` or a `height`: the same file
 is the 18px chip in the header and a 1584px LinkedIn cover. All four spell their colours
-as literal hex, which is the one place in the system where that is right, because an SVG
-opened as a file resolves no custom property; `landing-style.test.ts` holds those hexes
-to `palette.css` and the four tiles to `BRAND_TILES`.
+as literal hex, the way `orbiters-logo.svg` already does, because an SVG opened as a file
+resolves no custom property; what is new is that `landing-style.test.ts` holds those
+hexes to `palette.css`, the four tiles to `BRAND_TILES`, and the geometry to the
+proportions above.
 
 `wordmark-paper.svg` and `lockup-paper.svg` are the same geometry for a dark ground:
 the word in `--color-paper`, and in the lockup the two ink tiles too, since on Prussian
@@ -64,8 +69,9 @@ rather than a CSS override because a surface that uses the asset as an `<img>` o
 ## Changing the face, the weight or the tracking
 
 Edit the three constants at the top of `tools/build-wordmark.py` and run it. It fetches
-the variable font from google/fonts, refuses it unless it checksums to `FONT_SHA256`,
-instances the weight, shapes the word through HarfBuzz so the kerning is the font's own,
-and rewrites all four SVGs. Never hand-edit an SVG: the next run would silently undo it.
-The source font is not committed, because nothing serves it and the artefacts are the
-files it produces.
+the variable font from google/fonts, pinned to the commit the SVGs were drawn from and
+refused unless it checksums to `FONT_SHA256`, instances the weight, shapes the word
+through HarfBuzz so the kerning is the font's own, and rewrites all four SVGs. Never
+hand-edit an SVG: the next run would silently undo it, and `--check` fails while it
+stands, byte for byte, without writing anything. The source font is not committed,
+because nothing serves it and the artefacts are the files it produces.

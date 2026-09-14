@@ -17,7 +17,8 @@ this script fetches and checksums rather than committing: the artefacts are the 
 and a font nobody serves has no business in the dependency graph. Run it only when the
 face, the weight or the tracking changes.
 
-    ./shared/brand/tools/build-wordmark.py
+    ./shared/brand/tools/build-wordmark.py            # rewrite the four SVGs
+    ./shared/brand/tools/build-wordmark.py --check    # fail if they are not what this draws
 
 Kerning comes from the font's own GPOS through HarfBuzz, not from an average
 letter-spacing: at display size the `re` and `se` pairs are what a hand-spaced wordmark
@@ -27,6 +28,7 @@ would be judged on.
 from __future__ import annotations
 
 import hashlib
+import sys
 import urllib.request
 from io import BytesIO
 from pathlib import Path
@@ -39,7 +41,13 @@ from fontTools.pens.transformPen import TransformPen
 from fontTools.ttLib import TTFont
 from fontTools.varLib.instancer import instantiateVariableFont
 
-FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf"
+# Pinned to the commit that last touched this blob, not to `main`: the checksum below
+# would otherwise start refusing the file the day Google ships a revision, with no way
+# left to fetch the bytes these SVGs were drawn from.
+FONT_URL = (
+    "https://raw.githubusercontent.com/google/fonts/"
+    "2861cb7b12f90c0a294a12ed666e381e2211872f/ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf"
+)
 FONT_SHA256 = "acad6de1fc93436f5c0f1f4137751ef04f1aea3063e7036535970ffcfbd79f72"
 
 WORD = "rebase"
@@ -57,7 +65,9 @@ def source_font() -> bytes:
     cache = Path(gettempdir()) / f"SpaceGrotesk-{FONT_SHA256[:12]}.ttf"
     if cache.is_file() and hashlib.sha256(cache.read_bytes()).hexdigest() == FONT_SHA256:
         return cache.read_bytes()
-    with urllib.request.urlopen(FONT_URL) as response:  # noqa: S310 - literal https URL
+    # A timeout, because everything else here fails in milliseconds and a stalled
+    # connection would otherwise hang a script a person or an agent runs by hand.
+    with urllib.request.urlopen(FONT_URL, timeout=30) as response:
         data = response.read()
     digest = hashlib.sha256(data).hexdigest()
     if digest != FONT_SHA256:
@@ -107,8 +117,8 @@ def word_path(font: TTFont, placed: Placed) -> tuple[str, Box]:
     bounds = BoundsPen(glyphs)
     for name, x, y in placed:
         pen = SVGPathPen(glyphs, ntos=lambda v: f"{round(v, 1):g}")
-        # SVG's y grows downwards, the font's upwards: flip, and put the baseline at
-        # y=0 so a consumer can align the word without reading this file.
+        # SVG's y grows downwards, the font's upwards: flip here and draw from a
+        # baseline at y=0, which the caller then offsets to start the box at the origin.
         transform = (1, 0, 0, -1, x, -y)
         glyphs[name].draw(TransformPen(pen, transform))
         glyphs[name].draw(TransformPen(bounds, transform))
@@ -119,37 +129,44 @@ def word_path(font: TTFont, placed: Placed) -> tuple[str, Box]:
     return " ".join(parts), bounds.bounds
 
 
-def main() -> None:
+def draw() -> dict[str, str]:
+    """The four files, by name, as they should be on disk."""
     font_bytes = source_font()
     placed = shape(font_bytes)
     font = instantiateVariableFont(TTFont(BytesIO(font_bytes)), {"wght": WEIGHT})
-    d, (x_min, y_min, x_max, y_max) = word_path(font, placed)
+    d, box = word_path(font, placed)
     ink = palette("--color-prussian-blue")
     paper = palette("--color-paper")
     gold = palette("--color-royal-gold")
     watermelon = palette("--color-watermelon")
 
+    # Round the extremes, not their difference: every path coordinate is rounded to
+    # one decimal on its own, so a viewBox measured off the unrounded bounds can end
+    # up a tenth short of the coordinate actually drawn.
+    x_min, y_min, x_max, y_max = (round(value, 1) for value in box)
     width = round(x_max - x_min, 1)
-    height = round(y_max - y_min, 1)
-    baseline = round(-y_min, 1)
 
     # The lockup: the mark standing on the baseline, cap height tall, then the word.
-    # The tile and the gap are measured off the type rather than chosen, so the pair
-    # holds at any size and a consumer only has to set one width.
+    # The tile is half the cap height, the proportion the mark already has beside the
+    # header's type (12px of 18px). The gap is display spacing and is tighter than the
+    # header chip's, which is CSS this asset replaces once a surface uses it.
     cap = font["OS/2"].sCapHeight
     tile = round(cap / 2, 1)
     gap = round(tile * 0.75, 1)
-    mark_top = round(-cap - y_min, 1)
-    word_x = round(cap + gap - x_min, 1)
+
+    # The word's own box, and the lockup's, which is the union of the word and a mark
+    # standing on the baseline: taking the word's height alone would clip the tiles for
+    # any word whose tallest ink sits below the cap line.
+    word_height = round(y_max - y_min, 1)
+    lockup_top = min(y_min, -cap)
+    lockup_height = round(max(y_max, 0) - lockup_top, 1)
     lockup_width = round(cap + gap + width, 1)
+    word_x = round(cap + gap - x_min, 1)
 
-    def word(colour: str, x: float) -> str:
-        return f'  <path transform="translate({x:g} {baseline:g})" fill="{colour}" d="{d}"/>\n'
-
-    def svg(box_width: float, body: str, note: str) -> str:
+    def svg(box_width: float, box_height: float, body: str, note: str) -> str:
         return (
-            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {box_width:g} {height:g}" '
-            f'role="img" aria-label="{WORD}">\n'
+            f'<svg xmlns="http://www.w3.org/2000/svg" '
+            f'viewBox="0 0 {box_width:g} {box_height:g}" role="img" aria-label="{WORD}">\n'
             f"  <!-- {note}\n"
             f"       Generated by tools/build-wordmark.py; edit that, never this file. -->\n"
             f"  <title>{WORD}</title>\n"
@@ -157,37 +174,63 @@ def main() -> None:
             "</svg>\n"
         )
 
-    def mark(ink_tile: str) -> str:
-        # BRAND_TILES order: ink, royal gold, watermelon, ink. On a dark ground the
-        # two ink tiles are the ground, which is the mark's own rule (mark.ts), so the
-        # paper variant repaints them rather than inventing a fifth colour.
+    def word(colour: str, x: float, baseline: float) -> str:
+        return f'  <path transform="translate({x:g} {baseline:g})" fill="{colour}" d="{d}"/>\n'
+
+    def mark(ink_tile: str, top: float) -> str:
+        # BRAND_TILES order: ink, royal gold, watermelon, ink. On a dark ground the two
+        # ink tiles are the ground, which is the mark's own rule (mark.ts), so the paper
+        # variant repaints them rather than inventing a fifth colour.
+        # crispEdges on the group, as orbiters-logo.svg carries it on its root: the
+        # tiles share edges with no overlap, so antialiasing paints a blended hairline
+        # along the two seams at small sizes. Not on the root here, which would alias
+        # the letterforms too.
         tiles = [(0, 0, ink_tile), (tile, 0, gold), (0, tile, watermelon), (tile, tile, ink_tile)]
         rects = "\n".join(
-            f'    <rect x="{tx:g}" y="{round(mark_top + ty, 1):g}" '
+            f'    <rect x="{tx:g}" y="{round(top + ty, 1):g}" '
             f'width="{tile:g}" height="{tile:g}" fill="{fill}"/>'
             for tx, ty, fill in tiles
         )
-        return f"  <g>\n{rects}\n  </g>\n"
+        return f'  <g shape-rendering="crispEdges">\n{rects}\n  </g>\n'
 
     word_note = f"«{WORD}» in Space Grotesk {WEIGHT} at {TRACKING:g}em, as outlines."
     lockup_note = (
         f"The mark and the word, one file: the four tiles at cap height, then\n"
         f"       «{WORD}» in Space Grotesk {WEIGHT}. The tile order is BRAND_TILES in\n"
-        f"       mark.ts and the colours are palette.css; both are asserted by\n"
+        f"       mark.ts, the colours are palette.css and the proportions are the\n"
+        f"       README's; all three are asserted by\n"
         f"       projects/website/src/landing-style.test.ts."
     )
     on_dark = " The paper cut, for a dark ground."
-    written = {
-        "wordmark.svg": svg(width, word(ink, -x_min), word_note),
-        "wordmark-paper.svg": svg(width, word(paper, -x_min), word_note + on_dark),
-        "lockup.svg": svg(lockup_width, mark(ink) + word(ink, word_x), lockup_note),
-        "lockup-paper.svg": svg(
-            lockup_width, mark(paper) + word(paper, word_x), lockup_note + on_dark
+
+    def lockup(colour: str, note: str) -> str:
+        body = mark(colour, round(-cap - lockup_top, 1)) + word(colour, word_x, -lockup_top)
+        return svg(lockup_width, lockup_height, body, note)
+
+    return {
+        "wordmark.svg": svg(width, word_height, word(ink, -x_min, -y_min), word_note),
+        "wordmark-paper.svg": svg(
+            width, word_height, word(paper, -x_min, -y_min), word_note + on_dark
         ),
+        "lockup.svg": lockup(ink, lockup_note),
+        "lockup-paper.svg": lockup(paper, lockup_note + on_dark),
     }
-    for name, content in written.items():
+
+
+def main() -> None:
+    files = draw()
+    stale = [name for name, content in files.items() if (BRAND / name).read_text() != content]
+    if "--check" in sys.argv[1:]:
+        if stale:
+            raise SystemExit(
+                f"{', '.join(stale)}: not what this script draws. "
+                "Run ./shared/brand/tools/build-wordmark.py and commit the result."
+            )
+        print(f"{len(files)} files are what this script draws")
+        return
+    for name, content in files.items():
         (BRAND / name).write_text(content, encoding="utf-8")
-    print(f"wordmark {width:g}x{height:g}, lockup {lockup_width:g}x{height:g}, tile {tile:g}")
+    print(f"{len(files)} files written, {len(stale)} of them changed")
 
 
 if __name__ == "__main__":

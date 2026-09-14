@@ -8,7 +8,7 @@ import { GUIDE } from '@/lib/perks'
 import { toApplication, useMember, useMemberLogout } from '@/lib/member'
 import { FREELANCER_STEPS } from '@/pages/FreelancerWizard'
 
-const PIGROCRM_URL = 'https://pigro.joinorbiters.com/app/registrati'
+const PIGROCRM_URL = 'https://pigro.letsrebase.com/app/registrati'
 
 /** What the person sent, under the wizard's own questions, and the perks. The email is
  *  shown and not editable: it is the address the link proved.

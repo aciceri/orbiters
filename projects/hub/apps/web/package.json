@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "joinorbiters.com/hub: the Orbiters wizards for freelancers and companies, and the admin area that reads them.",
+  "description": "letsrebase.com/hub: the Orbiters wizards for freelancers and companies, and the admin area that reads them.",
   "scripts": {
     "dev": "vite",
     "build": "vite build && tsc --noEmit",

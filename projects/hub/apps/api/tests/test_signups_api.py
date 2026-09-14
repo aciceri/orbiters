@@ -250,7 +250,7 @@ def pixel(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> Iterator[Recor
     client.app.dependency_overrides[get_settings] = lambda: Settings(  # type: ignore[attr-defined]
         openai_pixel_id=PIXEL_ID,
         openai_conversions_api_key="sk-non-una-chiave-vera",
-        signup_url="https://joinorbiters.com/",
+        signup_url="https://letsrebase.com/",
         _env_file=None,  # type: ignore[call-arg]
     )
     real = signups_router.pixel_from_settings
@@ -280,7 +280,7 @@ def test_a_signup_measures_one_conversion_with_the_id_the_browser_used(
     # halves of this conversion are one conversion.
     assert event["id"] == EVENT_ID
     assert event["type"] == "registration_completed"
-    assert event["source_url"] == "https://joinorbiters.com/"
+    assert event["source_url"] == "https://letsrebase.com/"
     assert _row(api_session, "ada@studio.it") == ("Ada", "Lovelace", None)
 
 

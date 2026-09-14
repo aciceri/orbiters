@@ -10,7 +10,7 @@ SPAs initialise it with. Design: `docs/design/2026-09-12-posthog-analytics-desig
 
 ## Why a package rather than a constant in each project
 
-A visitor of joinorbiters.com who later opens a space on pigro.joinorbiters.com is one
+A visitor of letsrebase.com who later opens a space on pigro.letsrebase.com is one
 person only if both surfaces write to one project with one key. Two copies of that key
 are the drift `shared/` exists to prevent, and the init policy (what is masked, what is
 internal, what is silent) is a rule about the person being measured, not about one app.

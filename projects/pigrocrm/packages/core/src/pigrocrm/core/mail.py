@@ -107,7 +107,7 @@ CTA = "#e5133e"
 FONT = "Outfit, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif"
 STEP = 8
 TABLE = 'role="presentation" cellpadding="0" cellspacing="0" border="0"'
-SITE = "https://joinorbiters.com"
+SITE = "https://letsrebase.com"
 
 
 def _quiet_link(href: str, label: str) -> str:
@@ -240,7 +240,7 @@ def magic_link_mail(to: str, links: Sequence[tuple[str, str]], minutes: int) -> 
     return Mail(to=to, subject=subject, text=text, html=_frame(subject, body))
 
 
-HUB_WIZARD_URL = "https://joinorbiters.com/hub/freelance"
+HUB_WIZARD_URL = "https://letsrebase.com/hub/freelance"
 
 
 def welcome_mail(to: str, entra_url: str, login_url: str, *, membro: bool) -> Mail:

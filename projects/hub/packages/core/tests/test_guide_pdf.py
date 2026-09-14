@@ -66,4 +66,4 @@ def test_every_link_in_it_is_absolute() -> None:
     uris = re.findall(rb"/URI\s*\((.*?)\)", PDF)
     assert uris
     for uri in uris:
-        assert uri.startswith(b"https://joinorbiters.com"), uri
+        assert uri.startswith(b"https://letsrebase.com"), uri

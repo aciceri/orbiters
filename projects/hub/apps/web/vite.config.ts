@@ -4,7 +4,7 @@ import path from 'node:path'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
-  // Served at joinorbiters.com/hub/ by its own nginx (deploy/nginx.conf), so every
+  // Served at letsrebase.com/hub/ by its own nginx (deploy/nginx.conf), so every
   // emitted asset URL carries the prefix. The API client uses absolute `/api/...`
   // paths and does not inherit it.
   base: '/hub/',

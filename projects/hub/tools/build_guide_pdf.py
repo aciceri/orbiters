@@ -70,7 +70,7 @@ OUTPUT = (
 
 # The site is the only place a link in this file can point: a PDF has no origin, so a
 # root-relative href that works in the page resolves to nothing in a reader.
-SITE = "https://joinorbiters.com"
+SITE = "https://letsrebase.com"
 # Under 2 MB is ORB-70's budget. The measured file is an order of magnitude below it;
 # this catches a font that stopped being subset, not a paragraph.
 SIZE_BUDGET = 2 * 1024 * 1024

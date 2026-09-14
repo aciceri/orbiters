@@ -42,7 +42,7 @@ deploy/          the nginx vhost and the server setup script.
 ```
 
 The public pages are **not here**: they are their own project, `projects/website`
-(joinorbiters.com and the pages the product signs itself with). Its built output is
+(letsrebase.com and the pages the product signs itself with). Its built output is
 still copied into this project's web image and served at the document root, which is
 a serving arrangement and not a dependency of the application on it. The palette,
 the typeface and the brand mark both surfaces use live in `shared/brand`.

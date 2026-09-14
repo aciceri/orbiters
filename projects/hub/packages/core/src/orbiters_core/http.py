@@ -15,7 +15,7 @@ HTTP_TIMEOUT_SECONDS = 10
 # which answers `403 error code: 1010` to urllib's default `Python-urllib/3.x` signature
 # and never reaches the application behind it. Found on 2026-09-10 by sending a mail for
 # real: curl with the same JSON went through, the seam did not. The name says who calls.
-USER_AGENT = "orbiters-hub/0.1 (+https://joinorbiters.com)"
+USER_AGENT = "orbiters-hub/0.1 (+https://letsrebase.com)"
 # "No HTTP response was ever received", travelling through the same channel as a real
 # status rather than a second failure path -- the convention PigroCRM's Gmail and Drive
 # transports use, and the same number.

@@ -31,7 +31,7 @@ export const PAGES: Readonly<Record<string, string>> = {
 export const REDIRECTS: Readonly<Record<string, string>> = {}
 
 /**
- * Paths the host's vhost (`deploy/joinorbiters.conf`) hands to other tenants of the
+ * Paths the host's vhost (`deploy/letsrebase.conf`) hands to other tenants of the
  * origin before the website container ever sees them. The container 404s them; a
  * visitor never does. A Vite server cannot run those tenants, so it does the one
  * honest thing short of pretending: `/api` is proxied to a running API so the form can
@@ -42,7 +42,7 @@ export const REDIRECTS: Readonly<Record<string, string>> = {}
 export const ELSEWHERE: Readonly<Record<string, string>> = {
   '/api': 'the Orbiters hub API (projects/hub), proxied here to WEBSITE_API_URL',
   '/hub': 'the Orbiters hub SPA (projects/hub)',
-  '/app': 'PigroCRM, a 302 to https://pigro.joinorbiters.com',
+  '/app': 'PigroCRM, a 302 to https://pigro.letsrebase.com',
   '/health': "the hub API's probe",
 }
 
@@ -95,7 +95,7 @@ function handle(req: IncomingMessage, res: ServerResponse, next: () => void): vo
       res.statusCode = 200
       res.setHeader('Content-Type', 'text/plain; charset=utf-8')
       res.end(
-        `${pathname} is not served by projects/website. In production it belongs to ${decision.owner}; see deploy/joinorbiters.conf.\n`,
+        `${pathname} is not served by projects/website. In production it belongs to ${decision.owner}; see deploy/letsrebase.conf.\n`,
       )
       return
     case 'not-found':

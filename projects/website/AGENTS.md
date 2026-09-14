@@ -1,6 +1,6 @@
 # website: what to know before changing it
 
-joinorbiters.com. Read `README.md` here first for what the pages are and how to run
+letsrebase.com. Read `README.md` here first for what the pages are and how to run
 them; this file is the part that is easy to get wrong.
 
 Tracker: the **Website** project in Linear, conventions in `docs/tracker.md` at the

@@ -21,7 +21,7 @@ from orbiters_core.mail import (
 )
 
 KEY = "re_non_una_chiave_vera"
-FROM = "Orbiters <ciao@joinorbiters.com>"
+FROM = "Rebase <ciao@letsrebase.com>"
 
 
 class FakeHttp:
@@ -87,10 +87,10 @@ def test_no_key_means_no_sender() -> None:
 
 
 def test_the_magic_link_mail_carries_the_link_and_how_long_it_lasts() -> None:
-    mail = magic_link_mail("ada@studio.it", "https://joinorbiters.com/hub/entra?t=abc", 15)
+    mail = magic_link_mail("ada@studio.it", "https://letsrebase.com/hub/entra?t=abc", 15)
     assert mail.to == "ada@studio.it"
     assert mail.subject == "Il tuo accesso a Orbiters"
-    assert "https://joinorbiters.com/hub/entra?t=abc" in mail.text
+    assert "https://letsrebase.com/hub/entra?t=abc" in mail.text
     assert "15 minuti" in mail.text
     assert "una volta sola" in mail.text
 
@@ -98,12 +98,12 @@ def test_the_magic_link_mail_carries_the_link_and_how_long_it_lasts() -> None:
 def test_the_magic_link_mail_has_an_html_version_in_the_landings_system() -> None:
     """The HTML is the landing's box: paper ground, Prussian Blue ink, the four tiles,
     the Watermelon call to action, hard edges. The text version stays the fallback."""
-    mail = magic_link_mail("ada@studio.it", "https://joinorbiters.com/hub/entra?t=abc", 15)
+    mail = magic_link_mail("ada@studio.it", "https://letsrebase.com/hub/entra?t=abc", 15)
     assert mail.html is not None
     html = mail.html
     # The link three times: the button's href, and the bare URL as href and as text for
     # the clients that block buttons.
-    assert html.count("https://joinorbiters.com/hub/entra?t=abc") == 3
+    assert html.count("https://letsrebase.com/hub/entra?t=abc") == 3
     assert "Entra nella tua area" in html
     assert "15 minuti" in html and "una volta sola" in html
     # The brand's five values and nothing rounded.
@@ -121,8 +121,8 @@ def test_the_magic_link_mail_has_an_html_version_in_the_landings_system() -> Non
 
 # ---- the welcome mail (ORB-157) ---------------------------------------------------------
 
-ACCEDI = "https://joinorbiters.com/hub/accedi"
-WIZARD = "https://joinorbiters.com/hub/freelance"
+ACCEDI = "https://letsrebase.com/hub/accedi"
+WIZARD = "https://letsrebase.com/hub/freelance"
 
 
 def _common(mail: Mail) -> None:

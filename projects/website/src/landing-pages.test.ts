@@ -22,7 +22,7 @@ describe.each(PAGES)('%s', (name) => {
     const title = page.match(/<title>([^<]+)<\/title>/)?.[1] ?? ''
     // Until 2026-09-10 every page here titled itself PigroCRM, including the two
     // legal pages. ORB-36: privacy.html and termini.html are served on
-    // joinorbiters.com, not on pigro.joinorbiters.com, and it is the Orbiters signup
+    // letsrebase.com, not on pigro.letsrebase.com, and it is the Orbiters signup
     // form that links to them, so they title themselves after the site they are on
     // rather than after the CRM. index.html is the landing (at / since ORB-145;
     // orbiters.html is the community page at /orbiters) and still names the CRM in
@@ -62,7 +62,7 @@ describe.each(PAGES)('%s', (name) => {
       // it links OpenAI's. The SDK itself is on `i.posthog.com`, which is not here and
       // never will be: `pixel.test.ts` keeps it out of every page.
       expect(url, 'external subresource').toMatch(
-        /^https:\/\/(?:github\.com|pigro\.joinorbiters\.com|openai\.com|posthog\.com|humancraft\.tech|www\.linkedin\.com)\//,
+        /^https:\/\/(?:github\.com|pigro\.letsrebase\.com|openai\.com|posthog\.com|humancraft\.tech|www\.linkedin\.com)\//,
       )
     }
     expect(page).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/)
@@ -88,7 +88,7 @@ describe.each(PAGES)('%s', (name) => {
     // Until 2026-09-10 the landing signed as Orbiters and the two legal pages kept
     // PigroCRM, on the reasoning that a legal page belongs to the product it
     // covers. ORB-36 reopened that: privacy.html and termini.html are served on
-    // joinorbiters.com, not on pigro.joinorbiters.com, the Orbiters signup form is
+    // letsrebase.com, not on pigro.letsrebase.com, the Orbiters signup form is
     // what links to them, and their own text already covers Orbiters' data (the
     // signup) alongside PigroCRM's (orbiters.test.ts separately asserts
     // privacy.html names Orbiters and links /orbiters). All three pages here sign
@@ -137,7 +137,7 @@ describe('index.html', () => {
     // Whoever is already in finds the CRM through its own page (ORB-165): the landing
     // no longer links the registration form directly.
     expect(page).toMatch(/<a class="cta" href="\/pigrocrm">Scopri PigroCRM<\/a>/)
-    expect(page).not.toContain('pigro.joinorbiters.com/app/registrati')
+    expect(page).not.toContain('pigro.letsrebase.com/app/registrati')
     // No invented plan or trial: the one price is "be in the community".
     expect(page).not.toMatch(/Prova gratis|abbonamento|piano (Pro|Business)/i)
   })

@@ -27,7 +27,7 @@ products that need to agree on something agree through `shared/`.
 packages/core/   orbiters_core: models, migrations, services, the ad conversion, the perk files
 apps/api/        orbiters_api: FastAPI, one process, its own database
 apps/mcp/        orbiters_mcp: stdio, the same services in process
-apps/web/        pnpm package `hub`: the SPA at joinorbiters.com/hub/ (wizards, the member area, admin)
+apps/web/        pnpm package `hub`: the SPA at letsrebase.com/hub/ (wizards, the member area, admin)
 content/         the prose a perk is made of, reviewed as prose
 tools/           the one script that turns that prose into a file a member downloads
 ```
@@ -106,7 +106,7 @@ forgets it fails the stack instead of mounting an empty directory.
 Ports, loopback only, from the table in `docs/adding-a-project.md` §7: production api
 8084, web 8085, Postgres 55435; preview 8086, 8087, 55436. The public paths are `/hub/`
 (web) and `/api/hub/` + `/api/orbiters/signups` (api), proxied to production by the host
-vhost that lives in `projects/website/deploy/joinorbiters.conf`; nothing proxies the
+vhost that lives in `projects/website/deploy/letsrebase.conf`; nothing proxies the
 preview, which is reached on the host only. The member area's mail needs
 `ORBITERS_RESEND_API_KEY` and `ORBITERS_MAIL_FROM` in the host `.env`; without the key
 `/hub/accedi` answers 503 with a sentence. A preview stack that gets a key must also set

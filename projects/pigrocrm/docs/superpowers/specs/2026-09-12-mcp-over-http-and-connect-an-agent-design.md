@@ -147,7 +147,7 @@ location = /mcp {
 }
 ```
 
-The host vhosts (`pigro.joinorbiters.conf`, `preview.pigro.joinorbiters.conf`) do not
+The host vhosts (`pigro.letsrebase.conf`, `preview.pigro.letsrebase.conf`) do not
 change: their `location /` already forwards everything to the `web` container. `mcp`
 joins `RESERVED_SLUGS` in `pigrocrm.core.tenants.schemas` and in
 `apps/web/src/lib/tenant.ts`, with a test on each side, so no space can be called
@@ -249,7 +249,7 @@ moves on a `pigrocrm-v*` tag when Ivan asks (`docs/tracker.md`, the release rule
 deploy's health check stays on the API. After the preview deploy the verification is:
 
 ```
-curl -i https://preview.pigro.joinorbiters.com/<slug>/mcp        # 401, WWW-Authenticate: Bearer
+curl -i https://preview.pigro.letsrebase.com/<slug>/mcp        # 401, WWW-Authenticate: Bearer
 claude mcp add --transport http pigrocrm-<slug> <url> --header "Authorization: Bearer <token>"
 claude mcp list                                                 # connected
 ```

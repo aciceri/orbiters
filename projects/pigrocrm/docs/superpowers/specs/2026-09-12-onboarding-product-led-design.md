@@ -41,8 +41,8 @@ tornata. **L'acquisizione funziona, l'attivazione è zero, la retention è zero.
 
 | Passo | Cosa succede | Attrito |
 |---|---|---|
-| Sito `joinorbiters.com` (landing e `/pigrocrm`) | Ogni bottone manda al wizard della community, `/hub/freelance` (ORB-160, ORB-165): il CRM è il perk, non la porta | Nessuno: è la scelta del prodotto |
-| Pagina «Grazie» dell'hub e area membro | Link a `pigro.joinorbiters.com/app/registrati`: le sole due porte verso il CRM | La persona ha appena dimostrato chi è nell'hub, e il CRM non lo sa |
+| Sito `letsrebase.com` (landing e `/pigrocrm`) | Ogni bottone manda al wizard della community, `/hub/freelance` (ORB-160, ORB-165): il CRM è il perk, non la porta | Nessuno: è la scelta del prodotto |
+| Pagina «Grazie» dell'hub e area membro | Link a `pigro.letsrebase.com/app/registrati`: le sole due porte verso il CRM | La persona ha appena dimostrato chi è nell'hub, e il CRM non lo sa |
 | Form di registrazione | Nome, indirizzo dello spazio, email, password ≥ 10 | Una password nuova per chi nella community entra senza password; un utente ha creato due spazi (`mohamed`, poi `mohamed-el-moumini`) |
 | Card «Il tuo spazio è pronto» | → `/<slug>/app/login` | **Seconda autenticazione**: la persona riscrive email e password appena scelte |
 | Prima sessione | Home con grafici «Nessun dato nel periodo» | Nessuna indicazione su cosa fare |
@@ -112,7 +112,7 @@ numeri si leggono con la query di §1; portarli nell'hub è una card di backlog 
 `EmailSender` con `send(mail) -> bool` che non solleva mai, un `ResendSender`, un
 `RecordingSender` per i test e per leggere il link in sviluppo, `sender_from_settings`
 che risponde `None` senza chiave. Settings nuove: `PIGROCRM_RESEND_API_KEY`,
-`PIGROCRM_MAIL_FROM` (default `PigroCRM <ciao@joinorbiters.com>`, stesso dominio con SPF
+`PIGROCRM_MAIL_FROM` (default `PigroCRM <ciao@letsrebase.com>`, stesso dominio con SPF
 e DKIM già impostati per l'hub). La cornice HTML è quella dell'hub, con il nome PigroCRM
 al posto di Orbiters e i link a privacy e termini del sito. Senza chiave, ogni endpoint
 che manderebbe una mail risponde 503 con una frase, come nell'hub. Nessun indirizzo e
@@ -169,7 +169,7 @@ direzione; 404 della route senza token configurato, 401 con bearer sbagliato, co
 con quell'email, `{membro: false}` altrimenti. Mai un errore per un'email sconosciuta.
 
 Nel CRM, `GET /api/tenants/membro?email=…` inoltra la domanda con
-`PIGROCRM_REGISTRY_TOKEN` e `PIGROCRM_HUB_URL` (default `https://joinorbiters.com`), e
+`PIGROCRM_REGISTRY_TOKEN` e `PIGROCRM_HUB_URL` (default `https://letsrebase.com`), e
 aggiunge la cosa che solo il registro sa: `spazi: [slug, …]` già intestati a quell'email.
 Hub irraggiungibile o senza token → `membro: false`, e la registrazione va avanti lo
 stesso: la community è la via veloce, non un cancello.
@@ -181,7 +181,7 @@ Due passi e un atterraggio, in una card con «1 di 2» in alto.
 **Passo 1, l'email.** «Con quale email ti conosciamo?» e un campo. Su «Avanti» la pagina
 chiama `GET /api/tenants/membro`:
 
-- ha già spazi → la card cambia: «Hai già uno spazio: `pigro.joinorbiters.com/mohamed`.
+- ha già spazi → la card cambia: «Hai già uno spazio: `pigro.letsrebase.com/mohamed`.
   Ti mandiamo il link per entrare», un bottone che chiama `POST /api/auth/link`, e sotto
   «Vuoi crearne un altro?» che porta al passo 2. È la fine dei duplicati per sbaglio;
 - membro senza spazi → passo 2 con il nome già scritto («Sei dei nostri: ciao Ada»);
@@ -189,7 +189,7 @@ chiama `GET /api/tenants/membro`:
   Puoi entrare comunque; nella mail ti raccontiamo Orbiters».
 
 **Passo 2, il nome.** «Come si chiama il tuo spazio?» con il nome della persona come
-proposta; sotto, in una riga, `pigro.joinorbiters.com/ada-lovelace è libero` e un link
+proposta; sotto, in una riga, `pigro.letsrebase.com/ada-lovelace è libero` e un link
 «cambia» che apre il campo dell'indirizzo solo a chi lo vuole, con la verifica di
 disponibilità di oggi. Nessuna password. Una riga «Creando lo spazio accetti i termini e
 la privacy». Il bottone «Crea lo spazio».
@@ -273,7 +273,7 @@ lettura vede i passi come testo. Nessun «Nascondi»: la pagina è dove si va ap
 
 ### 6.8 Il sito non cambia
 
-Ogni bottone di joinorbiters.com manda al wizard della community (ORB-160, ORB-165): il CRM
+Ogni bottone di letsrebase.com manda al wizard della community (ORB-160, ORB-165): il CRM
 si raggiunge dalla pagina «Grazie» e dall'area membro, dopo essere entrati. È la porta
 community-first che il prodotto vuole, e questa spec la lascia com'è. La prima stesura
 proponeva di puntare l'hero di `/pigrocrm` alla registrazione: letta su un checkout

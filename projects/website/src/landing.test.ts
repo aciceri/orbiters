@@ -40,7 +40,7 @@ afterEach(() => window.sessionStorage.clear())
 describe('carryUtm', () => {
   it('appends the UTM keys and the page to every link into the hub, and to nothing else', () => {
     const landing = load()
-    const root = fixture(['/hub/freelance', '/hub/aziende', '/hub/freelance?perk=guida', '/privacy', 'https://pigro.joinorbiters.com/app/'])
+    const root = fixture(['/hub/freelance', '/hub/aziende', '/hub/freelance?perk=guida', '/privacy', 'https://pigro.letsrebase.com/app/'])
     const rewritten = landing.carryUtm(root, '?utm_source=linkedin&utm_campaign=orbita&utm_id=42&gclid=nope&utm_term=%20', '/')
     expect(rewritten).toBe(3)
     expect(hrefsOf(root)).toEqual([
@@ -48,7 +48,7 @@ describe('carryUtm', () => {
       '/hub/aziende?utm_source=linkedin&utm_campaign=orbita&utm_id=42&da=home',
       '/hub/freelance?perk=guida&utm_source=linkedin&utm_campaign=orbita&utm_id=42&da=home',
       '/privacy',
-      'https://pigro.joinorbiters.com/app/',
+      'https://pigro.letsrebase.com/app/',
     ])
   })
 

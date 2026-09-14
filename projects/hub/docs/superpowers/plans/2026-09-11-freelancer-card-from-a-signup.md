@@ -122,4 +122,4 @@ class FreelancerDraft(BaseModel):
 
 - [ ] `projects/hub/README.md` § What it does: one sentence on the card from a signup. `docs/design/DECISIONS.md`: a row dated 2026-09-11.
 - [ ] `preflight --list`, then run what it selects. Screenshots before/after for «Iscrizioni», the freelancer detail and `/hub/io`.
-- [ ] Open the PR with the template's sections, move ORB-155 to In Review with the URL, merge when green, tag `hub-v0.9.0` annotated on the merge commit, confirm `https://joinorbiters.com/health` and the new column in production.
+- [ ] Open the PR with the template's sections, move ORB-155 to In Review with the URL, merge when green, tag `hub-v0.9.0` annotated on the merge commit, confirm `https://letsrebase.com/health` and the new column in production.

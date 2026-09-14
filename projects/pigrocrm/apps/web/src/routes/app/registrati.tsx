@@ -29,8 +29,8 @@ interface Member {
   spazi: number
 }
 
-const TERMINI = 'https://joinorbiters.com/termini'
-const PRIVACY = 'https://joinorbiters.com/privacy'
+const TERMINI = 'https://letsrebase.com/termini'
+const PRIVACY = 'https://letsrebase.com/privacy'
 
 /**
  * Two steps and a landing (spec 2026-09-12 §6.4). The email first: the CRM asks the hub

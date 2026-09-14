@@ -93,10 +93,10 @@ def test_the_welcome_mail_enters_with_a_link_and_says_what_to_do_first() -> None
         and "dati fiscali" in member.text
         and "primo cliente" in member.text
     )
-    assert "joinorbiters.com/hub/freelance" not in member.text
+    assert "letsrebase.com/hub/freelance" not in member.text
     assert member.html is not None and entra in member.html
     guest = welcome_mail("bob@x.it", entra, login, membro=False)
-    assert "joinorbiters.com/hub/freelance" in guest.text
+    assert "letsrebase.com/hub/freelance" in guest.text
     assert guest.html is not None and "hub/freelance" in guest.html
     hostile = welcome_mail(
         "x@x.it", 'https://pigro.test/x/app/entra?t="><script>', login, membro=True

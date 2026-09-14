@@ -92,7 +92,7 @@ describe('on a real host', () => {
     init.mockImplementationOnce(() => {
       throw new Error('storage is not available')
     })
-    expect(initAnalytics({ hostname: 'pigro.joinorbiters.com' })).toBe(false)
+    expect(initAnalytics({ hostname: 'pigro.letsrebase.com' })).toBe(false)
     expect(analyticsActive()).toBe(false)
     capture('cliente_creato')
     expect(posthog.capture).not.toHaveBeenCalled()

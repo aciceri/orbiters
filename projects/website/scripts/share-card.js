@@ -8,6 +8,16 @@
  * person who has to change the wordmark, the claim or the palette changes one line and
  * runs `pnpm --filter website build:share-card` instead of opening a design tool.
  *
+ * **The file name carries a number, and a redraw takes the next one.** LinkedIn, Facebook
+ * and WhatsApp cache what they scraped per URL for days, so a card redrawn under its old
+ * name keeps sharing as the old card long after it shipped, on exactly the surfaces this
+ * exists for. A new name is one line here, one constant in `share-card.test.ts` and six
+ * heads, and it is the whole of the cache invalidation. The rename of the copy to Rebase
+ * (ORB-194) is the next one due.
+ *
+ * A path given as the first argument is rendered there instead, so the committed file
+ * can be compared with what this produces today without being overwritten.
+ *
  * The colours are read out of `shared/brand/palette.css` and the typeface out of
  * `shared/brand/fonts`, never restated here: a hex typed into this file would be the
  * fork that `palette-plugin.ts` exists to prevent, one directory away. `share-card.test.ts`
@@ -23,7 +33,9 @@ import { chromium } from '@playwright/test'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const brand = join(here, '..', '..', '..', 'shared', 'brand')
-const out = join(here, '..', 'src', 'public', 'assets', 'share-card.png')
+/** Bumped on every redraw: see the note above about what the platforms cache. */
+export const CARD_FILE = 'share-card-1.png'
+const out = process.argv[2] ?? join(here, '..', 'src', 'public', 'assets', CARD_FILE)
 
 export const WIDTH = 1200
 export const HEIGHT = 630
@@ -62,6 +74,9 @@ function markup() {
         background-color: ${ink};
         /* The faint grid the whole visual system sits on, at the scale of a card this
            size rather than of a page. */
+        /* White at 5%, not a token: the grid line is the ink lightened by the ground it
+           sits on, which is what system.css does with its own line on paper. A backtick
+           has no business in here either way, this block is inside a template literal. */
         background-image:
           linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
           linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
@@ -103,13 +118,17 @@ function markup() {
 }
 
 const browser = await chromium.launch()
+const engine = browser.version()
 const page = await browser.newPage({
   viewport: { width: WIDTH, height: HEIGHT },
   deviceScaleFactor: 1,
 })
 await page.setContent(markup(), { waitUntil: 'load' })
-await page.evaluate(() => document.fonts.ready)
+await page.evaluate(() => document.fonts.ready.then(() => undefined))
 mkdirSync(dirname(out), { recursive: true })
 writeFileSync(out, await page.screenshot({ type: 'png' }))
 await browser.close()
-console.log(`share-card.png: ${WIDTH}x${HEIGHT} -> ${out}`)
+// Which browser drew it and where: glyph rasterization differs between macOS and
+// Linux, so a redraw on another box is a binary diff with no visible change, and this
+// is the line to quote in the pull request that carries one.
+console.log(`${CARD_FILE}: ${WIDTH}x${HEIGHT}, chromium ${engine} on ${process.platform} -> ${out}`)

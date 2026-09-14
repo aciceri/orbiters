@@ -495,6 +495,15 @@ test.describe('the path map, as production serves it', () => {
       expect(response?.status()).toBe(404)
     })
   }
+
+  // The image every head points at (ORB-112). A unit test can read the file off disk
+  // and the nginx block out of its config; only a server answers whether the two meet,
+  // and the same `location /assets/` block serves this card and the hashed bundles.
+  test('the share card is served from /assets, as a PNG', async ({ request }) => {
+    const response = await request.get('/assets/share-card-1.png')
+    expect(response.status()).toBe(200)
+    expect(response.headers()['content-type']).toBe('image/png')
+  })
 })
 
 // The two policy pages are the two whose text column carries long unbreakable strings:

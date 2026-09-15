@@ -272,7 +272,7 @@
     },
     {
       "id": "hub-image",
-      "run": "cd projects/hub && POSTGRES_PASSWORD=build-only-never-used ORBITERS_DATA_DIR=./build-only-never-mounted docker compose -p orbiters build",
+      "run": "cd projects/hub && POSTGRES_PASSWORD=build-only-never-used REBASE_DATA_DIR=./build-only-never-mounted docker compose -p rebase build",
       "when": [
         "projects/hub/Dockerfile.api",
         "projects/hub/Dockerfile.web",
@@ -283,7 +283,7 @@
         "uv.lock"
       ],
       "serial": true,
-      "why": "The one project whose images were verified on no tier before the trunk: ci.yml builds them on push only, so a broken Dockerfile here reached main before anything said so. `-p orbiters` because that is the project name the deploy passes (docs/adding-a-project.md section 7) and the name decides the image tags. Serial for the same reason as the other two: a docker build saturates the box."
+      "why": "The one project whose images were verified on no tier before the trunk: ci.yml builds them on push only, so a broken Dockerfile here reached main before anything said so. `-p rebase` because that is the project name the deploy passes (docs/adding-a-project.md section 7) and the name decides the image tags. Serial for the same reason as the other two: a docker build saturates the box."
     }
   ]
 }

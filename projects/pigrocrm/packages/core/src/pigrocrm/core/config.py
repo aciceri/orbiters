@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     # Where the Orbiters hub answers, for the one question the signup asks it: whether an
     # address belongs to a community member (`tenants/hub.py`, ORB-173). The bearer is
     # `registry_token` above, the same value the hub reads as
-    # `ORBITERS_PIGRO_REGISTRY_TOKEN`: since ORB-173 it travels in both directions. Empty
+    # `REBASE_PIGRO_REGISTRY_TOKEN`: since ORB-173 it travels in both directions. Empty
     # token, unreachable hub, anything but a 200: the answer is «not a member» and the
     # signup goes on. The community is the fast lane, never a gate.
     hub_url: str = "https://letsrebase.com"

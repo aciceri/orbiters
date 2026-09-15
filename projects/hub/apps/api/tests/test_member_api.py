@@ -381,7 +381,7 @@ LOOKUP = "/api/hub/members/lookup"
 
 @pytest.fixture
 def registry_token(client: TestClient) -> None:
-    """The installation with `ORBITERS_PIGRO_REGISTRY_TOKEN` set: the one the CRM's
+    """The installation with `REBASE_PIGRO_REGISTRY_TOKEN` set: the one the CRM's
     signup may ask. Declared, never inherited from a developer's `.env`."""
     client.app.dependency_overrides[get_settings] = lambda: Settings(  # type: ignore[attr-defined]
         pigro_registry_token=PIGRO_TOKEN,

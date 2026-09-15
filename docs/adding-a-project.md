@@ -256,7 +256,7 @@ rows.
 |---|---|---|
 | PigroCRM | web 8080, Postgres 55432 | web 8081, Postgres 55434 |
 | website | web 8082 | web 8083 |
-| hub (`orbiters`, `orbiters-preview`) | api 8084, web 8085, Postgres 55435 | api 8086, web 8087, Postgres 55436 |
+| hub (`rebase`, `rebase-preview`) | api 8084, web 8085, Postgres 55435 | api 8086, web 8087, Postgres 55436 |
 
 Since 2026-09-10 preview has public names too: `preview.letsrebase.com` mirrors the
 website plus hub map, `preview.pigro.letsrebase.com` mirrors the CRM's. So a new
@@ -290,7 +290,7 @@ the repository takes TLS away on the spot.
 ### What PostHog's warehouse reads
 
 Since 2026-09-12 (REB-187) PostHog's data warehouse reads the hub's production database
-(`orbiters` on 55435: `signups`, `freelancers`, `companies`, `guide_downloads`,
+(`rebase` on 55435: `signups`, `freelancers`, `companies`, `guide_downloads`,
 `member_logins`, `comments`) and the CRM's production registry (`pigrocrm_tenants` on
 55432: `tenants`), so the events the surfaces send can be joined to the rows behind
 them. The preview databases (55434, 55436) are not connected. The design is

@@ -498,7 +498,7 @@ class FakePigro:
 def pigro(client: TestClient) -> Iterator[FakePigro]:
     fake = FakePigro()
     client.app.dependency_overrides[get_http_call] = lambda: fake  # type: ignore[attr-defined]
-    # Both values declared, so a developer's shell exporting `ORBITERS_PIGRO_API_URL`
+    # Both values declared, so a developer's shell exporting `REBASE_PIGRO_API_URL`
     # cannot change what the assertion below expects.
     client.app.dependency_overrides[get_settings] = lambda: Settings(  # type: ignore[attr-defined]
         pigro_api_url="https://pigro.letsrebase.com",
@@ -515,7 +515,7 @@ def test_without_a_pigro_token_the_spaces_are_a_503_sentence(
     response = client.get("/api/hub/pigro/istanze")
     assert response.status_code == 503, response.text
     assert response.json()["detail"] == (
-        "Il registro di Pigro non è configurato: manca ORBITERS_PIGRO_REGISTRY_TOKEN."
+        "Il registro di Pigro non è configurato: manca REBASE_PIGRO_REGISTRY_TOKEN."
     )
 
 

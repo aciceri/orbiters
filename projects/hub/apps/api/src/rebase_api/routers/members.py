@@ -169,7 +169,7 @@ def lookup_member(
     authorization: Annotated[str | None, Header()] = None,
 ) -> MemberLookup:
     """Whether an address belongs to a freelancer in the community, and their names, for
-    the one caller that holds `ORBITERS_PIGRO_REGISTRY_TOKEN`: PigroCRM's signup, which
+    the one caller that holds `REBASE_PIGRO_REGISTRY_TOKEN`: PigroCRM's signup, which
     greets a member by name instead of asking for it (ORB-173). The same shape as the
     CRM's `GET /api/tenants/` in the other direction (ORB-142): without the token
     configured the route does not exist (404), so nothing says there is a door; with it,

@@ -1,15 +1,15 @@
-# The rebase hub: its own Postgres, its own API, its own SPA. Run with `-p orbiters`
+# The rebase hub: its own Postgres, its own API, its own SPA. Run with `-p rebase`
 # so the project name never derives from the directory (docs/adding-a-project.md §7).
 services:
   db:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-orbiters}
+      POSTGRES_USER: ${POSTGRES_USER:-rebase}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?serve una password}
-      POSTGRES_DB: ${POSTGRES_DB:-orbiters}
+      POSTGRES_DB: ${POSTGRES_DB:-rebase}
     # On the host, never in a Docker-managed volume: the same decision PigroCRM took
-    # after a daemon reset scared everyone. Set ORBITERS_DATA_DIR outside the repository.
+    # after a daemon reset scared everyone. Set REBASE_DATA_DIR outside the repository.
     #
     # No default, on purpose. Two stacks of this file run on one host, and each has its
     # own data directory; a `.env` that forgets the variable must fail here, loudly,
@@ -18,11 +18,11 @@ services:
     # compose interpolates the whole file before building, so `docker compose build`
     # needs a value too: CI and preflight pass a throwaway one.
     volumes:
-      - ${ORBITERS_DATA_DIR:?set it in .env, to this stack's own directory outside the repository}:/var/lib/postgresql/data
+      - ${REBASE_DATA_DIR:?set it in .env, to this stack's own directory outside the repository}:/var/lib/postgresql/data
     ports:
-      - '${ORBITERS_DB_PORT:-127.0.0.1:55435}:5432'
+      - '${REBASE_DB_PORT:-127.0.0.1:55435}:5432'
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-orbiters}']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-rebase}']
       interval: 5s
       retries: 10
 
@@ -35,25 +35,25 @@ services:
       db:
         condition: service_healthy
     environment:
-      ORBITERS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-orbiters}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-orbiters}
+      REBASE_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rebase}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rebase}
       # ChatGPT Ads, the server half of the signup conversion. Empty defaults: a site
       # that runs no campaigns is the ordinary case, not a start-up failure.
-      ORBITERS_OPENAI_PIXEL_ID: ${ORBITERS_OPENAI_PIXEL_ID:-}
-      ORBITERS_OPENAI_CONVERSIONS_API_KEY: ${ORBITERS_OPENAI_CONVERSIONS_API_KEY:-}
-      ORBITERS_SIGNUP_URL: ${ORBITERS_SIGNUP_URL:-https://letsrebase.com/}
-      ORBITERS_OPENAI_CONVERSIONS_SEND_HASHED_EMAIL: ${ORBITERS_OPENAI_CONVERSIONS_SEND_HASHED_EMAIL:-false}
+      REBASE_OPENAI_PIXEL_ID: ${REBASE_OPENAI_PIXEL_ID:-}
+      REBASE_OPENAI_CONVERSIONS_API_KEY: ${REBASE_OPENAI_CONVERSIONS_API_KEY:-}
+      REBASE_SIGNUP_URL: ${REBASE_SIGNUP_URL:-https://letsrebase.com/}
+      REBASE_OPENAI_CONVERSIONS_SEND_HASHED_EMAIL: ${REBASE_OPENAI_CONVERSIONS_SEND_HASHED_EMAIL:-false}
       # The member area's mail. Empty key is a hub with the area's door still closed.
-      ORBITERS_RESEND_API_KEY: ${ORBITERS_RESEND_API_KEY:-}
-      ORBITERS_MAIL_FROM: ${ORBITERS_MAIL_FROM:-Rebase <ciao@letsrebase.com>}
-      ORBITERS_HUB_URL: ${ORBITERS_HUB_URL:-https://letsrebase.com/hub}
+      REBASE_RESEND_API_KEY: ${REBASE_RESEND_API_KEY:-}
+      REBASE_MAIL_FROM: ${REBASE_MAIL_FROM:-Rebase <ciao@letsrebase.com>}
+      REBASE_HUB_URL: ${REBASE_HUB_URL:-https://letsrebase.com/hub}
       # PigroCRM's spaces in the admin area (ORB-142): the CRM's public URL, and the
       # token its own `.env` carries as PIGROCRM_REGISTRY_TOKEN. Empty token: 503.
-      ORBITERS_PIGRO_API_URL: ${ORBITERS_PIGRO_API_URL:-https://pigro.letsrebase.com}
-      ORBITERS_PIGRO_REGISTRY_TOKEN: ${ORBITERS_PIGRO_REGISTRY_TOKEN:-}
+      REBASE_PIGRO_API_URL: ${REBASE_PIGRO_API_URL:-https://pigro.letsrebase.com}
+      REBASE_PIGRO_REGISTRY_TOKEN: ${REBASE_PIGRO_REGISTRY_TOKEN:-}
     ports:
       # Loopback only: the host's nginx is what faces the internet, and it proxies
       # `/api/orbiters/signups` and `/api/hub/` here.
-      - '${ORBITERS_API_PORT:-127.0.0.1:8084}:8000'
+      - '${REBASE_API_PORT:-127.0.0.1:8084}:8000'
 
   web:
     build:
@@ -62,4 +62,4 @@ services:
     restart: unless-stopped
     ports:
       # The SPA, at /hub/. The host's nginx proxies `/hub/` here.
-      - '${ORBITERS_WEB_PORT:-127.0.0.1:8085}:80'
+      - '${REBASE_WEB_PORT:-127.0.0.1:8085}:80'

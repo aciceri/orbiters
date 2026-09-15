@@ -4,7 +4,7 @@ The signup greets a community member by name and skips the questions the hub alr
 answered (spec 2026-09-12 §6.3, ORB-173). The hub is reached through its own API,
 `POST /api/hub/members/lookup`, with the token the two hosts already share for the
 registry of spaces in the other direction (ORB-142): `PIGROCRM_REGISTRY_TOKEN` here,
-`ORBITERS_PIGRO_REGISTRY_TOKEN` there. Nothing from the hub is imported and no database
+`REBASE_PIGRO_REGISTRY_TOKEN` there. Nothing from the hub is imported and no database
 of it is opened.
 
 The address travels in a JSON body and never in the URL: a query string is written by

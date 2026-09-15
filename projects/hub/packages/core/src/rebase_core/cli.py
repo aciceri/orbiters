@@ -57,8 +57,8 @@ def conversions_check() -> int:
     pixel = pixel_from_settings(settings)
     if pixel is None:
         print(
-            "Nessun pixel configurato: servono ORBITERS_OPENAI_PIXEL_ID e "
-            "ORBITERS_OPENAI_CONVERSIONS_API_KEY.",
+            "Nessun pixel configurato: servono REBASE_OPENAI_PIXEL_ID e "
+            "REBASE_OPENAI_CONVERSIONS_API_KEY.",
             file=sys.stderr,
         )
         return 1
@@ -157,7 +157,7 @@ def welcome(emails: Sequence[str], everyone: bool) -> int:
     settings = get_settings()
     sender = sender_from_settings(settings)
     if sender is None:
-        print("Nessuna chiave per la posta: serve ORBITERS_RESEND_API_KEY.", file=sys.stderr)
+        print("Nessuna chiave per la posta: serve REBASE_RESEND_API_KEY.", file=sys.stderr)
         return 1
     session = session_factory(create_engine_from_settings(settings))()
     try:

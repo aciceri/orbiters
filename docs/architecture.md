@@ -1,10 +1,10 @@
 # How this monorepo is laid out, and what that costs
 
-Written when PigroCRM's repository became the monorepo it is today, so that the next
-person does not have to reverse-engineer the reasoning from the directory names. The
-repository's own name on GitHub changed from `pigrocrm` to `orbiters` on 2026-09-09,
-for the same reason: it holds more than one project now. It moved again on 2026-09-15,
-to `letsrebase/rebase`, when the rename of the brand reached the org (ORB-204).
+Written when PigroCRM's repository became the monorepo, so that the next person does
+not have to reverse-engineer the reasoning from the directory names. The repository's
+own name on GitHub changed from `pigrocrm` to `orbiters` on 2026-09-09, for the same
+reason: it holds more than one project now. It moved again on 2026-09-15, to `rebase`
+under the `letsrebase` org, when the rename of the brand reached GitHub (ORB-204).
 
 ## The shape
 

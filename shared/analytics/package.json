@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "The one PostHog project every Orbiters surface reports to: its key, its hosts, and the policy the two SPAs initialise it with.",
+  "description": "The one PostHog project every rebase surface reports to: its key, its hosts, and the policy the two SPAs initialise it with.",
   "exports": {
     ".": "./posthog.ts",
     "./browser": "./browser.ts",

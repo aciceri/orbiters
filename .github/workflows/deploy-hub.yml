@@ -1,4 +1,4 @@
-# Deploy, for the Orbiters hub only. Same shape as `deploy-website.yml` and, like it,
+# Deploy, for the rebase hub only. Same shape as `deploy-website.yml` and, like it,
 # deliberately its own file: two projects in this monorepo must never be able to deploy
 # each other. The mechanism is `_deploy-compose.yml`; this file is the two rules that
 # say when and the four values that say where.

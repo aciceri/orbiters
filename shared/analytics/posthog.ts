@@ -1,5 +1,5 @@
 /**
- * The one PostHog project every Orbiters surface reports to.
+ * The one PostHog project every rebase surface reports to.
  *
  * The project key is public by design: it ends up in every bundle and in every page
  * that measures, and it can only write events into this project. It is committed here

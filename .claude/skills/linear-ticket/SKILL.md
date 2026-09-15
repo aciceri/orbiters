@@ -1,6 +1,6 @@
 ---
 name: linear-ticket
-description: Use when filing, finding, moving or closing a Linear issue for this repository (team Orbiters, ORB-N), or posting a project update, and at the start of any change here, before the first file is touched, to find the card and the cards next to it. The MCP workflow with every field in one call, the neighbour scan, the state changes at each step, and the API quirks that otherwise cost a wasted call. Triggers on "file this", "move to Done", "update the project", on starting a task or a PR, or the Italian «crea ticket», «apri un'issue», «parti da questo ticket».
+description: Use when filing, finding, moving or closing a Linear issue for this repository (team rebase, REB-N), or posting a project update, and at the start of any change here, before the first file is touched, to find the card and the cards next to it. The MCP workflow with every field in one call, the neighbour scan, the state changes at each step, and the API quirks that otherwise cost a wasted call. Triggers on "file this", "move to Done", "update the project", on starting a task or a PR, or the Italian «crea ticket», «apri un'issue», «parti da questo ticket».
 ---
 
 # Working the Linear board
@@ -12,8 +12,8 @@ Read it once per session. This skill is the sequence of calls and the traps. Con
 ## First call of the session
 
 The MCP server is `linear-orbiters`, the only Linear surface for this board. Two reads
-before any write. `list_projects` or `list_issues` with `team: "Orbiters"`, and check the
-team that comes back is **Orbiters** (`ORB-`): two workspaces are enrolled on this
+before any write. `list_projects` or `list_issues` with `team: "rebase"`, and check the
+team that comes back is **rebase** (`REB-`): two workspaces are enrolled on this
 machine, and filing a client's work in the wrong company's board is the failure mode.
 Then `get_user` with `query: "me"`, and keep the `id` it returns, not the display name:
 it is the account this session writes as, it is what `assignee: "me"` will mean, it is
@@ -24,31 +24,33 @@ talking to you. Both people on this team run agents against the same board.
 
 A session can have no `linear-orbiters` and still have a Linear tool: a server named
 `linear`, logged in to another company's workspace. On 2026-09-15 `get_user "me"` on it
-answered an `@paid.ai` account in team `PAID`, and `list_issues` with `team: "Orbiters"`
+answered an `@paid.ai` account in team `PAID`, and `list_issues` with `team: "rebase"`
 answered an empty list rather than an error. An empty list from the first read is a
-wrong workspace until proven otherwise, not an empty board: `get_issue` on an `ORB-` id
-you know exists (one from `git log origin/main`) settles it. Never write through that
+wrong workspace until proven otherwise, not an empty board: `get_issue` on a `REB-` id
+you know exists (one from `git log origin/main`) settles it; the trunk's own history
+still carries the old `ORB-` prefix on the same numbers, from before the 2026-09-15
+rename, and that is a valid id to check with too. Never write through that
 server.
 
 What reaches this board then is the web app in the Chrome session, logged in to
-`linear.app/joinorbiters`. The lists are readable as page text
-(`/team/ORB/active`, `/team/ORB/backlog`) for the neighbour scan. A new card is one URL,
+`linear.app/letsrebase`. The lists are readable as page text
+(`/team/REB/active`, `/team/REB/backlog`) for the neighbour scan. A new card is one URL,
 with every field of § Filing except the relations:
 
 ```
-https://linear.app/joinorbiters/team/ORB/new?title=..&description=..&status=In%20Progress&priority=Medium&assignee=me&labels=feature,area:hub&project=<project name>
+https://linear.app/letsrebase/team/REB/new?title=..&description=..&status=In%20Progress&priority=Medium&assignee=me&labels=feature,area:hub&project=<project name>
 ```
 
 Build it with `URLSearchParams` and turn `+` into `%20`, check the modal shows each field,
-click «Create issue» by its ref, then open `/issue/ORB-N` and read the fields back. The
-branch is the slug of that page's URL after `ORB-N/`, prefixed `<you>/orb-N-`. Relations
+click «Create issue» by its ref, then open `/issue/REB-N` and read the fields back. The
+branch is the slug of that page's URL after `REB-N/`, prefixed `<you>/reb-N-`. Relations
 and comments are added by hand on the card; never `type` multi-line text there, Enter
 submits and the rest runs as shortcuts on the issue. If neither surface is available,
 the card is not filed and the work waits: say so to the person.
 
 ## Finding before filing, and whether it is yours to take
 
-`list_issues` with `team: "Orbiters"` and `query: "<two or three words of the problem>"`,
+`list_issues` with `team: "rebase"` and `query: "<two or three words of the problem>"`,
 then with the `area:*` label. Ask for `assigneeId`, `createdById`, `statusType` and
 `labels` in `fields`, because an issue that exists is not an issue that is available
 (`docs/tracker.md` § Who owns a card). Compare ids against the `id` you kept from
@@ -86,7 +88,7 @@ before the `save_issue` that files or moves it (`docs/tracker.md` § The loop). 
 reads, each with `fields: ["id", "title", "status", "statusType", "labels", "project",
 "assigneeId", "createdById"]`:
 
-1. **The area, open states only.** `list_issues` with `team: "Orbiters"`,
+1. **The area, open states only.** `list_issues` with `team: "rebase"`,
    `label: "<the area:* your change lands in>"` and `state: "started"`, which answers
    `In Progress` and `In Review` together; then `state: "unstarted"` (`Todo`), then
    `state: "backlog"`. One `state` per call, so three calls, with `limit` raised past
@@ -127,7 +129,7 @@ wrong.
 
 | Field | Value |
 |---|---|
-| `team` | `"Orbiters"` |
+| `team` | `"rebase"` |
 | `project` | **the project id**, from `list_projects`, or omitted when the issue is repository-wide and fits no open project (`docs/tracker.md` § Where things are). Project names carry a version suffix (`PigroCRM v1 - first deploy from CI, with green gates`) and change; a lookup by the old name fails with "Could not find project". |
 | `milestone` | the milestone id from `list_milestones(project)`, unless the issue genuinely belongs to no body of work. It is accepted and not echoed back: trust `list_milestones` progress, not the response. |
 | `title` | the observed problem, not the fix: "the invoice page shows the numbers but never the document", not "add a PDF preview". |
@@ -137,7 +139,7 @@ wrong.
 | `estimate` | the team's points. |
 | `assignee` | never omitted. `"me"` when you will do the work, the person who asked for it when they will. A card filed for later still gets one: an empty assignee reads as free to the other agent. |
 | `state` | `"In Progress"` when you start now, otherwise leave the default. |
-| `relatedTo`, `blocks`, `blockedBy`, `duplicateOf` | what the neighbour scan found (§ The neighbours): the three arrays of `ORB-N` you have read, or the one id for `duplicateOf`, in this same call. The arrays are append-only, so one added by mistake is undone only with `removeRelatedTo`, `removeBlocks` or `removeBlockedBy`; `duplicateOf: null` clears the one id. Read the id before you write it. |
+| `relatedTo`, `blocks`, `blockedBy`, `duplicateOf` | what the neighbour scan found (§ The neighbours): the three arrays of `REB-N` you have read, or the one id for `duplicateOf`, in this same call. The arrays are append-only, so one added by mistake is undone only with `removeRelatedTo`, `removeBlocks` or `removeBlockedBy`; `duplicateOf: null` clears the one id. Read the id before you write it. |
 
 Label names are case-insensitive workspace-wide and a retired label keeps its name:
 `Chore` resolves to whatever old label owned that name. Use the exact lowercase names
@@ -156,7 +158,7 @@ not learn it from here. What that section leaves to the caller:
   on an update replaces the whole body.
 - `In Review` is set by you when the PR opens, with a comment carrying the PR URL. The
   PR links itself to the issue, so seeing the link is not seeing a state change: the
-  status automation is a per-team setting and it is off here (PR #33 linked, ORB-80
+  status automation is a per-team setting and it is off here (PR #33 linked, REB-80
   stayed `In Progress`). Move it yourself. From there to the merge the card keeps
   following the PR (§ Commenting): the review, a red run, a reshaped PR.
 - `Done` takes a closing comment shaped as the `linear-content` skill says (`Evidence:`
@@ -199,12 +201,12 @@ that restates the issue list.
 
 ## References in code and commits
 
-`ORB-N` in a commit body or a comment is a pointer to an issue you have read. Never
+`REB-N` in a commit body or a comment is a pointer to an issue you have read. Never
 invent one. The branch is the issue's `gitBranchName`, read from `get_issue` (or
 `list_issues` with `fields: ["gitBranchName"]`), not typed by hand.
 
 That name is rendered for **whoever asked for it**, not for the assignee: the same card
-answers `fiorelorenzo/orb-41-...` to one of us and `mariorossi/orb-41-...` to the other. So
+answers `fiorelorenzo/reb-41-...` to one of us and `mariorossi/reb-41-...` to the other. So
 it is the branch to use once the card is yours, and it is never evidence that it is.
 
 ## What the tracker is not

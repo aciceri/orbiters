@@ -4,8 +4,8 @@ The source every public surface writes from. A page, a meta description, a wizar
 or an MCP tool description that says who we are for says it in these words; if the
 words here are wrong, this file changes first and the surfaces follow.
 
-Decided with Ivan on 2026-09-09 (ORB-24). Since 2026-09-14 the name is **rebase**, written
-lowercase everywhere a person reads it, including at the start of a sentence (ORB-194);
+Decided with Ivan on 2026-09-09 (REB-24). Since 2026-09-14 the name is **rebase**, written
+lowercase everywhere a person reads it, including at the start of a sentence (REB-194);
 «Orbiters» survives only in code identifiers and in history. The wording of what a visitor reads is his;
 this page is what the copy is checked against.
 
@@ -92,7 +92,7 @@ Two exceptions Ivan decided on 2026-09-09: the `<title>` of both pages and their
 
 The route `/hub/freelance`, the API vocabulary (`freelancers`), the database and the
 code keep «freelance» as the category name. They are not what a person reads, and a
-rename there is a separate issue once this statement has settled (ORB-24 point 4).
+rename there is a separate issue once this statement has settled (REB-24 point 4).
 
 ## Where it already shows, and where it has to
 

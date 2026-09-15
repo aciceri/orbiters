@@ -17,7 +17,7 @@ it and a document disagree, the document is right and the skill has a bug.
 1. **A Linear issue exists and is yours.** Find it with `list_issues` or file it with
    the `linear-ticket` skill. No issue, no branch: the issue is where the reasons live,
    and a PR written first loses them. A Linear tool that fails, or that answers a team
-   other than **Orbiters**, is not a reason to go on without the card: file it from the
+   other than **rebase**, is not a reason to go on without the card: file it from the
    web app as the `linear-ticket` skill § When `linear-orbiters` is not in the session
    says, or stop and tell the person. Yours means what `docs/tracker.md` § Who owns a
    card says: assigned to the account this session writes as, or unassigned and filed by
@@ -35,7 +35,7 @@ it and a document disagree, the document is right and the skill has a bug.
    **Adjacent** paragraph. The one `save_issue` that moves the card to `In Progress`
    with `assignee: "me"` carries the links and that paragraph. No scan on the card, no
    branch.
-3. **The branch is Linear's.** Use the issue's `gitBranchName` (`mariorossi/orb-42-...`),
+3. **The branch is Linear's.** Use the issue's `gitBranchName` (`mariorossi/reb-42-...`),
    which Linear renders for whoever reads the issue rather than for its assignee, so it
    tells you nothing about ownership and is only the name to use once step 1 holds. In a
    git worktree of its own, never on `main` and never in the shared checkout:
@@ -64,7 +64,7 @@ says "working on it".
 As the root `AGENTS.md` Conventions say (Conventional Commits, English, first person,
 no AI trailer). What that section does not say: the subject states what is true after
 the commit (`feat(web): a draft invoice can be deleted from its page`), the body says
-why and what was deliberately left alone, the last line is the issue (`ORB-42.`), you
+why and what was deliberately left alone, the last line is the issue (`REB-42.`), you
 commit with a pathspec (`git add <files>`, never `-A`, other sessions share the index),
 and a migration or a file move gets a commit of its own.
 
@@ -150,30 +150,30 @@ procedure, per app and port, is `docs/pr-screenshots/README.md`. When nothing vi
 changed, or a pair cannot be captured, the section says so and why. Deleting it reads as
 forgetting.
 
-The last line of the body: `Linear: ORB-N.`
+The last line of the body: `Linear: REB-N.`
 
 ## Before `gh pr create`: the card is on the PR
 
-The PR is not opened until its body ends with `Linear: ORB-N.`, where `ORB-N` is an id
+The PR is not opened until its body ends with `Linear: REB-N.`, where `REB-N` is an id
 you read from the board in this session (`get_issue`, or the card's page), on a card that
 is yours and whose `gitBranchName` is the branch you are pushing. Check the file you are
 about to send, not your memory of it:
 
 ```bash
-tail -n 1 pr-body.md | grep -Eq '^Linear: ORB-[0-9]+\.$' || echo "no card, no PR"
+tail -n 1 pr-body.md | grep -Eq '^Linear: REB-[0-9]+\.$' || echo "no card, no PR"
 ```
 
 The id also goes on the last line of the work commit (§ Commits). There is no
 placeholder: «Linear: not filed yet», «TBD», «the id belongs here before this merges» are
-each a PR opened without its card, which is what PR #111 did (ORB-201 was filed after it,
-by hand, ORB-202 is this rule). When the card cannot be read or filed at all, the PR
+each a PR opened without its card, which is what PR #111 did (REB-201 was filed after it,
+by hand, REB-202 is this rule). When the card cannot be read or filed at all, the PR
 waits and the person hears why; a PR without its card is not the smaller harm.
 
 ## After `gh pr create`
 
 1. Move the issue to **`In Review`** and comment the PR URL on it. The PR does link
    itself within seconds, and that link is not a state change: the status automation is
-   off on this team (PR #33 linked, ORB-80 stayed `In Progress`), so move it yourself.
+   off on this team (PR #33 linked, REB-80 stayed `In Progress`), so move it yourself.
 2. **Independent review.** Dispatch a fresh, read-only reviewer (an `Agent` of type
    `general-purpose`, told the worktree path, the diff command, the files that give it
    context, and to rank findings by severity with a concrete fix each). Do not review your

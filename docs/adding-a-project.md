@@ -235,7 +235,7 @@ building it.** Landing them the other way round leaves a window where the name p
 at a container that no longer has the pages, and on this repository that window was not
 theoretical: while production was still deployed from `main` by hand, a merge was
 effectively a release whatever the tag policy said. It cost twenty minutes of a
-redirecting joinorbiters.com on 2026-09-09 (ORB-16). Since that afternoon nothing is
+redirecting joinorbiters.com on 2026-09-09 (REB-16). Since that afternoon nothing is
 deployed by hand (`docs/design/DECISIONS.md`, 2026-09-09): production moves only on a
 tag, so the order above is what makes the tag safe to push.
 
@@ -289,7 +289,7 @@ the repository takes TLS away on the spot.
 
 ### What PostHog's warehouse reads
 
-Since 2026-09-12 (ORB-187) PostHog's data warehouse reads the hub's production database
+Since 2026-09-12 (REB-187) PostHog's data warehouse reads the hub's production database
 (`orbiters` on 55435: `signups`, `freelancers`, `companies`, `guide_downloads`,
 `member_logins`, `comments`) and the CRM's production registry (`pigrocrm_tenants` on
 55432: `tenants`), so the events the surfaces send can be joined to the rows behind
@@ -352,7 +352,7 @@ Linear is the tracker and `docs/tracker.md` is the contract: initiatives, projec
 milestones, statuses, the two label groups and the loop an issue goes through are all
 defined there, checked against the board, and this page does not carry a copy of them
 because a copy drifts, which is exactly what an earlier version of this section did
-(ORB-45). What a new monorepo project needs is an initiative of its own, named as the
+(REB-45). What a new monorepo project needs is an initiative of its own, named as the
 directory reads to people (`PigroCRM`, not `pigrocrm`) and created by hand in the Linear
 UI since the MCP surface cannot create one, and a first project under it with a scope
 that can actually close, a lead and both members (the members in the UI too, since

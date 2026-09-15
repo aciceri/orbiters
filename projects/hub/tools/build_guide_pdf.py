@@ -65,7 +65,7 @@ OUTPUT = (
     / "src"
     / "rebase_core"
     / "perks"
-    / ("orbiters-guida-primi-passi-freelance.pdf")
+    / ("rebase-guida-primi-passi-freelance.pdf")
 )
 
 # The site is the only place a link in this file can point: a PDF has no origin, so a
@@ -303,7 +303,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    workdir = Path(tempfile.mkdtemp(prefix="orbiters-guide-"))
+    workdir = Path(tempfile.mkdtemp(prefix="rebase-guide-"))
     try:
         pdf = build(workdir)
         lock = lock_contents(pdf)

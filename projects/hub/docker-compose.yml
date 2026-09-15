@@ -61,7 +61,7 @@ services:
     environment: *api-environment
     ports:
       # Loopback only: the host's nginx is what faces the internet, and it proxies
-      # `/api/orbiters/signups` and `/api/hub/` here.
+      # `/api/community/signups` and `/api/hub/` here.
       - '${REBASE_API_PORT:-127.0.0.1:8084}:8000'
 
   mcp:

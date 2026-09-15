@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
  * content. Its whole edge is the 12% line, and the shadow tokens are reserved for the
  * surfaces that genuinely float above the page: menus, dialogs, popovers, the sheet.
  * (Until 2026-09-08 it cast `4px 4px 0 0` of the border colour, the pixel system's
- * step; the landing and Orbiters keep that shape in their own stylesheets.)
+ * step; the landing and the community page keep that shape in their own stylesheets.)
  */
 function Card({
   className,

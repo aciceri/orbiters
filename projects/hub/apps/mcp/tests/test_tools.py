@@ -18,7 +18,7 @@ from rebase_mcp.server import build_server
 # The admin every test calls as: the transport resolves a token to this and hands it in.
 IVAN = AdminRead(
     id=UUID("01a00000-0000-7000-8000-000000000001"),
-    email="ivan@orbiters.it",
+    email="ivan@rebase.it",
     nome="Ivan",
     attivo=True,
     created_at=datetime(2026, 9, 10, tzinfo=UTC),

@@ -59,8 +59,8 @@
   height: auto;
 }
 
-/* aria-invalid keeps the destructive border orbiters.css's own `.signup
-   input[aria-invalid='true']` already draws (orbiters.css:185-187); the soft
+/* aria-invalid keeps the destructive border community.css's own `.signup
+   input[aria-invalid='true']` already draws (community.css:185-187); the soft
    translucent ring the application adds on top of it is the one thing that has to
    go, since it is exactly the blurred halo the site's stylesheet never draws. */
 .site [data-slot='input'][aria-invalid='true'],

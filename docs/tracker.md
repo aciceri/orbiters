@@ -121,9 +121,9 @@ Two skills in `.claude/skills/` carry this contract to the moment it is needed:
 words are written). This file stays the source; a disagreement between it and a skill is
 a bug in the skill.
 
-The MCP server is `linear-orbiters`, enrolled per client outside this repository. It is
+The MCP server is `linear-rebase`, enrolled per client outside this repository. It is
 the Linear surface to use: another Linear server on the same machine reaches another
-company's board, not this one. When `linear-orbiters` is not in the session, the web app
+company's board, not this one. When `linear-rebase` is not in the session, the web app
 at `linear.app/letsrebase` is the fallback, as the `linear-ticket` skill says; a failing
 or wrong-workspace connector is never a reason to start work or open a PR without its
 card.

@@ -109,3 +109,58 @@ describe('Wizard', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Email già usata.')
   })
 })
+
+/** The same two questions, mounted the way a page that remembers a draft mounts them. */
+function Resumable({
+  initialIndex,
+  onIndexChange,
+  intro,
+}: {
+  initialIndex?: number
+  onIndexChange?: (index: number) => void
+  intro?: React.ReactNode
+}) {
+  const [value, setValue] = useState<Form>({ nome: 'Ada', email: '' })
+  return (
+    <Wizard
+      title="Test"
+      steps={STEPS}
+      value={value}
+      set={(patch) => setValue((v) => ({ ...v, ...patch }))}
+      onSubmit={() => {}}
+      submitting={false}
+      submitError={null}
+      submitLabel="Invia"
+      initialIndex={initialIndex}
+      onIndexChange={onIndexChange}
+      intro={intro}
+    />
+  )
+}
+
+describe('Wizard, resumed from a draft and introduced', () => {
+  it('starts from the step it is told to and reports every move', async () => {
+    const user = userEvent.setup()
+    const onIndexChange = vi.fn()
+    render(<Resumable initialIndex={1} onIndexChange={onIndexChange} />)
+    expect(screen.getByRole('heading', { name: 'La tua email?' })).toBeInTheDocument()
+    expect(onIndexChange).toHaveBeenLastCalledWith(1)
+    await user.click(screen.getByRole('button', { name: 'Indietro' }))
+    expect(screen.getByRole('heading', { name: 'Come ti chiami?' })).toBeInTheDocument()
+    expect(onIndexChange).toHaveBeenLastCalledWith(0)
+  })
+
+  it('lands on the review when the draft was already there, never past it', () => {
+    render(<Resumable initialIndex={99} />)
+    expect(screen.getByRole('heading', { name: 'Tutto giusto?' })).toBeInTheDocument()
+  })
+
+  it('shows the intro above the first question and nowhere else', async () => {
+    const user = userEvent.setup()
+    render(<Resumable intro={<p>Otto domande, tre minuti.</p>} />)
+    expect(screen.getByText('Otto domande, tre minuti.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Avanti/ }))
+    expect(screen.getByRole('heading', { name: 'La tua email?' })).toBeInTheDocument()
+    expect(screen.queryByText('Otto domande, tre minuti.')).not.toBeInTheDocument()
+  })
+})

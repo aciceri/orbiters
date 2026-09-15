@@ -6,6 +6,7 @@ vi.mock('posthog-js', () => ({
     identify: vi.fn(),
     group: vi.fn(),
     capture: vi.fn(),
+    get_distinct_id: vi.fn(() => 'anon-1'),
     reset: vi.fn(),
     setInternalOrTestUser: vi.fn(),
   },
@@ -16,6 +17,7 @@ import {
   __resetAnalyticsForTests,
   analyticsActive,
   capture,
+  distinctId,
   identifyGroup,
   identifyUser,
   initAnalytics,
@@ -47,6 +49,16 @@ describe('on a developer machine', () => {
     expect(posthog.group).not.toHaveBeenCalled()
     expect(posthog.capture).not.toHaveBeenCalled()
     expect(posthog.reset).not.toHaveBeenCalled()
+  })
+})
+
+describe('the distinct id', () => {
+  it('is nothing where nothing is measured, and the SDK\'s own id everywhere else', () => {
+    expect(initAnalytics({ hostname: 'localhost' })).toBe(false)
+    expect(distinctId()).toBeNull()
+    __resetAnalyticsForTests()
+    initAnalytics({ hostname: 'letsrebase.com' })
+    expect(distinctId()).toBe('anon-1')
   })
 })
 

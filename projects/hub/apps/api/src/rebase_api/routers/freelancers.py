@@ -6,18 +6,32 @@ later from their area. Everything is validated by `FreelancerCreate` and `check_
 exactly as the MCP server would validate it, so the two adapters cannot accept
 different things. Public, rate-limited, and mute like the signup: the answer is
 `{"ok": true}` whether this was a first application or a correction of one.
+
+The completion is reported to PostHog from here, after the answer, as a background
+task (`rebase_core.analytics`, REB-215): the browser's own event is the one an ad
+blocker eats, and `distinct_id` -- the id the browser's SDK carries, when it was
+allowed to run -- is what lands the two halves on the same person.
 """
 
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 from pydantic import ValidationError
 
-from rebase_api.deps import SessionDep
+from rebase_api.deps import SessionDep, TrackerDep
 from rebase_api.ratelimit import spend_one
 from rebase_core.freelancers import FreelancerService
-from rebase_core.schemas import Ack, FreelancerCreate, SignupUtm
+from rebase_core.schemas import DISTINCT_ID_MAX_LENGTH, Ack, FreelancerCreate, SignupUtm
 
 router = APIRouter(prefix="/api/hub", tags=["hub"])
 
@@ -48,6 +62,8 @@ def _validation_422(exc: ValidationError) -> HTTPException:
 def apply(
     request: Request,
     session: SessionDep,
+    background: BackgroundTasks,
+    tracker: TrackerDep,
     nome: Annotated[str, Form()],
     cognome: Annotated[str, Form()],
     email: Annotated[str, Form()],
@@ -68,6 +84,7 @@ def apply(
     utm_term: Annotated[str | None, Form()] = None,
     utm_id: Annotated[str | None, Form()] = None,
     origine: Annotated[str | None, Form()] = None,
+    distinct_id: Annotated[str | None, Form(max_length=DISTINCT_ID_MAX_LENGTH)] = None,
 ) -> Ack:
     spend_one(request)
     try:
@@ -104,4 +121,12 @@ def apply(
         service.apply(data)
     else:
         service.apply(data, cv.file.read(), cv.filename or "", cv.content_type or "")
+    if tracker is not None:
+        background.add_task(
+            tracker.application,
+            "freelance",
+            distinct_id or None,
+            cv=cv is not None,
+            utm=data.utm,
+        )
     return Ack()

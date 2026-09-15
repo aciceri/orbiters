@@ -16,6 +16,8 @@ dependencies = [
   "argon2-cffi==25.1.0",
   # The same pin as pigrocrm-core: the CV's text on the MCP (ORB-206).
   "pypdf==6.17.0",
+  # The same pin as pigrocrm-mcp: the completion event the API sends itself (REB-215).
+  "posthog==7.53.0",
 ]
 
 [project.scripts]

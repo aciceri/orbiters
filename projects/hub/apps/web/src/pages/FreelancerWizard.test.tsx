@@ -6,14 +6,17 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { StrictMode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { FREELANCER_STEPS, FreelancerWizard, readPerk } from './FreelancerWizard'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { FreelancerApplication } from '@/lib/api'
+import { loadDraft } from '@/wizard/draft'
+import { FREELANCER_DRAFT_KEY, FREELANCER_STEPS, FreelancerWizard, readPerk } from './FreelancerWizard'
 
 vi.mock('@rebase/analytics/browser', () => ({
   capture: vi.fn(),
+  distinctId: vi.fn(() => 'anon-1'),
   identifyUser: vi.fn(),
   resetUser: vi.fn(),
 }))
@@ -40,9 +43,13 @@ function mount(path = '/freelance?utm_source=linkedin&da=pigrocrm', { strict = f
   return router
 }
 
+// The draft lives in `localStorage`, which jsdom keeps across the tests of one file.
+beforeEach(() => window.localStorage.clear())
+
 afterEach(() => {
   vi.restoreAllMocks()
   vi.clearAllMocks()
+  window.localStorage.clear()
 })
 
 /** The eight answers, up to the review screen. */
@@ -292,5 +299,59 @@ describe('what the wizard reports to PostHog (ORB-185)', () => {
     expect(router.state.location.pathname).toBe('/freelance')
     expect(captured('wizard_completato')).toEqual([])
     expect(captured('wizard_passo').at(-1)).toEqual({ tipo: 'freelance', passo: 1, passi: 8 })
+  })
+})
+
+describe('FreelancerWizard, the draft and the intro (REB-215)', () => {
+  it('introduces rebase above the first question, and only there', async () => {
+    const user = userEvent.setup()
+    mount()
+    const intro = await screen.findByRole('complementary', { name: 'Cos’è rebase' })
+    expect(intro).toHaveTextContent('8 domande, circa tre minuti')
+    await user.type(screen.getByLabelText('Nome'), 'Ada')
+    await user.type(screen.getByLabelText('Cognome'), 'Lovelace{Enter}')
+    expect(screen.queryByRole('complementary', { name: 'Cos’è rebase' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the answers and the step, and picks them up on the next visit', async () => {
+    const user = userEvent.setup()
+    mount()
+    await user.type(await screen.findByLabelText('Nome'), 'Ada')
+    await user.type(screen.getByLabelText('Cognome'), 'Lovelace{Enter}')
+    await user.type(screen.getByLabelText('Email'), 'ada@studio.it{Enter}')
+    expect(loadDraft<FreelancerApplication>(FREELANCER_DRAFT_KEY)).toMatchObject({
+      index: 2,
+      value: { nome: 'Ada', cognome: 'Lovelace', email: 'ada@studio.it' },
+    })
+
+    // The next visit: the same question they were on, the answers still there.
+    cleanup()
+    mount()
+    expect(await screen.findByRole('heading', { name: /Il tuo profilo LinkedIn/ })).toBeInTheDocument()
+    const note = screen.getByRole('note', { name: 'Risposte ritrovate' })
+    await user.click(screen.getByRole('button', { name: 'Indietro' }))
+    await user.click(screen.getByRole('button', { name: 'Indietro' }))
+    expect(screen.getByLabelText('Nome')).toHaveValue('Ada')
+
+    // Or not the same person: one click, and the form is blank and forgotten.
+    await user.click(within(note).getByRole('button', { name: 'Ricomincia' }))
+    expect(screen.queryByRole('note', { name: 'Risposte ritrovate' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Nome')).toHaveValue('')
+    expect(loadDraft(FREELANCER_DRAFT_KEY)).toBeNull()
+  })
+
+  it('forgets the draft once the application is sent, and sends the browser id with it', async () => {
+    const user = userEvent.setup({ applyAccept: false })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 201 }),
+    )
+    const router = mount()
+    await walkToReview(user)
+    expect(loadDraft(FREELANCER_DRAFT_KEY)).not.toBeNull()
+    await user.click(screen.getByRole('button', { name: /Invia/ }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/grazie'))
+    expect(loadDraft(FREELANCER_DRAFT_KEY)).toBeNull()
+    const body = fetchSpy.mock.calls[0]![1]?.body as FormData
+    expect(body.get('distinct_id')).toBe('anon-1')
   })
 })

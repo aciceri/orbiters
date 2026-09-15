@@ -80,6 +80,18 @@ export function capture(event: string, properties?: Record<string, unknown>): vo
   if (active) posthog.capture(event, properties)
 }
 
+/** The id PostHog gave this browser, so a server-side event can land on the same
+ *  person (`rebase_core/analytics.py`, REB-215); `null` when the page is not measured
+ *  or the SDK has none to give. */
+export function distinctId(): string | null {
+  if (!active) return null
+  try {
+    return posthog.get_distinct_id() || null
+  } catch {
+    return null
+  }
+}
+
 /** Forgets the person: called on logout, before the page leaves. */
 export function resetUser(): void {
   if (active) posthog.reset()

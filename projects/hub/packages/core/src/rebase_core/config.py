@@ -35,6 +35,17 @@ class Settings(BaseSettings):
     # decides, and the default is no.
     openai_conversions_send_hashed_email: bool = False
 
+    # --- PostHog: the completion event, from the server -------------------------------
+    # The browsers report the wizard's steps (`shared/analytics`); the API reports the
+    # completion itself (`analytics.py`, REB-215), because the browser's event is the one
+    # an ad blocker eats: on 2026-09-14/15 three profiles out of seven arrived with no
+    # event at all. The key is the public project key, the same one the browsers carry,
+    # read from here rather than imported because this process never sees `shared/`.
+    # Empty means no client and no event, which is what the tests and a self-hosted
+    # stack want.
+    posthog_key: str = ""
+    posthog_host: str = "https://eu.i.posthog.com"
+
     # --- the admin session -----------------------------------------------------------
     # `Secure` by default, like PigroCRM: on plain HTTP the browser drops the cookie and
     # the login looks like it worked. Local development sets it to false in its `.env`;

@@ -1,8 +1,10 @@
 import { useLocation, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { distinctId } from '@rebase/analytics/browser'
 import { useWizardAnalytics } from '@/lib/analytics'
 import { ApiError, requestPeople, type CompanyRequest } from '@/lib/api'
 import { resolveAttribution } from '@/lib/utm'
+import { clearDraft, loadDraft, saveDraft } from '@/wizard/draft'
 import { LongTextField, TextField } from '@/wizard/fields'
 import { Wizard, type Step } from '@/wizard/Wizard'
 
@@ -131,15 +133,68 @@ export const COMPANY_STEPS: Step<CompanyRequest>[] = [
   },
 ]
 
+export const COMPANY_DRAFT_KEY = 'rebase.wizard.azienda'
+
+/** Above the first question, as on the freelance side (REB-215): what this is and how
+ *  long it takes, before a company is asked its name. */
+function Intro() {
+  return (
+    <aside
+      aria-label="Cos’è rebase"
+      className="border-l-4 border-(--landing-ink) bg-card py-2 pl-4 pr-2"
+    >
+      <p className="font-medium">rebase è la community di chi fa software in proprio in Italia.</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {COMPANY_STEPS.length} domande, un paio di minuti: chi siete, cosa cercate e con che
+        budget, così vi proponiamo le persone giuste.
+      </p>
+    </aside>
+  )
+}
+
+function ResumedNote({ onRestart }: { onRestart: () => void }) {
+  return (
+    <aside
+      role="note"
+      aria-label="Risposte ritrovate"
+      className="mx-auto mb-8 flex w-full max-w-2xl flex-wrap items-center justify-between gap-2 border-(length:--landing-border-width) bg-card px-4 py-3 text-sm"
+    >
+      <span>Abbiamo ritrovato le risposte di prima: riprendi da dove eri.</span>
+      <button type="button" className="font-medium underline underline-offset-2" onClick={onRestart}>
+        Ricomincia
+      </button>
+    </aside>
+  )
+}
+
 export function CompanyWizard() {
   const navigate = useNavigate()
   // The URL's own query string, from the router rather than `window`: the attribution
   // is whatever this page was opened with.
   const searchStr = useLocation({ select: (location) => location.searchStr })
   const analytics = useWizardAnalytics('azienda', searchStr)
-  const [value, setValue] = useState<CompanyRequest>(EMPTY)
+  const [draft] = useState(() => loadDraft<CompanyRequest>(COMPANY_DRAFT_KEY))
+  const [value, setValue] = useState<CompanyRequest>(() => ({ ...EMPTY, ...draft?.value }))
+  const [index, setIndex] = useState(draft?.index ?? 0)
+  const [resumed, setResumed] = useState(draft !== null)
+  const [attempt, setAttempt] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<{ message: string; step?: string } | null>(null)
+
+  // Once the application is in, nothing is saved again, whatever React still has to
+  // flush: the next visit must open a blank form, not the one just sent.
+  const sent = useRef(false)
+  useEffect(() => {
+    if (!sent.current) saveDraft(COMPANY_DRAFT_KEY, value, index)
+  }, [value, index])
+
+  function restart() {
+    clearDraft(COMPANY_DRAFT_KEY)
+    setValue(EMPTY)
+    setIndex(0)
+    setResumed(false)
+    setAttempt((current) => current + 1)
+  }
 
   async function submit() {
     setSubmitting(true)
@@ -148,7 +203,10 @@ export function CompanyWizard() {
       await requestPeople(
         { ...value, budget_giornaliero: value.budget_giornaliero.replace(',', '.') },
         resolveAttribution(searchStr),
+        distinctId(),
       )
+      sent.current = true
+      clearDraft(COMPANY_DRAFT_KEY)
       analytics.completed()
       void navigate({ to: '/grazie', search: { chi: 'azienda' } })
     } catch (error) {
@@ -165,16 +223,23 @@ export function CompanyWizard() {
   }
 
   return (
-    <Wizard
-      title="Cerchi persone"
-      steps={COMPANY_STEPS}
-      value={value}
-      set={(patch) => setValue((current) => ({ ...current, ...patch }))}
-      onSubmit={() => void submit()}
-      submitting={submitting}
-      submitError={submitError}
-      submitLabel="Invia la richiesta"
-      onStep={analytics.onStep}
-    />
+    <>
+      {resumed && <ResumedNote onRestart={restart} />}
+      <Wizard
+        key={attempt}
+        title="Cerchi persone"
+        steps={COMPANY_STEPS}
+        value={value}
+        set={(patch) => setValue((current) => ({ ...current, ...patch }))}
+        onSubmit={() => void submit()}
+        submitting={submitting}
+        submitError={submitError}
+        submitLabel="Invia la richiesta"
+        onStep={analytics.onStep}
+        initialIndex={resumed ? (draft?.index ?? 0) : 0}
+        onIndexChange={setIndex}
+        intro={<Intro />}
+      />
+    </>
   )
 }

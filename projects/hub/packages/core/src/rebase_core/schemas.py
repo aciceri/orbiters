@@ -114,6 +114,12 @@ def normalise_linkedin(value: str | None) -> str | None:
     return stored
 
 
+# The id PostHog gave the browser (`shared/analytics` `distinctId()`), sent with an
+# application so the server's completion event lands on the same person (REB-215). An
+# opaque string somebody else chose: bounded, never parsed, never stored.
+DISTINCT_ID_MAX_LENGTH = 200
+
+
 class SignupUtm(BaseModel):
     """The attribution the landing read from its own URL, if any. Every key optional and
     bounded: an ad platform's macro left unexpanded (`{{AD_SET_ID}}`) is stored as the
@@ -414,6 +420,7 @@ class CompanyCreate(BaseModel):
         max_digits=7, decimal_places=2, ge=TARIFFA_MIN, le=TARIFFA_MAX
     )
     utm: SignupUtm | None = None
+    distinct_id: SafeStr | None = Field(default=None, max_length=DISTINCT_ID_MAX_LENGTH)
 
     @field_validator("nome_azienda", "referente", "durata", mode="after")
     @classmethod

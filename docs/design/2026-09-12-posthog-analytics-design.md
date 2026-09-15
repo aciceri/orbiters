@@ -138,6 +138,14 @@ on history change. Events, in the wizards and the member area:
 
 The hub's own MCP server is not instrumented: its only user is Ivan.
 
+**Amended 2026-09-15 (REB-215).** «Server-side events from the API are left out of this
+version» stops holding for one event: `iscrizione_completata`, sent by the API from
+`rebase_core.analytics` after `POST /api/hub/freelancers` and `/companies` answer, on
+the browser's own distinct id (posted with the application) and with
+`$process_person_profile: false`. The first two days of `wizard_*` showed why: three of
+seven profiles reached the hub with no browser event at all. `wizard_completato` stays
+as the client-side funnel's last step; the server event is what counts completions.
+
 ## The CRM's MCP server (ORB-186)
 
 `posthog` (the Python SDK, 7.40 or later, which knows `mcp` 2.x and `MCPServer`) as a

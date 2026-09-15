@@ -79,8 +79,15 @@ export interface FreelancerApplication {
 
 /** Multipart, because the CV is a file. Empty optional fields are left out rather than
  *  sent as `""`, which the API would try to validate as a value. */
-export function applyAsFreelancer(data: FreelancerApplication, utm: Utm): Promise<{ ok: true }> {
+export function applyAsFreelancer(
+  data: FreelancerApplication,
+  utm: Utm,
+  distinctId: string | null = null,
+): Promise<{ ok: true }> {
   const form = new FormData()
+  // The browser's PostHog id, when the page is measured: the API sends the completion
+  // event itself (REB-215), and this is what puts it on the same person as the steps.
+  if (distinctId) form.set('distinct_id', distinctId)
   form.set('nome', data.nome)
   form.set('cognome', data.cognome)
   form.set('email', data.email)
@@ -105,8 +112,19 @@ export interface CompanyRequest {
   budget_giornaliero: string
 }
 
-export function requestPeople(data: CompanyRequest, utm: Utm): Promise<{ ok: true }> {
-  return request('/api/hub/companies', json({ ...data, utm: Object.keys(utm).length ? utm : null }))
+export function requestPeople(
+  data: CompanyRequest,
+  utm: Utm,
+  distinctId: string | null = null,
+): Promise<{ ok: true }> {
+  return request(
+    '/api/hub/companies',
+    json({
+      ...data,
+      utm: Object.keys(utm).length ? utm : null,
+      ...(distinctId ? { distinct_id: distinctId } : {}),
+    }),
+  )
 }
 
 // ---- the admin area -------------------------------------------------------------------

@@ -1,9 +1,11 @@
 import { useLocation, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { distinctId } from '@rebase/analytics/browser'
 import { readPerkParam, useWizardAnalytics } from '@/lib/analytics'
 import { ApiError, applyAsFreelancer, type FreelancerApplication } from '@/lib/api'
 import { isLinkedinName, LINKEDIN_OWN_PROFILE, linkedinFieldValue, linkedinProfile } from '@/lib/linkedin'
 import { resolveAttribution } from '@/lib/utm'
+import { clearDraft, loadDraft, saveDraft } from '@/wizard/draft'
 import { ChoiceField, FileField, LinksField, TextField } from '@/wizard/fields'
 import { Wizard, type Step } from '@/wizard/Wizard'
 
@@ -242,6 +244,43 @@ function GuideBanner() {
   )
 }
 
+export const FREELANCER_DRAFT_KEY = 'rebase.wizard.freelance'
+
+/** What this is and how long it takes, above the first question (REB-215). The person
+ *  who arrived from an ad was asked their name before being told anything, and three
+ *  of nine left on that screen without typing a letter. */
+function Intro() {
+  return (
+    <aside
+      aria-label="Cos’è rebase"
+      className="border-l-4 border-(--landing-ink) bg-card py-2 pl-4 pr-2"
+    >
+      <p className="font-medium">rebase è la community di chi fa software in proprio in Italia.</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {FREELANCER_STEPS.length} domande, circa tre minuti: chi sei, cosa fai e quanto costi,
+        così le aziende che cercano persone ti trovano. Dentro c’è anche PigroCRM, gratis.
+      </p>
+    </aside>
+  )
+}
+
+/** The draft was picked up where it was left: say so, and keep the blank form one
+ *  click away for whoever is not the same person, or wants to start over. */
+function ResumedNote({ onRestart }: { onRestart: () => void }) {
+  return (
+    <aside
+      role="note"
+      aria-label="Risposte ritrovate"
+      className="mx-auto mb-8 flex w-full max-w-2xl flex-wrap items-center justify-between gap-2 border-(length:--landing-border-width) bg-card px-4 py-3 text-sm"
+    >
+      <span>Abbiamo ritrovato le risposte di prima: riprendi da dove eri.</span>
+      <button type="button" className="font-medium underline underline-offset-2" onClick={onRestart}>
+        Ricomincia
+      </button>
+    </aside>
+  )
+}
+
 export function FreelancerWizard() {
   const navigate = useNavigate()
   // The URL's own query string, from the router rather than `window`: the attribution
@@ -249,15 +288,39 @@ export function FreelancerWizard() {
   const searchStr = useLocation({ select: (location) => location.searchStr })
   const perk = readPerk(searchStr)
   const analytics = useWizardAnalytics('freelance', searchStr)
-  const [value, setValue] = useState<FreelancerApplication>(EMPTY)
+  // Read once, when the page opens: what the person left last time, if anything, minus
+  // the CV (`wizard/draft.ts` says why it cannot follow).
+  const [draft] = useState(() => loadDraft<FreelancerApplication>(FREELANCER_DRAFT_KEY))
+  const [value, setValue] = useState<FreelancerApplication>(() => ({ ...EMPTY, ...draft?.value, cv: null }))
+  const [index, setIndex] = useState(draft?.index ?? 0)
+  const [resumed, setResumed] = useState(draft !== null)
+  // Bumped by «Ricomincia»: a new key remounts the engine on the first question.
+  const [attempt, setAttempt] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<{ message: string; step?: string } | null>(null)
+
+  // Once the application is in, nothing is saved again, whatever React still has to
+  // flush: the next visit must open a blank form, not the one just sent.
+  const sent = useRef(false)
+  useEffect(() => {
+    if (!sent.current) saveDraft(FREELANCER_DRAFT_KEY, value, index)
+  }, [value, index])
+
+  function restart() {
+    clearDraft(FREELANCER_DRAFT_KEY)
+    setValue(EMPTY)
+    setIndex(0)
+    setResumed(false)
+    setAttempt((current) => current + 1)
+  }
 
   async function submit() {
     setSubmitting(true)
     setSubmitError(null)
     try {
-      await applyAsFreelancer(value, resolveAttribution(searchStr))
+      await applyAsFreelancer(value, resolveAttribution(searchStr), distinctId())
+      sent.current = true
+      clearDraft(FREELANCER_DRAFT_KEY)
       analytics.completed()
       void navigate({ to: '/grazie', search: { chi: 'freelance' } })
     } catch (error) {
@@ -274,7 +337,9 @@ export function FreelancerWizard() {
   return (
     <>
       {perk === 'guida' && <GuideBanner />}
+      {resumed && <ResumedNote onRestart={restart} />}
       <Wizard
+        key={attempt}
         title="Entra in rebase"
         steps={FREELANCER_STEPS}
         value={value}
@@ -284,6 +349,9 @@ export function FreelancerWizard() {
         submitError={submitError}
         submitLabel="Invia la candidatura"
         onStep={analytics.onStep}
+        initialIndex={resumed ? (draft?.index ?? 0) : 0}
+        onIndexChange={setIndex}
+        intro={<Intro />}
       />
     </>
   )

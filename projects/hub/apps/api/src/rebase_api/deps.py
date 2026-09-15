@@ -9,6 +9,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from rebase_core.admin import AdminRead, AdminService
+from rebase_core.analytics import Tracker, tracker_from_settings
 from rebase_core.config import Settings, get_settings
 from rebase_core.db import create_engine_from_settings, session_factory
 from rebase_core.http import HttpCall, urllib_call
@@ -86,3 +87,12 @@ def get_http_call() -> HttpCall:
 
 
 HttpCallDep = Annotated[HttpCall, Depends(get_http_call)]
+
+
+def get_tracker(settings: SettingsDep) -> Tracker | None:
+    """The server half of the wizard's analytics (REB-215): `None` without a key, so a
+    route that has one schedules the event and a route that has none does nothing."""
+    return tracker_from_settings(settings)
+
+
+TrackerDep = Annotated[Tracker | None, Depends(get_tracker)]

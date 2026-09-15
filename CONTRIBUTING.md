@@ -34,7 +34,7 @@ Typst on `PATH`; without them about thirty tests fail with
 
 ## Tracker
 
-Every change starts from an issue in Linear, team `Orbiters`. Linear is the source of
+Every change starts from an issue in Linear, team `rebase`. Linear is the source of
 truth: work that is not on the board did not happen. Four levels: an **initiative** is
 a product and is permanent; a **project** is a release with an end, closed when it
 ships; a **project milestone** is an outcome inside a release; an **issue** is one

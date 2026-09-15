@@ -189,8 +189,8 @@ tested on a branch and is proven on the trunk instead.
   Anything written from now on, there included, is English.
 - A design decision that is a rule rather than a picture goes in
   `docs/design/DECISIONS.md`, as a row, with the date.
-- **The tracker is Linear, and using it is not optional.** Team `Orbiters`, issue
-  prefix `ORB-`. Work that is not on the board did not happen, for either of us or
+- **The tracker is Linear, and using it is not optional.** Team `rebase`, issue
+  prefix `REB-`. Work that is not on the board did not happen, for either of us or
   for any agent either of us runs, and there is no second tracker: the GitHub
   issues and any GitHub Project on other repositories are not part of this repo's
   flow.
@@ -233,10 +233,10 @@ tested on a branch and is proven on the trunk instead.
   release. An update that only restates the board is noise.
 - Linear's GitHub app is **installed** on this org since 2026-09-09 (`linear-code`,
   every repository, granted by the org owner `slavni96`), and a branch or a PR carrying
-  the issue id **does** link itself: PR #33 attached to ORB-80 within 25 seconds.
+  the issue id **does** link itself: PR #33 attached to REB-80 within 25 seconds.
   Moving a state is a separate mechanism, the team's own pull request automation in
   Linear's workflow settings, and it is not configured here: that same linked PR left
-  ORB-80 in `In Progress`. So keep moving states by hand, with the evidence in a
+  REB-80 in `In Progress`. So keep moving states by hand, with the evidence in a
   comment, and treat an issue reference in a commit body as a pointer rather than a
   link. Drop the manual step only once a merge is seen closing its own issue, and
   update this line with the date when it is.

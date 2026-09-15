@@ -10,8 +10,8 @@ are not part of this repo's flow.
 
 | | |
 |---|---|
-| Workspace | `joinorbiters`, the Linear slug, which the GitHub org rename of 2026-09-15 did not touch |
-| Team | **Orbiters**, issue prefix `ORB-`. One team, and that does not change |
+| Workspace | `letsrebase`, the Linear slug since the workspace itself was renamed on 2026-09-15, the same day as the GitHub org |
+| Team | **rebase**, issue prefix `REB-`. The team was `Orbiters` with prefix `ORB-` until 2026-09-15; the rename kept every issue's number, so an `ORB-193` you find in older text or history is `REB-193` today. One team, and that does not change |
 | Initiative | a product, permanent: `Website`, `Hub`, `PigroCRM`, `Monorepo` |
 | Project | a release, or a body of work with an end. It closes when it ships, which is what lets its issues archive |
 | Milestone | a coherent outcome inside a project's release, not an issue. Costs nothing, shows progress on its own |
@@ -27,8 +27,8 @@ are not part of this repo's flow.
 The two lists above are the board's, checked against `list_issue_labels` with
 `includeGroups: true` on 2026-09-10, and the board is the authority: an earlier version of
 this page named `Bug` and `core`, and an issue filed with those names failed with "Could
-not find labels" (ORB-33); a later one still listed nine area labels after `area:hub` had
-made them ten (ORB-76). Five of the type labels carry a description on the board, and
+not find labels" (REB-33); a later one still listed nine area labels after `area:hub` had
+made them ten (REB-76). Five of the type labels carry a description on the board, and
 it is the one to apply: `fix` is something that does not do what it says it does;
 `feature` is new behaviour a user or an agent can observe; `refactor` is existing behaviour
 made better with no new capability; `chore` is maintenance with no change in behaviour;
@@ -36,7 +36,7 @@ made better with no new capability; `chore` is maintenance with no change in beh
 `spike` mean what their names say.
 
 The projects on the board, read with `list_projects` on 2026-09-10. This table is a
-snapshot and the board is the authority: `list_projects` with `team: "Orbiters"`, which
+snapshot and the board is the authority: `list_projects` with `team: "rebase"`, which
 answers completed projects too, is what to trust when the two disagree. Opening or closing
 a project is a board action with no PR of its own, so whoever does it adds or updates the
 row here, in the PR that ships the release or in one of its own.
@@ -56,7 +56,7 @@ row here, in the PR that ships the release or in one of its own.
 `Monorepo hygiene v1` was where repository-wide work that belongs to no product went
 (CI cost, the licence, this page). It is closed, and nothing has replaced it: a
 repository-wide issue that fits no open `Monorepo` project is filed with no project,
-which is what ORB-131 and ORB-136 did, until somebody opens a `Monorepo hygiene v2` with
+which is what REB-131 and REB-136 did, until somebody opens a `Monorepo hygiene v2` with
 a scope it can reach.
 
 Every project always carries a lead and both members, Lorenzo and Ivan, no matter who
@@ -65,7 +65,7 @@ four of the eight above are: `Hub v1`, `Website v2`, `Deploy and access hygiene 
 `Indexing and SEO v1` carry Lorenzo alone as of 2026-09-10. The MCP surface cannot repair
 that, since `save_project` takes a `lead` and has no member field (§ API details), so the
 second member is added by hand in the Linear UI, at creation, and on those four under
-ORB-137.
+REB-137.
 
 This replaces the old rule that gave every monorepo project (`projects/pigrocrm`,
 `projects/website`) its own permanent Linear project. Initiatives are the permanent
@@ -124,7 +124,7 @@ a bug in the skill.
 The MCP server is `linear-orbiters`, enrolled per client outside this repository. It is
 the Linear surface to use: another Linear server on the same machine reaches another
 company's board, not this one. When `linear-orbiters` is not in the session, the web app
-at `linear.app/joinorbiters` is the fallback, as the `linear-ticket` skill says; a failing
+at `linear.app/letsrebase` is the fallback, as the `linear-ticket` skill says; a failing
 or wrong-workspace connector is never a reason to start work or open a PR without its
 card.
 
@@ -237,7 +237,7 @@ would mislead a reader is worse.
   one label from a group. An issue that genuinely spans two areas is usually two issues,
   or belongs to the area that owns the fix. Do not spend a call trying to apply two: the
   second is silently dropped.
-- **Never invent an issue id.** If you reference `ORB-N` in a commit, a comment or a
+- **Never invent an issue id.** If you reference `REB-N` in a commit, a comment or a
   document, it exists and you have read it.
 - **The tracker is not documentation.** A design rule goes in `docs/design/DECISIONS.md`,
   a procedure goes in `AGENTS.md` or a project README, and an issue points at them. Work
@@ -251,20 +251,20 @@ would mislead a reader is worse.
 Linear's GitHub app (`linear-code`) is installed on the GitHub org since 2026-09-09,
 on every repository, granted by the org owner (`slavni96`) after Lorenzo was made an
 owner of the org the same day. That org was `joinorbiters` then and is `letsrebase`
-since 2026-09-15 (ORB-204); the installation followed the rename, and so did the links
+since 2026-09-15 (REB-204); the installation followed the rename, and so did the links
 Linear had already attached to pull requests. Installing it gives Linear the pull
 request and issue events, and the diffs show up in Linear for anyone whose personal
 GitHub account is connected there.
 
-**Linking works, and it is measured.** PR #33 attached itself to ORB-80 within 25
+**Linking works, and it is measured.** PR #33 attached itself to REB-80 within 25
 seconds of `gh pr create`, matching on the `orb-80` in the branch name rather than on
 the exact branch Linear suggests, so any branch carrying the id is enough.
 
 **The state did not move, and that is a different mechanism.** Status changes are the
 team's own pull request automation (Linear: Settings, Team, Workflow), configured per
-team, and it is not configured here: ORB-80 was still `In Progress` with the PR open
+team, and it is not configured here: REB-80 was still `In Progress` with the PR open
 and linked, and the five PRs merged the same day closed nothing. So reference the issue
-in the commit body when the commit is the work (`ORB-9 covers the real fix`), treat
+in the commit body when the commit is the work (`REB-9 covers the real fix`), treat
 that reference as a pointer, and move the state yourself with the evidence in a
 comment. Turn the automation on, or watch a merge close its own issue, and this
 paragraph plus the two skills that repeat it can drop the manual step, with the date.
@@ -286,7 +286,7 @@ paragraph plus the two skills that repeat it can drop the manual step, with the 
   else's a second earlier, and the field keeps no history the MCP surface can read, so
   reading the owner before you write is the only guard there is.
 - `gitBranchName` is rendered for **whoever reads the issue**, not for its assignee: the
-  same card comes back as `fiorelorenzo/orb-41-...` to one of us and `mariorossi/orb-41-...`
+  same card comes back as `fiorelorenzo/reb-41-...` to one of us and `mariorossi/reb-41-...`
   to the other. A branch prefix therefore proves nothing about who owns the work.
 - `list_issues` filters on `assignee: "me"` correctly, and does **not** filter on an
   empty one: `assignee: null` and `assignee: "null"` are both accepted and both silently
@@ -294,7 +294,7 @@ paragraph plus the two skills that repeat it can drop the manual step, with the 
   (measured 2026-09-09, against the tool's own description). There is no `createdBy`
   filter either. Ask for `assigneeId` and `createdById` in `fields` and filter the rows
   yourself, and bound the call before you do: it defaults to 50 rows and pages with
-  `cursor`, so an unbounded one answers with a slice of a board already past ORB-58 that
+  `cursor`, so an unbounded one answers with a slice of a board already past REB-58 that
   reads like the whole of it. Narrow server-side first (`state: "Todo"`, then
   `state: "Backlog"`) and raise `limit`.
 - `list_issues` takes one `state` per call, and a state **type** is a valid value:

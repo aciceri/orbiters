@@ -110,7 +110,7 @@ restate the issue list.
 - CI: the run id and the job name that matters, `run 34351172643, pigrocrm · web`.
 - Code: `path/from/repo/root.py:123`, or the symbol in backticks.
 - PRs and pages: the full URL.
-- Issues: `ORB-N`, only one you have read.
+- Issues: `REB-N`, only one you have read.
 
 ## What never goes on the board
 

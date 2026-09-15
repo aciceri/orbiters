@@ -12,12 +12,12 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AdminLayout } from './AdminLayout'
 
-vi.mock('@orbiters/analytics/browser', () => ({
+vi.mock('@rebase/analytics/browser', () => ({
   capture: vi.fn(),
   identifyUser: vi.fn(),
   resetUser: vi.fn(),
 }))
-import { identifyUser, resetUser } from '@orbiters/analytics/browser'
+import { identifyUser, resetUser } from '@rebase/analytics/browser'
 import { ME_KEY } from '@/lib/auth'
 
 const IVAN = { id: 'a1', email: 'ivan@orbiters.it', nome: 'Ivan', attivo: true, created_at: '2026-09-10T10:00:00Z' }

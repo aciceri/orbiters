@@ -73,10 +73,10 @@ importers:
 
   projects/hub/apps/web:
     dependencies:
-      '@orbiters/analytics':
+      '@rebase/analytics':
         specifier: workspace:*
         version: link:../../../../shared/analytics
-      '@orbiters/brand':
+      '@rebase/brand':
         specifier: workspace:*
         version: link:../../../../shared/brand
       '@tailwindcss/vite':
@@ -170,10 +170,10 @@ importers:
       '@dnd-kit/core':
         specifier: 6.3.1
         version: 6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@orbiters/analytics':
+      '@rebase/analytics':
         specifier: workspace:*
         version: link:../../../../shared/analytics
-      '@orbiters/brand':
+      '@rebase/brand':
         specifier: workspace:*
         version: link:../../../../shared/brand
       '@tailwindcss/vite':
@@ -303,19 +303,19 @@ importers:
 
   projects/website:
     dependencies:
-      '@orbiters/brand':
+      '@rebase/brand':
         specifier: workspace:*
         version: link:../../shared/brand
     devDependencies:
       '@eslint/js':
         specifier: 'catalog:'
         version: 9.39.5
-      '@orbiters/analytics':
-        specifier: workspace:*
-        version: link:../../shared/analytics
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.62.1
+      '@rebase/analytics':
+        specifier: workspace:*
+        version: link:../../shared/analytics
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3

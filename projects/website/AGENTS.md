@@ -27,7 +27,7 @@ imports. Change the key there first, then here.
 ## Colour, typeface and the mark come from `shared/brand`
 
 Never restate them. `src/palette-plugin.ts` reads the shared tokens out of
-`@orbiters/brand/palette.css` at build time and prepends them to the stylesheets; the
+`@rebase/brand/palette.css` at build time and prepends them to the stylesheets; the
 CRM consumes the same file through its Tailwind theme. A hex typed into a stylesheet
 here is the fork both mechanisms exist to prevent, and the plugin fails the build when
 the palette stops being extractable rather than shipping pages with no colour.

@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest'
  */
 const tokensCss = readFileSync(join(__dirname, 'tokens.css'), 'utf-8')
 const brandCss = readFileSync(
-  fileURLToPath(import.meta.resolve('@orbiters/brand/palette.css')),
+  fileURLToPath(import.meta.resolve('@rebase/brand/palette.css')),
   'utf-8',
 )
 const css = `${brandCss}\n${tokensCss}`

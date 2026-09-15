@@ -1,4 +1,4 @@
-import { identifyGroup, identifyUser, resetUser } from '@orbiters/analytics/browser'
+import { identifyGroup, identifyUser, resetUser } from '@rebase/analytics/browser'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,7 +10,7 @@ vi.mock('./api', async (importOriginal) => {
   return { ...actual, api: { ...actual.api, GET: vi.fn(), POST: vi.fn() } }
 })
 
-vi.mock('@orbiters/analytics/browser', () => ({
+vi.mock('@rebase/analytics/browser', () => ({
   capture: vi.fn(),
   identifyGroup: vi.fn(),
   identifyUser: vi.fn(),

@@ -14,7 +14,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { POSTHOG_ASSET_HOST, POSTHOG_HOST, POSTHOG_KEY } from '@orbiters/analytics'
+import { POSTHOG_ASSET_HOST, POSTHOG_HOST, POSTHOG_KEY } from '@rebase/analytics'
 import { describe, expect, it } from 'vitest'
 
 const PIXEL_ID = '9r6qrnPxBV8WDVGtpuaqxh'

@@ -1,4 +1,4 @@
-# @orbiters/brand
+# @rebase/brand
 
 The palette, the typeface, the four-tile mark and the wordmark. One source, no copies,
 read by every surface.
@@ -13,7 +13,7 @@ read by every surface.
 | `wordmark-paper.svg`, `lockup-paper.svg` | The same two on a dark ground | The landing's dark bands, a dark slide |
 | `tools/build-wordmark.py` | How the four SVGs were drawn, and the only way to redraw them | Nobody at build time: run it by hand when the face changes |
 | `echo/` | The echo logo: «rebase» solid under three outlined copies of itself, six colourways as PNG | Covers, slides, social pictures; nothing yet at header size |
-| `tools/build-echo.mjs` | How the six PNGs were drawn, and the only way to redraw them | Nobody at build time: `pnpm --filter @orbiters/brand build:echo` |
+| `tools/build-echo.mjs` | How the six PNGs were drawn, and the only way to redraw them | Nobody at build time: `pnpm --filter @rebase/brand build:echo` |
 
 ## Why a package rather than a file in one of the projects
 

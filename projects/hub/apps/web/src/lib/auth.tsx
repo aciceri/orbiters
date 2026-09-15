@@ -1,4 +1,4 @@
-import { resetUser } from '@orbiters/analytics/browser'
+import { resetUser } from '@rebase/analytics/browser'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, admin, type Admin } from './api'
 

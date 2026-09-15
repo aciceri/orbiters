@@ -11,8 +11,8 @@
 /* The palette, the typeface stack and the radius scale are shared with the
    landing, which is its own project and has no Tailwind at all: they live in
    `packages/brand` so there is one source of colour and no copy of it. */
-@import '@orbiters/brand/font.css';
-@import '@orbiters/brand/palette.css';
+@import '@rebase/brand/font.css';
+@import '@rebase/brand/palette.css';
 
 /* The one theme token that is the application's alone: the landing's system is
    square by design and shares no radius with it. */

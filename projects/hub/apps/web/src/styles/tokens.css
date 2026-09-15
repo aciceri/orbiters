@@ -14,8 +14,8 @@
    nothing from this project. `Shell` carries the `site` class on all four public
    pages (ORB-74); the two wizards' own fields and buttons are still ORB-75. */
 @import 'tailwindcss';
-@import '@orbiters/brand/font.css';
-@import '@orbiters/brand/palette.css';
+@import '@rebase/brand/font.css';
+@import '@rebase/brand/palette.css';
 
 /* Tailwind v4 defaults `dark:` to the OS `prefers-color-scheme` media query. The hub
    has no dark theme (no dark tokens, nothing that sets a class), so that default's one

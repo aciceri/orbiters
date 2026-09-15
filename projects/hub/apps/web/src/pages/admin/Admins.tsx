@@ -19,7 +19,7 @@ import { formatDate } from '@/lib/format'
 import { Empty, Header } from './lists'
 
 const ADMINS_KEY = ['admins'] as const
-/** Mirrors `PASSWORD_MIN_LENGTH` in `orbiters_core.admin`; the API is the one that refuses. */
+/** Mirrors `PASSWORD_MIN_LENGTH` in `rebase_core.admin`; the API is the one that refuses. */
 const PASSWORD_MIN_LENGTH = 10
 
 const EMPTY: AdminCreate = { nome: '', email: '', password: '' }

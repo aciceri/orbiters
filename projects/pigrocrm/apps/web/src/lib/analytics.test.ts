@@ -1,14 +1,14 @@
 import createClient from 'openapi-fetch'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@orbiters/analytics/browser', () => ({
+vi.mock('@rebase/analytics/browser', () => ({
   capture: vi.fn(),
   identifyGroup: vi.fn(),
   identifyUser: vi.fn(),
   resetUser: vi.fn(),
 }))
 
-import { capture, identifyGroup, identifyUser, resetUser } from '@orbiters/analytics/browser'
+import { capture, identifyGroup, identifyUser, resetUser } from '@rebase/analytics/browser'
 import type { paths } from './api-types'
 import { analyticsMiddleware, eventFor, forgetSession, identifySession } from './analytics'
 

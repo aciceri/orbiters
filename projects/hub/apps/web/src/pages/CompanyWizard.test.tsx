@@ -11,12 +11,12 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CompanyWizard } from './CompanyWizard'
 
-vi.mock('@orbiters/analytics/browser', () => ({
+vi.mock('@rebase/analytics/browser', () => ({
   capture: vi.fn(),
   identifyUser: vi.fn(),
   resetUser: vi.fn(),
 }))
-import { capture } from '@orbiters/analytics/browser'
+import { capture } from '@rebase/analytics/browser'
 
 /** The wizard mounted on its own little router, so `navigate` has somewhere to go. */
 function mount(path = '/aziende') {

@@ -12,6 +12,8 @@ read by every surface.
 | `lockup.svg` | The mark at cap height, then the word | The same, plus the social pictures |
 | `wordmark-paper.svg`, `lockup-paper.svg` | The same two on a dark ground | The landing's dark bands, a dark slide |
 | `tools/build-wordmark.py` | How the four SVGs were drawn, and the only way to redraw them | Nobody at build time: run it by hand when the face changes |
+| `echo/` | The echo logo: «rebase» solid under three outlined copies of itself, five colourways as PNG | Covers, slides, social pictures; nothing yet at header size |
+| `tools/build-echo.mjs` | How the five PNGs were drawn, and the only way to redraw them | Nobody at build time: `pnpm --filter @orbiters/brand build:echo` |
 
 ## Why a package rather than a file in one of the projects
 
@@ -75,3 +77,31 @@ through HarfBuzz so the kerning is the font's own, and rewrites all four SVGs. N
 hand-edit an SVG: the next run would silently undo it, and `--check` fails while it
 stands, byte for byte, without writing anything. The source font is not committed,
 because nothing serves it and the artefacts are the files it produces.
+
+## The echo logo
+
+Ivan chose it on 2026-09-15 (ORB-199, committed by ORB-200): the word solid, and above it
+three outlined copies of the word stacked like cut-outs, each one hiding what of the
+copies behind it falls inside its own letters. It reads «rebase» and it looks like a
+branch being replayed, which the plain wordmark does not say.
+
+| File | On | Word | Copies |
+|---|---|---|---|
+| `echo/echo-ink-watermelon-outlines.png` | white and light grounds, **the default** | `--color-prussian-blue` | `--color-watermelon` |
+| `echo/echo-white.png` | dark grounds, **the default** | white | white |
+| `echo/echo-ink.png` | light grounds, one colour | `--color-prussian-blue` | `--color-prussian-blue` |
+| `echo/echo-watermelon.png` | light grounds, one colour | `--color-watermelon` | `--color-watermelon` |
+| `echo/echo-watermelon-white-outlines.png` | dark grounds | `--color-watermelon` | white |
+
+All five are transparent, 2572x1222, and drawn by `tools/build-echo.mjs` from
+`palette.css` and the committed woff2, so a change of colour or of face is a redraw and
+never an edit in a design tool. The script's header lists the rules that make it look
+right (the outline traced from the letter's edge rather than stroked, and what a letter
+covers), and a directory as its argument renders there without touching the committed
+files. Glyph rasterisation differs between macOS and Linux, so a redraw on another
+machine is a binary diff with no visible change: quote the chromium line it prints.
+
+Two things are still open on ORB-199, deliberately not settled here. The echo is set in
+Outfit 700, while the wordmark above is Space Grotesk 700 (ORB-197), so one of the two
+faces has to give. And the stack is a picture: at the 18px of the header chip the copies
+crowd the word, so the lockup, the header and an avatar need a compact variant.

@@ -41,3 +41,5 @@ data/
 # committed: it sits a directory deeper because nginx serves /assets and nothing
 # else at the root (ORB-112).
 !projects/website/src/public/assets/*.png
+# The echo logo, drawn by shared/brand/tools/build-echo.mjs and committed (ORB-200).
+!shared/brand/echo/*.png

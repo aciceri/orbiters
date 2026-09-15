@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "description": "The palette, the typeface, the four-tile mark and the wordmark, shared by every surface.",
+  "scripts": {
+    "build:echo": "node tools/build-echo.mjs"
+  },
   "exports": {
     "./palette.css": "./palette.css",
     "./font.css": "./font.css",
@@ -13,6 +16,7 @@
     "./lockup.svg": "./lockup.svg",
     "./wordmark-paper.svg": "./wordmark-paper.svg",
     "./lockup-paper.svg": "./lockup-paper.svg",
+    "./echo/*": "./echo/*",
     "./package.json": "./package.json"
   },
   "files": [
@@ -23,6 +27,10 @@
     "wordmark.svg",
     "lockup.svg",
     "wordmark-paper.svg",
-    "lockup-paper.svg"
-  ]
+    "lockup-paper.svg",
+    "echo"
+  ],
+  "devDependencies": {
+    "@playwright/test": "catalog:"
+  }
 }

@@ -16,7 +16,10 @@ it and a document disagree, the document is right and the skill has a bug.
 
 1. **A Linear issue exists and is yours.** Find it with `list_issues` or file it with
    the `linear-ticket` skill. No issue, no branch: the issue is where the reasons live,
-   and a PR written first loses them. Yours means what `docs/tracker.md` § Who owns a
+   and a PR written first loses them. A Linear tool that fails, or that answers a team
+   other than **Orbiters**, is not a reason to go on without the card: file it from the
+   web app as the `linear-ticket` skill § When `linear-orbiters` is not in the session
+   says, or stop and tell the person. Yours means what `docs/tracker.md` § Who owns a
    card says: assigned to the account this session writes as, or unassigned and filed by
    it, or labelled `parallel` and unclaimed. A card assigned to the other person is not
    made yours by opening a PR for it, nor by their having asked you for it, and a PR on
@@ -148,6 +151,23 @@ changed, or a pair cannot be captured, the section says so and why. Deleting it 
 forgetting.
 
 The last line of the body: `Linear: ORB-N.`
+
+## Before `gh pr create`: the card is on the PR
+
+The PR is not opened until its body ends with `Linear: ORB-N.`, where `ORB-N` is an id
+you read from the board in this session (`get_issue`, or the card's page), on a card that
+is yours and whose `gitBranchName` is the branch you are pushing. Check the file you are
+about to send, not your memory of it:
+
+```bash
+tail -n 1 pr-body.md | grep -Eq '^Linear: ORB-[0-9]+\.$' || echo "no card, no PR"
+```
+
+The id also goes on the last line of the work commit (§ Commits). There is no
+placeholder: «Linear: not filed yet», «TBD», «the id belongs here before this merges» are
+each a PR opened without its card, which is what PR #111 did (ORB-201 was filed after it,
+by hand, ORB-202 is this rule). When the card cannot be read or filed at all, the PR
+waits and the person hears why; a PR without its card is not the smaller harm.
 
 ## After `gh pr create`
 

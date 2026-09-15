@@ -20,6 +20,32 @@ it is the account this session writes as, it is what `assignee: "me"` will mean,
 what every ownership test below compares against, and it is not necessarily the person
 talking to you. Both people on this team run agents against the same board.
 
+## When `linear-orbiters` is not in the session
+
+A session can have no `linear-orbiters` and still have a Linear tool: a server named
+`linear`, logged in to another company's workspace. On 2026-09-15 `get_user "me"` on it
+answered an `@paid.ai` account in team `PAID`, and `list_issues` with `team: "Orbiters"`
+answered an empty list rather than an error. An empty list from the first read is a
+wrong workspace until proven otherwise, not an empty board: `get_issue` on an `ORB-` id
+you know exists (one from `git log origin/main`) settles it. Never write through that
+server.
+
+What reaches this board then is the web app in the Chrome session, logged in to
+`linear.app/joinorbiters`. The lists are readable as page text
+(`/team/ORB/active`, `/team/ORB/backlog`) for the neighbour scan. A new card is one URL,
+with every field of § Filing except the relations:
+
+```
+https://linear.app/joinorbiters/team/ORB/new?title=..&description=..&status=In%20Progress&priority=Medium&assignee=me&labels=feature,area:hub&project=<project name>
+```
+
+Build it with `URLSearchParams` and turn `+` into `%20`, check the modal shows each field,
+click «Create issue» by its ref, then open `/issue/ORB-N` and read the fields back. The
+branch is the slug of that page's URL after `ORB-N/`, prefixed `<you>/orb-N-`. Relations
+and comments are added by hand on the card; never `type` multi-line text there, Enter
+submits and the rest runs as shortcuts on the issue. If neither surface is available,
+the card is not filed and the work waits: say so to the person.
+
 ## Finding before filing, and whether it is yours to take
 
 `list_issues` with `team: "Orbiters"` and `query: "<two or three words of the problem>"`,

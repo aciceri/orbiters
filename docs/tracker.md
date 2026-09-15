@@ -122,8 +122,11 @@ words are written). This file stays the source; a disagreement between it and a 
 a bug in the skill.
 
 The MCP server is `linear-orbiters`, enrolled per client outside this repository. It is
-the only Linear surface you should be using: no other server, and no browser session,
-reaches this team's board.
+the Linear surface to use: another Linear server on the same machine reaches another
+company's board, not this one. When `linear-orbiters` is not in the session, the web app
+at `linear.app/joinorbiters` is the fallback, as the `linear-ticket` skill says; a failing
+or wrong-workspace connector is never a reason to start work or open a PR without its
+card.
 
 Before your first write in a session, two read calls. `list_projects` or `list_issues`,
 to check the team name that comes back: two Linear workspaces are enrolled on this

@@ -14,7 +14,9 @@ function nginxMap(conf: string): { pages: Record<string, string>; redirects: Rec
     /^\s*location = (\S+)\s*\{\s*(?:try_files (\S+) =404|return 301 (\S+));\s*\}/gm,
   )) {
     if (file) pages[path!] = file
-    if (to) redirects[path!] = to
+    // `$is_args$args` is how nginx says "carry the query string", which the dev server
+    // does in code instead (`handle`), so the target compared here is the path alone.
+    if (to) redirects[path!] = to.replace('$is_args$args', '')
   }
   return { pages, redirects }
 }
@@ -26,6 +28,10 @@ describe('the path map, against deploy/nginx.conf', () => {
 
   it('redirects the same paths to the same places', () => {
     expect(REDIRECTS).toEqual(nginxMap(nginx).redirects)
+  })
+
+  it('carries the query string through the redirect, so an old ad link keeps its utm_*', () => {
+    expect(nginx).toMatch(/location = \/orbiters \{ return 301 \/community\$is_args\$args; \}/)
   })
 
   it('reads at least the four pages out of nginx.conf, so a reformatted file cannot pass as an empty map', () => {

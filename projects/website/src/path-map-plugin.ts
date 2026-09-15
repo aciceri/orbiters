@@ -85,7 +85,9 @@ function handle(req: IncomingMessage, res: ServerResponse, next: () => void): vo
   switch (decision.kind) {
     case 'redirect':
       res.statusCode = 301
-      res.setHeader('Location', decision.to)
+      // With the query string, as nginx does with `$is_args$args`: the links that still
+      // say /orbiters are ads and newsletters, and they carry the utm_* the form reads.
+      res.setHeader('Location', `${decision.to}${query ? `?${query}` : ''}`)
       res.end()
       return
     case 'page':

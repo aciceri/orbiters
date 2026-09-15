@@ -1,4 +1,4 @@
-/* The field of tiles, shared by the landing and by the community page.
+/* The field of tiles, shared by the landing and by community.js.
  *
  * Written as an IIFE that publishes `window.__pigroField`, not as an ES module with
  * exports: the page scripts that use it (`landing.js`, `community.js`) stay

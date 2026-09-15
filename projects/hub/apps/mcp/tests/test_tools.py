@@ -7,6 +7,7 @@ from mcp import Client
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
+from orbiters_core.perks import guide_bytes
 from orbiters_core.schemas import SignupCreate
 from orbiters_core.service import SignupService
 from orbiters_mcp.server import build_server
@@ -132,6 +133,7 @@ async def test_the_admin_tools_read_and_move_a_candidate_without_the_cv(
             "create_freelancer_from_signup",
             "list_freelancers",
             "get_freelancer",
+            "read_freelancer_cv",
             "set_freelancer_status",
             "add_freelancer_comment",
             "list_companies",
@@ -318,4 +320,66 @@ async def test_login_stats_reads_an_empty_hub_and_a_card_carries_its_count(
         assert stats["recenti"] == []
         card = _payload(await client.call_tool("get_freelancer", {"freelancer_id": freelancer_id}))
         assert card["accessi"] == 0 and card["ultimo_accesso"] is None
+    _wipe(factory)
+
+
+async def test_the_cv_is_read_as_text_and_a_card_without_one_answers_a_sentence(
+    factory: sessionmaker[Session],
+) -> None:
+    from decimal import Decimal
+
+    from orbiters_core.freelancers import FreelancerService
+    from orbiters_core.schemas import FreelancerCreate, FreelancerDraft
+
+    session = factory()
+    try:
+        with_cv = FreelancerService(session).apply(
+            FreelancerCreate(
+                nome="Ada",
+                cognome="Lovelace",
+                email="ada@studio.it",
+                tariffa_giornaliera=Decimal("450"),
+                posizione="Backend developer",
+                remoto="remoto",
+            ),
+            guide_bytes(),
+            "cv.pdf",
+            "application/pdf",
+        )
+    finally:
+        session.close()
+    _seed(factory, ["grace@studio.it"])
+    session = factory()
+    try:
+        signup_id = session.execute(text("SELECT id FROM signups")).scalar_one()
+        without_cv = FreelancerService(session).draft_from_signup(
+            signup_id,
+            FreelancerDraft(
+                nome="Grace",
+                cognome="Hopper",
+                posizione="Compiler engineer",
+                fonti=["https://example.com/grace"],
+            ),
+            "MCP",
+        )
+    finally:
+        session.close()
+
+    async with Client(build_server(factory)) as client:
+        read = _payload(
+            await client.call_tool("read_freelancer_cv", {"freelancer_id": str(with_cv.id)})
+        )
+        assert read["filename"] == "cv.pdf"
+        assert read["pagine"] == 6
+        assert "prima fattura" in read["testo"]
+        assert read["troncato"] is False
+
+        refused = await client.call_tool(
+            "read_freelancer_cv", {"freelancer_id": str(without_cv.id)}
+        )
+        assert refused.is_error
+        assert "cv" in refused.content[0].text.lower()
+
+        listed = _payload(await client.call_tool("list_freelancers", {}))
+        assert all("testo" not in item and "cv_bytes" not in item for item in listed["items"])
     _wipe(factory)

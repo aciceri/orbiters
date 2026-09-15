@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from orbiters_core.comments import CommentService
+from orbiters_core.cv_text import CvText, extract_text
 from orbiters_core.errors import NotFound, ValidationFailed
 from orbiters_core.models import (
     CV_MAX_BYTES,
@@ -282,6 +283,12 @@ class FreelancerService:
 
     def cv(self, freelancer_id: UUID) -> CvFile:
         return cv_of(self._require(freelancer_id))
+
+    def cv_text(self, freelancer_id: UUID) -> CvText:
+        """The stored CV as text (ORB-206), or `NotFound("cv", ...)` like `cv`: a card
+        born from a signup has no file to read, and that is a sentence, not a scan."""
+        file = cv_of(self._require(freelancer_id))
+        return extract_text(file.content, file.filename)
 
     def set_status(self, freelancer_id: UUID, change: StatusChange) -> FreelancerRead:
         if change.stato not in FREELANCER_STATES:

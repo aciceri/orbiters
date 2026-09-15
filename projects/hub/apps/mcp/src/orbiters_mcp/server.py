@@ -104,9 +104,10 @@ def build_server(factory: SessionFactory) -> MCPServer:
     ) -> dict[str, Any]:
         """I freelance che hanno compilato il profilo sull'hub, dal più recente: nome,
         email, posizione, tariffa a giornata, disponibilità (remoto/ibrido/in_sede), link,
-        stato della candidatura (nuovo, contattato, attivo, scartato) e note. Mai il CV:
-        quello si scarica dall'area admin. `stato` filtra; `totale` conta tutto. `lead`
-        sono le iscrizioni senza scheda (nome se c'è, email, quando), `totale_lead` quante:
+        stato della candidatura (nuovo, contattato, attivo, scartato) e note. Mai i byte
+        del CV: il testo lo legge `read_freelancer_cv`, il file si scarica dall'area
+        admin. `stato` filtra; `totale` conta tutto. `lead` sono le iscrizioni senza
+        scheda (nome se c'è, email, quando), `totale_lead` quante:
         piene senza filtro o con `stato="lead"`, vuote con un altro stato."""
         return _run(lambda s: FreelancerService(s).list_recent(limit=limit, stato=stato))
 
@@ -115,6 +116,16 @@ def build_server(factory: SessionFactory) -> MCPServer:
         """Un freelance, per id, con `commenti`: il thread di chi lo ha seguito, dal più
         recente, ognuno con autore e data."""
         return _run(lambda s: FreelancerService(s).get(UUID(freelancer_id)))
+
+    @mcp.tool()
+    def read_freelancer_cv(freelancer_id: str) -> dict[str, Any]:
+        """Il testo del CV di un freelance, per id, come lo legge pypdf: `testo` pagina
+        dopo pagina, `pagine` quante ne ha il file, `troncato` se il testo è stato
+        tagliato (oltre venti pagine o duecentomila caratteri), `filename` il nome del
+        file. Un CV scansionato risponde `testo` vuoto con le sue pagine; una scheda
+        senza CV risponde una frase. Solo lettura: serve a confrontare una scheda con
+        una richiesta senza uscire dall'MCP, non a riportare il CV altrove."""
+        return _run(lambda s: FreelancerService(s).cv_text(UUID(freelancer_id)))
 
     @mcp.tool()
     def set_freelancer_status(

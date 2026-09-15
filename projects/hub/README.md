@@ -129,10 +129,11 @@ link.
 
 `.github/workflows/deploy-hub.yml`: preview on a push to `main` that touched the hub,
 production on a tag `hub-v<semver>` (`hub-v0.1.0` is out already). Both call the
-shared `_deploy-compose.yml`. The production compose project is `rebase`, not
-`hub` — the name the stack first went up under by hand on 2026-09-09 (ORB-17), since
-a different name here would start a second stack beside the running one. The
-preview's is `rebase-preview`. `GET /health` touches the database on purpose, so a
+shared `_deploy-compose.yml`. The production compose project is `rebase`, not `hub`:
+the stack went up by hand on 2026-09-09 (ORB-17) as `orbiters` and carries that name
+until the tag that ships this rename deploys it, since a different name starts a second
+stack beside the running one rather than moving it. The preview's is `rebase-preview`,
+migrated on 2026-09-15. `GET /health` touches the database on purpose, so a
 green deploy means Postgres is up and migrated, not only that uvicorn answered.
 
 ## Status

@@ -92,9 +92,11 @@ that database conditional in the same way until the copy is confirmed.
 Through CI only, as every project here (`docs/adding-a-project.md` §7): preview on a
 push to `main` that touched the hub, production on a tag `hub-v<semver>`, both by
 `.github/workflows/deploy-hub.yml` calling `_deploy-compose.yml`. The production compose
-project is `rebase`, renamed from `orbiters` on 2026-09-15 with the stack stopped and
-its data directory moved; the preview's is `rebase-preview`. Pass `-p` to every `docker compose` you ever run against either by
-hand, or compose names a second stack after the directory.
+project is `rebase`; the preview's is `rebase-preview`. Both were `orbiters` and
+`orbiters-preview` until 2026-09-15, and each moves the day its environment is
+migrated: the stack stopped, `/srv/<project>-data` moved, the database and role
+renamed with `ALTER`. Pass `-p` to every `docker compose` you ever run against either
+by hand, or compose names a second stack after the directory.
 
 Each environment's `.env` is `${DEPLOY_PATH}/.env`, the root of that environment's
 checkout and two levels above the compose file: the deploy passes

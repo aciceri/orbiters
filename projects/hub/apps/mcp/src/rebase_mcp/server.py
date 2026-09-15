@@ -1,36 +1,45 @@
 """`build_server`: the tools, over a session factory a test can replace.
 
-An admin's own tool by construction. The process is started by an MCP client on a
-machine that already holds the hub's database URL, and everything it can do is what
-the hub's admin API will do behind its login (hub spec, step 3). There is no actor and
-no permission check here because there is exactly one kind of caller; when a personal
-token arrives for the hub, this is where it is resolved.
+An admin's tool, by credential since REB-213: every transport resolves a personal token
+(`rebase_core.admin_tokens`) to the admin behind it before a tool runs, and hands
+`build_server` a callable that answers who that is. Over stdio it is one admin for the
+life of the process; over HTTP (`rebase_mcp.http`) it is whoever signed the request,
+bound for the duration of the call. Everything a tool can do is what the hub's admin API
+does behind its login; the admin's name is what a comment or a drafted card is signed
+with, so the thread says who.
 
 One session per tool call, closed whatever happened: the SDK dispatches sync tools on
 a thread pool, and a session shared across calls is the defect PigroCRM's MCP server
 measured as zero rows written under concurrency.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from mcp.server import MCPServer
+from mcp.server.context import ServerMiddleware
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, sessionmaker
 
+from rebase_core.admin import AdminRead
 from rebase_core.comments import CommentService
 from rebase_core.companies import CompanyService
+from rebase_core.config import Settings
 from rebase_core.errors import DomainError
 from rebase_core.freelancers import FreelancerService
+from rebase_core.http import HttpCall
 from rebase_core.logins import LoginService
 from rebase_core.perks import PerkService
+from rebase_core.pigro import PigroRegistry, PigroUnavailable
 from rebase_core.schemas import FreelancerDraft, StatusChange
 from rebase_core.service import LIST_LIMIT_DEFAULT, SignupService
 
 SessionFactory = sessionmaker[Session]
+# Who is calling: resolved by the transport, read by the tools that sign something.
+AdminProvider = Callable[[], AdminRead]
 
 INSTRUCTIONS = (
     "rebase, la community di freelance di letsrebase.com. Gli strumenti leggono chi "
@@ -42,13 +51,22 @@ INSTRUCTIONS = (
     "quando e cosa scrivere loro, mai da riportare altrove."
 )
 
-# Who signs a comment when the caller does not say: the MCP client has no login, so the
-# thread records the channel rather than pretending to know the person behind it.
-DEFAULT_AUTHOR = "MCP"
+PIGRO_NOT_CONFIGURED = "Il registro di Pigro non è configurato: manca REBASE_PIGRO_REGISTRY_TOKEN."
 
 
-def build_server(factory: SessionFactory) -> MCPServer:
-    mcp = MCPServer("rebase", instructions=INSTRUCTIONS)
+def build_server(
+    factory: SessionFactory,
+    admin: AdminProvider,
+    *,
+    settings: Settings | None = None,
+    http: HttpCall | None = None,
+    middleware: Sequence[ServerMiddleware[Any]] | None = None,
+) -> MCPServer:
+    """`admin` answers the admin behind the current call; `settings` and `http` are what
+    `list_pigro_spaces` needs to reach the CRM, and without them the tool answers the
+    same sentence the admin area shows when the registry is not configured. `middleware`
+    is the HTTP transport's way of binding the request's admin around each call."""
+    mcp = MCPServer("rebase", instructions=INSTRUCTIONS, middleware=middleware)
 
     @mcp.tool()
     def list_signups(limit: int = LIST_LIMIT_DEFAULT) -> dict[str, Any]:
@@ -78,8 +96,8 @@ def build_server(factory: SessionFactory) -> MCPServer:
         modalità di lavoro solo se una fonte pubblica le dice, altrimenti restano vuote
         con il CV: la persona le completa dalla sua area. `fonti` sono gli indirizzi https
         da cui vengono le informazioni, da una a dieci, e finiscono nel thread della
-        scheda firmate da `autore` ("MCP" se non dici chi sta scrivendo). Una scheda che
-        la persona ha già compilato non si tocca: il tool rifiuta."""
+        scheda firmate da `autore` (l'admin dietro il token, se non dici chi scrive). Una
+        scheda che la persona ha già compilato non si tocca: il tool rifiuta."""
         draft = FreelancerDraft(
             nome=nome,
             cognome=cognome,
@@ -94,7 +112,7 @@ def build_server(factory: SessionFactory) -> MCPServer:
         )
         return _run(
             lambda s: FreelancerService(s).draft_from_signup(
-                UUID(signup_id), draft, autore or DEFAULT_AUTHOR
+                UUID(signup_id), draft, autore or admin().nome
             )
         )
 
@@ -146,10 +164,10 @@ def build_server(factory: SessionFactory) -> MCPServer:
         """Aggiunge un commento al thread di un freelance, senza toccare stato e note: una
         telefonata fatta, un'impressione, una cosa da ricordare. Resta com'è scritto, con
         data e autore; non si modifica e non si cancella. Fino a 4000 caratteri, anche su
-        più righe. `autore` è "MCP" se non dici chi sta scrivendo."""
+        più righe. `autore` è l'admin dietro il token, se non dici chi sta scrivendo."""
         return _run(
             lambda s: CommentService(s).add(
-                "freelancer", UUID(freelancer_id), testo, autore or DEFAULT_AUTHOR
+                "freelancer", UUID(freelancer_id), testo, autore or admin().nome
             )
         )
 
@@ -182,12 +200,30 @@ def build_server(factory: SessionFactory) -> MCPServer:
         """Aggiunge un commento al thread di una richiesta di un'azienda, senza toccare
         stato e note: come è andata la call, cosa hanno chiesto, cosa resta da fare. Resta
         com'è scritto, con data e autore; non si modifica e non si cancella. Fino a 4000
-        caratteri, anche su più righe. `autore` è "MCP" se non dici chi sta scrivendo."""
+        caratteri, anche su più righe. `autore` è l'admin dietro il token, se non dici
+        chi scrive."""
         return _run(
             lambda s: CommentService(s).add(
-                "company", UUID(company_id), testo, autore or DEFAULT_AUTHOR
+                "company", UUID(company_id), testo, autore or admin().nome
             )
         )
+
+    @mcp.tool()
+    def list_pigro_spaces() -> dict[str, Any]:
+        """Gli spazi di PigroCRM come li mostra «Istanze Pigro» nell'area admin: slug,
+        email di chi lo ha aperto, quando, l'indirizzo dello spazio e il membro dell'hub
+        dietro quell'email quando ne ha una scheda. Letti dall'API del CRM con il token
+        di registro, mai dal suo database; `totale` li conta. Solo lettura."""
+        if settings is None or http is None or not settings.pigro_registry_token:
+            raise ToolError(PIGRO_NOT_CONFIGURED)
+        registry = PigroRegistry(settings, http)
+        session = factory()
+        try:
+            return registry.list_spaces(session).model_dump(mode="json")
+        except PigroUnavailable as exc:
+            raise ToolError(str(exc)) from exc
+        finally:
+            session.close()
 
     @mcp.tool()
     def guide_stats() -> dict[str, Any]:

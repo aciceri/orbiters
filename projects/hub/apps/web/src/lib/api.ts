@@ -254,6 +254,21 @@ export interface Signup {
   freelancer_id: string | null
 }
 
+/** A personal token of the admin, as `GET /api/hub/tokens` lists it (REB-213): never the value. */
+export interface AdminToken {
+  id: string
+  nome: string
+  prefix: string
+  created_at: string
+  last_used_at: string | null
+  revoked_at: string | null
+}
+
+/** The `POST` answer: the one place the value appears, shown once. */
+export interface CreatedToken extends AdminToken {
+  token: string
+}
+
 export const admin = {
   login: (email: string, password: string) =>
     request<Admin>('/api/hub/auth/login', json({ email, password })),
@@ -301,6 +316,10 @@ export const admin = {
       ...json({ nome: rest.nome, email: rest.email, ...(password ? { password } : {}) }),
       method: 'PATCH',
     }),
+  /** The admin's own tokens for agents, newest first, revoked ones included (REB-213). */
+  tokens: () => request<AdminToken[]>('/api/hub/tokens'),
+  createToken: (nome: string) => request<CreatedToken>('/api/hub/tokens', json({ nome })),
+  revokeToken: (id: string) => request<void>(`/api/hub/tokens/${id}`, { method: 'DELETE' }),
   comments: (kind: CommentKind, id: string) =>
     request<Comment[]>(`/api/hub/${kind}/${id}/comments`),
   /** The author is the session's, so the body is the text alone. */

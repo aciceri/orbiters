@@ -13,6 +13,7 @@ import { AdminGuida } from '@/pages/admin/Guida'
 import { Thanks } from '@/pages/Thanks'
 import { AdminLayout } from '@/pages/admin/AdminLayout'
 import { AdminAdmins } from '@/pages/admin/Admins'
+import { AdminAgenti } from '@/pages/admin/Agenti'
 import { AdminLogin } from '@/pages/admin/Login'
 import { AdminPigro } from '@/pages/admin/Pigro'
 import {
@@ -120,6 +121,7 @@ const adminAmministratori = createRoute({
   path: '/amministratori',
   component: AdminAdmins,
 })
+const adminAgenti = createRoute({ getParentRoute: () => adminArea, path: '/agenti', component: AdminAgenti })
 
 const routeTree = root.addChildren([
   bareLayout.addChildren([chooser]),
@@ -142,6 +144,7 @@ const routeTree = root.addChildren([
     adminGuida,
     adminAccessi,
     adminAmministratori,
+    adminAgenti,
   ]),
 ])
 

@@ -44,7 +44,7 @@ to the same path.
 ```
 packages/core/   rebase_core: models, Alembic migrations, services, the ad conversion
 apps/api/        rebase_api: FastAPI, one process, its own database
-apps/mcp/        rebase_mcp: stdio, the same services in process
+apps/mcp/        rebase_mcp: the same services over stdio or Streamable HTTP, for an admin with a token
 apps/web/        pnpm package `hub`: the SPA at letsrebase.com/hub/
 ```
 
@@ -58,6 +58,7 @@ Python, from the repository root:
 uv sync --frozen
 uv run pytest -q projects/hub/packages/core/tests projects/hub/apps/api/tests projects/hub/apps/mcp/tests
 uv run --env-file projects/hub/.env uvicorn rebase_api.main:app --port 8010
+uv run --env-file projects/hub/.env uvicorn rebase_mcp.http:app --port 8011   # the MCP server over HTTP
 ```
 
 The tests bring a `testcontainers` Postgres to `head` with this package's migrations,
@@ -91,6 +92,7 @@ Loopback only, production values (`docs/adding-a-project.md` §7 has preview's):
 |---|---|
 | api | 8084 |
 | web | 8085 |
+| mcp | 8088 |
 | Postgres | 55435 |
 
 `.env.example` lists every variable the compose file needs: `POSTGRES_*`,
@@ -109,6 +111,28 @@ docker compose -p rebase exec api uv run --no-sync rebase createadmin --email yo
 ```
 
 Asks for the password on the terminal, twice, and never takes it as an argument.
+
+## Connect an agent
+
+The MCP server answers admins only (REB-213). Each admin mints personal tokens from
+«Agenti» in the admin area, or the operator does it for them:
+
+```
+docker compose -p rebase exec api uv run --no-sync rebase createtoken --email you@example.com --nome "Claude Code"
+```
+
+The value is printed once and only its hash is kept. A client presents it as a bearer
+on `https://letsrebase.com/api/hub/mcp`, which the host proxies to the `mcp` service:
+
+```
+claude mcp add --transport http rebase-hub https://letsrebase.com/api/hub/mcp --header "Authorization: Bearer reb_…"
+```
+
+Over stdio (`python -m rebase_mcp`, for a developer's client or a shell on the host)
+the same token goes in `REBASE_MCP_TOKEN`, and the process refuses to start without
+one that resolves. An unknown, revoked or deactivated-owner token is one uniform 401.
+The claude.ai and Claude Desktop connectors want OAuth and are not supported, as in the
+CRM.
 
 Telling the people with a card that their area is open (ORB-157), once, by hand:
 

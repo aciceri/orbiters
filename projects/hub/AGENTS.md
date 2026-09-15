@@ -26,7 +26,7 @@ products that need to agree on something agree through `shared/`.
 ```
 packages/core/   rebase_core: models, migrations, services, the ad conversion, the perk files
 apps/api/        rebase_api: FastAPI, one process, its own database
-apps/mcp/        rebase_mcp: stdio, the same services in process
+apps/mcp/        rebase_mcp: the same services over stdio or Streamable HTTP, for an admin with a token
 apps/web/        pnpm package `hub`: the SPA at letsrebase.com/hub/ (wizards, the member area, admin)
 content/         the prose a perk is made of, reviewed as prose
 tools/           the one script that turns that prose into a file a member downloads
@@ -34,6 +34,17 @@ tools/           the one script that turns that prose into a file a member downl
 
 `packages/core` may import neither adapter, and neither adapter may import the other:
 each directory's `ruff.toml` says so.
+
+## The MCP server is an admin's, by token
+
+Since REB-213 every transport resolves a personal token (`rebase_core.admin_tokens`,
+minted from «Agenti» or with `rebase createtoken`) to the admin behind it before a tool
+runs, and `build_server` takes a callable answering who that is: the admin signs what the
+tools write. Over HTTP the `mcp` compose service serves `rebase_mcp.http:app` on 8088
+(preview 8089, `REBASE_MCP_PORT`), and the host vhost proxies `/api/hub/mcp` there; it
+is a process of its own because `apps/api` may not import `apps/mcp`. Over stdio the token
+is `REBASE_MCP_TOKEN`. Design record:
+`docs/superpowers/specs/2026-09-15-mcp-for-admins-design.md`.
 
 ## The guide is a generated file, committed, and easy to leave stale
 

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from rebase_core.admin import AdminService
+from rebase_core.admin_tokens import DEFAULT_NAME, AdminTokenService
 from rebase_core.config import Settings, get_settings
 from rebase_core.conversions import pixel_from_settings
 from rebase_core.db import create_engine_from_settings, session_factory
@@ -41,6 +42,29 @@ def createadmin(email: str | None, nome: str | None) -> int:
     finally:
         session.close()
     print(f"Amministratore creato: {created.email}")
+    return 0
+
+
+def createtoken(email: str | None, nome: str | None) -> int:
+    """`rebase createtoken --email a@b.it [--nome "Claude Code"]`: a personal token
+    for an admin, for the operator who has no browser at hand (REB-213). Prints the raw
+    value once, on stdout and nowhere else; the hub keeps only its hash."""
+    settings = get_settings()
+    email = (email or input("Email: ")).strip().lower()
+    session = session_factory(create_engine_from_settings(settings))()
+    try:
+        admins = AdminService(session, settings).list()
+        admin = next((row for row in admins if row.email == email), None)
+        if admin is None:
+            print(f"Nessun amministratore con email {email}", file=sys.stderr)
+            return 1
+        _, raw = AdminTokenService(session).create(admin.id, nome or DEFAULT_NAME)
+    except DomainError as exc:
+        print(exc.message, file=sys.stderr)
+        return 1
+    finally:
+        session.close()
+    print(raw)
     return 0
 
 
@@ -179,6 +203,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     admin = sub.add_parser("createadmin", help="Crea un amministratore dell'area admin")
     admin.add_argument("--email")
     admin.add_argument("--nome")
+    token = sub.add_parser(
+        "createtoken", help="Crea un token personale di un amministratore, per un agente"
+    )
+    token.add_argument("--email")
+    token.add_argument("--nome")
     welcome_parser = sub.add_parser(
         "welcome",
         help="Manda la mail «la tua area è aperta» a un indirizzo o a tutti quelli noti",
@@ -190,6 +219,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return conversions_check()
     if args.command == "createadmin":
         return createadmin(args.email, args.nome)
+    if args.command == "createtoken":
+        return createtoken(args.email, args.nome)
     if args.command == "welcome":
         return welcome(args.email, args.all)
     parser.error(f"comando sconosciuto: {args.command}")

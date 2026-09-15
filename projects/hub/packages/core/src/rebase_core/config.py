@@ -1,4 +1,4 @@
-"""The hub's settings, read once from the environment (`ORBITERS_*`) and `.env`."""
+"""The hub's settings, read once from the environment (`REBASE_*`) and `.env`."""
 
 from functools import lru_cache
 
@@ -6,12 +6,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="ORBITERS_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="REBASE_", env_file=".env", extra="ignore")
 
     # The hub's own database. Nothing here derives a name from another product's URL:
     # the old `PIGROCRM_ORBITERS_DATABASE_URL` fallback ("the CRM's server with the
-    # database renamed") is exactly the coupling this project was split to remove.
-    database_url: str = "postgresql+psycopg://orbiters:orbiters@localhost:5433/orbiters"
+    # database renamed") is exactly the coupling this project was split to remove. That
+    # variable kept the old brand in its name and is history, so it is written here as
+    # it actually was.
+    database_url: str = "postgresql+psycopg://rebase:rebase@localhost:5433/rebase"
 
     # --- ChatGPT Ads: the signup conversion --------------------------------------------
     # The pixel measures the signup from the browser; these values are the server half

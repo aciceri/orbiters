@@ -476,7 +476,7 @@ jobs:
       - name: Build both images from the repository root context
         working-directory: projects/hub
         # Through compose, so this proves the same context and the same files the
-        # deploy uses. `-p orbiters` changes only what the throwaway images are called
+        # deploy uses. `-p rebase` changes only what the throwaway images are called
         # (the names the deploy's project gives them, which is what preflight's twin
         # builds too). The two variables exist because compose interpolates the whole
         # file before a build and both are `:?` there; a build reads neither, and the
@@ -484,8 +484,8 @@ jobs:
         # volume and refuses the project.
         env:
           POSTGRES_PASSWORD: build-only-never-used
-          ORBITERS_DATA_DIR: ./build-only-never-mounted
-        run: docker compose -p orbiters build
+          REBASE_DATA_DIR: ./build-only-never-mounted
+        run: docker compose -p rebase build
 
   ci:
     name: ci

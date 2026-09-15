@@ -58,10 +58,10 @@ describe('the Istanze Pigro page', () => {
 
   it('says the registry is not configured when the API answers 503 with its sentence', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      answer(503, { detail: 'Il registro di Pigro non è configurato: manca ORBITERS_PIGRO_REGISTRY_TOKEN.' }),
+      answer(503, { detail: 'Il registro di Pigro non è configurato: manca REBASE_PIGRO_REGISTRY_TOKEN.' }),
     )
     mount()
-    await screen.findByText('Il registro di Pigro non è configurato: manca ORBITERS_PIGRO_REGISTRY_TOKEN.')
+    await screen.findByText('Il registro di Pigro non è configurato: manca REBASE_PIGRO_REGISTRY_TOKEN.')
   })
 
   it('says when there is nothing yet', async () => {

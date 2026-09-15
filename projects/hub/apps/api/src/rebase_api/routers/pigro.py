@@ -22,7 +22,7 @@ def list_spaces(
     if not settings.pigro_registry_token:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
-            "Il registro di Pigro non è configurato: manca ORBITERS_PIGRO_REGISTRY_TOKEN.",
+            "Il registro di Pigro non è configurato: manca REBASE_PIGRO_REGISTRY_TOKEN.",
         )
     try:
         return PigroRegistry(settings, http).list_spaces(session)

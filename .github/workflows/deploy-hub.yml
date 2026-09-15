@@ -13,9 +13,13 @@
 # Both environments stay off until their arming variable exists:
 # `vars.HUB_PREVIEW_ENABLED` and `vars.HUB_DEPLOY_ENABLED`.
 #
-# The production compose project is `orbiters`, not `hub`: that is the name the stack
-# went up under by hand on 2026-09-09 (ORB-17), its Postgres data sits under it, and a
-# different name here would start a second stack beside the running one.
+# The production compose project is `rebase`, not `hub`: the stack went up by hand on
+# 2026-09-09 (ORB-17) as `orbiters`, and a different name here starts a second stack
+# beside the running one rather than moving it. So the host moves first and the tag
+# second: stop the old project, move `/srv/orbiters-data` to `/srv/rebase-data`, rename
+# the database and the role with `ALTER`, rewrite the `.env` keys to `REBASE_*`, then
+# push the tag. Preview was migrated that way on 2026-09-15; production moves with the
+# first `hub-v*` tag after this change.
 name: Deploy hub
 
 on:
@@ -82,7 +86,7 @@ jobs:
     with:
       environment: hub-preview
       compose-dir: projects/hub
-      compose-project: orbiters-preview
+      compose-project: rebase-preview
       ref: ${{ github.event.workflow_run.head_sha }}
       # The API's probe touches the database (SELECT 1), so a green deploy means
       # Postgres is up and migrated, not only that uvicorn answered. The `url` is the
@@ -104,7 +108,7 @@ jobs:
     with:
       environment: hub-production
       compose-dir: projects/hub
-      compose-project: orbiters
+      compose-project: rebase
       health-url: http://127.0.0.1:8084/health
       url: https://letsrebase.com/hub/
     secrets: inherit

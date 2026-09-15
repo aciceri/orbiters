@@ -17,7 +17,7 @@ with a magic link by mail (`/hub/accedi`, `/hub/io`): spec
 
 **Nothing here imports PigroCRM, and PigroCRM imports nothing from here.** The hub was
 split out of the CRM on 2026-09-09 precisely so the two can change independently: its
-own settings (`ORBITERS_*`), its own Postgres, its own Alembic history, its own API and
+own settings (`REBASE_*`), its own Postgres, its own Alembic history, its own API and
 MCP server. `ruff.toml` bans the three `pigrocrm*` module roots in every package. Two
 products that need to agree on something agree through `shared/`.
 
@@ -92,15 +92,17 @@ that database conditional in the same way until the copy is confirmed.
 Through CI only, as every project here (`docs/adding-a-project.md` §7): preview on a
 push to `main` that touched the hub, production on a tag `hub-v<semver>`, both by
 `.github/workflows/deploy-hub.yml` calling `_deploy-compose.yml`. The production compose
-project is `orbiters`, the name the stack first went up under; the preview's is
-`orbiters-preview`. Pass `-p` to every `docker compose` you ever run against either by
-hand, or compose names a second stack after the directory.
+project is `rebase`; the preview's is `rebase-preview`. Both were `orbiters` and
+`orbiters-preview` until 2026-09-15, and each moves the day its environment is
+migrated: the stack stopped, `/srv/<project>-data` moved, the database and role
+renamed with `ALTER`. Pass `-p` to every `docker compose` you ever run against either
+by hand, or compose names a second stack after the directory.
 
 Each environment's `.env` is `${DEPLOY_PATH}/.env`, the root of that environment's
 checkout and two levels above the compose file: the deploy passes
 `--env-file "${DEPLOY_PATH}/.env"`, never rsyncs a `.env`, and reads nothing beside
-the compose file. It holds the `ORBITERS_*` and `POSTGRES_*` values and is never in the
-repository. `ORBITERS_DATA_DIR` has no default in the compose file, so a `.env` that
+the compose file. It holds the `REBASE_*` and `POSTGRES_*` values and is never in the
+repository. `REBASE_DATA_DIR` has no default in the compose file, so a `.env` that
 forgets it fails the stack instead of mounting an empty directory.
 
 Ports, loopback only, from the table in `docs/adding-a-project.md` §7: production api
@@ -108,13 +110,13 @@ Ports, loopback only, from the table in `docs/adding-a-project.md` §7: producti
 (web) and `/api/hub/` + `/api/orbiters/signups` (api), proxied to production by the host
 vhost that lives in `projects/website/deploy/letsrebase.conf`; nothing proxies the
 preview, which is reached on the host only. The member area's mail needs
-`ORBITERS_RESEND_API_KEY` and `ORBITERS_MAIL_FROM` in the host `.env`; without the key
+`REBASE_RESEND_API_KEY` and `REBASE_MAIL_FROM` in the host `.env`; without the key
 `/hub/accedi` answers 503 with a sentence. A preview stack that gets a key must also set
-`ORBITERS_HUB_URL` to its own address, or every link it mints points at production.
+`REBASE_HUB_URL` to its own address, or every link it mints points at production.
 
 «Istanze Pigro» in the admin area (ORB-142) reads PigroCRM's registry of spaces through
-the CRM's API, never its database: `ORBITERS_PIGRO_API_URL` (the CRM's public origin,
-also where each space is linked) and `ORBITERS_PIGRO_REGISTRY_TOKEN`, which must equal
+the CRM's API, never its database: `REBASE_PIGRO_API_URL` (the CRM's public origin,
+also where each space is linked) and `REBASE_PIGRO_REGISTRY_TOKEN`, which must equal
 the `PIGROCRM_REGISTRY_TOKEN` in the CRM's own host `.env`. One value, set by hand in
 both files, generated once; without it the page answers 503 with a sentence and the CRM
 side does not even have the route. The call goes through `rebase_core.http`, the seam

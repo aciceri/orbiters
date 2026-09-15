@@ -3,7 +3,7 @@
 rebase, the freelance community, as a product of its own: the signup form the
 community site collects, the freelancer and company wizards, and the admin area that
 reads them. Served at `letsrebase.com/hub/`. Split out of PigroCRM on 2026-09-09 so
-the two products change independently — its own settings (`ORBITERS_*`), its own
+the two products change independently — its own settings (`REBASE_*`), its own
 Postgres, its own Alembic history, its own API and MCP server. Nothing here imports
 PigroCRM, and PigroCRM imports nothing from here.
 
@@ -76,10 +76,10 @@ The full stack, its own Postgres included, from this directory:
 
 ```
 cd projects/hub
-docker compose -p orbiters up -d --build
+docker compose -p rebase up -d --build
 ```
 
-`-p orbiters` is not decorative: without it compose names the stack after the
+`-p rebase` is not decorative: without it compose names the stack after the
 directory, and a second stack starts beside the one already running rather than
 joining it.
 
@@ -94,8 +94,8 @@ Loopback only, production values (`docs/adding-a-project.md` §7 has preview's):
 | Postgres | 55435 |
 
 `.env.example` lists every variable the compose file needs: `POSTGRES_*`,
-`ORBITERS_DATABASE_URL`, the ports above, the ChatGPT Ads pair, and
-`ORBITERS_DATA_DIR` — Postgres' data directory, outside the repository, with no
+`REBASE_DATABASE_URL`, the ports above, the ChatGPT Ads pair, and
+`REBASE_DATA_DIR` — Postgres' data directory, outside the repository, with no
 default in `docker-compose.yml`, so a `.env` that forgets it fails the stack rather
 than mounting an empty one. The `.env` itself is never in the repository. Locally it
 is `projects/hub/.env`, beside the compose file. On a server it is
@@ -105,7 +105,7 @@ compose file: the deploy passes `--env-file` explicitly and never rsyncs one.
 The first administrator, once the stack is up:
 
 ```
-docker compose -p orbiters exec api uv run --no-sync rebase createadmin --email you@example.com --nome "Nome Cognome"
+docker compose -p rebase exec api uv run --no-sync rebase createadmin --email you@example.com --nome "Nome Cognome"
 ```
 
 Asks for the password on the terminal, twice, and never takes it as an argument.
@@ -113,8 +113,8 @@ Asks for the password on the terminal, twice, and never takes it as an argument.
 Telling the people with a card that their area is open (ORB-157), once, by hand:
 
 ```
-docker compose -p orbiters exec api uv run --no-sync rebase welcome --email you@example.com
-docker compose -p orbiters exec api uv run --no-sync rebase welcome --all
+docker compose -p rebase exec api uv run --no-sync rebase welcome --email you@example.com
+docker compose -p rebase exec api uv run --no-sync rebase welcome --all
 ```
 
 `--all` covers every address the hub knows, signups and cards alike, and the mail speaks
@@ -122,17 +122,18 @@ in one of three voices: a card the person filled (it is complete, enter), a card
 from public sources (a recap, the ask to enter and complete it, and that an offer in line
 with the profile is already there), or no card at all (the wizard first, then the address
 is the way in). One line per address with the outcome and the voice; that output is the
-record of the mailing. Needs `ORBITERS_RESEND_API_KEY` in the host `.env`, like the magic
+record of the mailing. Needs `REBASE_RESEND_API_KEY` in the host `.env`, like the magic
 link.
 
 ## Deploy
 
 `.github/workflows/deploy-hub.yml`: preview on a push to `main` that touched the hub,
 production on a tag `hub-v<semver>` (`hub-v0.1.0` is out already). Both call the
-shared `_deploy-compose.yml`. The production compose project is `orbiters`, not
-`hub` — the name the stack first went up under by hand on 2026-09-09 (ORB-17), since
-a different name here would start a second stack beside the running one. The
-preview's is `orbiters-preview`. `GET /health` touches the database on purpose, so a
+shared `_deploy-compose.yml`. The production compose project is `rebase`, not `hub`:
+the stack went up by hand on 2026-09-09 (ORB-17) as `orbiters` and carries that name
+until the tag that ships this rename deploys it, since a different name starts a second
+stack beside the running one rather than moving it. The preview's is `rebase-preview`,
+migrated on 2026-09-15. `GET /health` touches the database on purpose, so a
 green deploy means Postgres is up and migrated, not only that uvicorn answered.
 
 ## Status

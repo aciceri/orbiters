@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate } from '@tanstack/react-router'
-import { BookOpen, Boxes, Briefcase, LogIn, LogOut, Mail, ShieldCheck, UserRound } from 'lucide-react'
+import { BookOpen, Boxes, Briefcase, LogIn, LogOut, Mail, Plug, ShieldCheck, UserRound } from 'lucide-react'
 import { useEffect } from 'react'
 import { BrandMark } from '@/components/BrandMark'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ const NAV = [
   { to: '/admin/guida', label: 'La guida', icon: BookOpen },
   { to: '/admin/accessi', label: 'Accessi', icon: LogIn },
   { to: '/admin/amministratori', label: 'Amministratori', icon: ShieldCheck },
+  { to: '/admin/agenti', label: 'Agenti', icon: Plug },
 ] as const
 
 /** The admin area's frame: the CRM's dark sidebar, in miniature. Nothing renders until

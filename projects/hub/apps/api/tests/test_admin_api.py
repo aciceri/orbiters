@@ -32,6 +32,7 @@ def admin(api_engine: Engine, api_session: Session) -> Iterator[None]:
     for table in (
         "guide_downloads",
         "comments",
+        "admin_tokens",
         "admin_sessions",
         "admin_users",
         "freelancers",

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { extractSharedTokens } from './palette-plugin'
 
-const shared = extractSharedTokens(readFileSync(fileURLToPath(import.meta.resolve('@orbiters/brand/palette.css')), 'utf-8'))
+const shared = extractSharedTokens(readFileSync(fileURLToPath(import.meta.resolve('@rebase/brand/palette.css')), 'utf-8'))
 const landingCss = readFileSync(join(__dirname, 'landing.css'), 'utf-8')
 
 type Triple = [number, number, number]
@@ -118,13 +118,13 @@ describe('landing tokens', () => {
     expect(landingCss).not.toMatch(/Reenie/i)
     expect(landingCss).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/)
     // The sheet must not declare a face of its own: the typeface is the brand's and
-    // arrives from `@orbiters/brand/font.css`, prepended by the palette plugin. Two
+    // arrives from `@rebase/brand/font.css`, prepended by the palette plugin. Two
     // @font-face blocks for one family is how a landing ends up on a stale copy.
     expect(landingCss).not.toMatch(/@font-face/)
     // Comments stripped first: that file's own comment explains at length why it does
     // not fetch from Google, and the check is about what the browser requests.
     const brandFont = readFileSync(
-      fileURLToPath(import.meta.resolve('@orbiters/brand/font.css')),
+      fileURLToPath(import.meta.resolve('@rebase/brand/font.css')),
       'utf-8',
     ).replace(/\/\*[\s\S]*?\*\//g, '')
     expect(brandFont).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/)

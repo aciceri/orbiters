@@ -3,12 +3,12 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { BRAND_TILES, BRAND_TILE_VARS } from '@orbiters/brand/mark'
+import { BRAND_TILES, BRAND_TILE_VARS } from '@rebase/brand/mark'
 
 const css = readFileSync(join(__dirname, 'landing.css'), 'utf-8')
 const orbiters = readFileSync(join(__dirname, 'orbiters.css'), 'utf-8')
 const system = readFileSync(join(__dirname, 'system.css'), 'utf-8')
-const appTokens = readFileSync(fileURLToPath(import.meta.resolve('@orbiters/brand/palette.css')), 'utf-8')
+const appTokens = readFileSync(fileURLToPath(import.meta.resolve('@rebase/brand/palette.css')), 'utf-8')
 
 /** The declarations of one rule, by exact selector. */
 function rule(selector: string, source = css): string {
@@ -234,7 +234,7 @@ describe('the wordmark is an asset, not a second webfont', () => {
   const svg = Object.fromEntries(
     names.map((name) => [
       name,
-      readFileSync(fileURLToPath(import.meta.resolve(`@orbiters/brand/${name}`)), 'utf-8'),
+      readFileSync(fileURLToPath(import.meta.resolve(`@rebase/brand/${name}`)), 'utf-8'),
     ]),
   ) as Record<(typeof names)[number], string>
   // The palette's own values, so a colour changed in one place fails here rather

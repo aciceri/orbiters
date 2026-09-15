@@ -96,7 +96,7 @@
     },
     {
       "id": "analytics-unit",
-      "run": "pnpm --filter @orbiters/analytics lint && pnpm --filter @orbiters/analytics test && pnpm --filter @orbiters/analytics exec tsc --noEmit",
+      "run": "pnpm --filter @rebase/analytics lint && pnpm --filter @rebase/analytics test && pnpm --filter @rebase/analytics exec tsc --noEmit",
       "when": [
         "shared/analytics/**",
         "pnpm-lock.yaml"

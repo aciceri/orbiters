@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { extractSharedTokens } from './palette-plugin'
 
-const tokensCss = readFileSync(fileURLToPath(import.meta.resolve('@orbiters/brand/palette.css')), 'utf-8')
+const tokensCss = readFileSync(fileURLToPath(import.meta.resolve('@rebase/brand/palette.css')), 'utf-8')
 
 describe('extractSharedTokens', () => {
   it('extracts exactly the seven tokens the brand shares: six colours and the typeface', () => {

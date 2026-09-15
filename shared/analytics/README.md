@@ -1,4 +1,4 @@
-# @orbiters/analytics
+# @rebase/analytics
 
 The one PostHog project every rebase surface reports to, and the policy the two
 SPAs initialise it with. Design: `docs/design/2026-09-12-posthog-analytics-design.md`.

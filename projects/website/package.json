@@ -15,11 +15,11 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@orbiters/brand": "workspace:*"
+    "@rebase/brand": "workspace:*"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",
-    "@orbiters/analytics": "workspace:*",
+    "@rebase/analytics": "workspace:*",
     "@playwright/test": "catalog:",
     "@types/node": "catalog:",
     "eslint": "catalog:",

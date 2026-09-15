@@ -13,12 +13,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Area } from './Area'
 import { MemberGuard } from './Guard'
 
-vi.mock('@orbiters/analytics/browser', () => ({
+vi.mock('@rebase/analytics/browser', () => ({
   capture: vi.fn(),
   identifyUser: vi.fn(),
   resetUser: vi.fn(),
 }))
-import { capture, identifyUser, resetUser } from '@orbiters/analytics/browser'
+import { capture, identifyUser, resetUser } from '@rebase/analytics/browser'
 import { MEMBER_KEY } from '@/lib/member'
 
 function answer(status: number, body: unknown) {

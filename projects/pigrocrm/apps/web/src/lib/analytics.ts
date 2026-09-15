@@ -11,7 +11,7 @@
  * when `me` answers a person, and `forgetSession` when they leave or the session is gone.
  * Design: docs/design/2026-09-12-posthog-analytics-design.md, «The CRM (ORB-184)».
  */
-import { capture, identifyGroup, identifyUser, resetUser } from '@orbiters/analytics/browser'
+import { capture, identifyGroup, identifyUser, resetUser } from '@rebase/analytics/browser'
 import type { Middleware } from 'openapi-fetch'
 import type { SessionUser } from './auth'
 import { tenantPrefix } from './tenant'

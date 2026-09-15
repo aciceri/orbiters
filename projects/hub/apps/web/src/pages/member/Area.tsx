@@ -1,4 +1,4 @@
-import { capture } from '@orbiters/analytics/browser'
+import { capture } from '@rebase/analytics/browser'
 import { Link } from '@tanstack/react-router'
 import { ArrowUpRight, Download, LogOut, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'

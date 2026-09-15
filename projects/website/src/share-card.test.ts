@@ -10,7 +10,7 @@
  */
 import { readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { BRAND_TILES } from '@orbiters/brand/mark'
+import { BRAND_TILES } from '@rebase/brand/mark'
 import { describe, expect, it } from 'vitest'
 
 const PAGES = [

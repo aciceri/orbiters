@@ -55,16 +55,16 @@ All three come from [`shared/brand`](../../shared/brand), and none of them may b
 restated here:
 
 - **Palette.** `src/palette-plugin.ts` reads the seven shared tokens out of
-  `@orbiters/brand/palette.css` at build time and prepends them to the two stylesheets
+  `@rebase/brand/palette.css` at build time and prepends them to the two stylesheets
   as plain custom properties. The application consumes the same file as part of its
   Tailwind theme. A hex pasted into a stylesheet here is the fork both mechanisms exist
   to prevent, and the plugin fails the build if the palette stops being extractable.
-- **Typeface.** Outfit, self-hosted, declared once in `@orbiters/brand/font.css` and
+- **Typeface.** Outfit, self-hosted, declared once in `@rebase/brand/font.css` and
   prepended the same way. Nothing is fetched from a CDN, on purpose: PigroCRM is sold
   on self-hosting, and a webfont request hands every visitor's IP to a third party.
 - **The mark.** The four tiles are `.glyph` in `src/system.css` here and Tailwind
   classes in the application's `BrandMark.tsx`. Both assert their order against
-  `@orbiters/brand/mark`, so the two cannot drift.
+  `@rebase/brand/mark`, so the two cannot drift.
 
 ## How it is served
 

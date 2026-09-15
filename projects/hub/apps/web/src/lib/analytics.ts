@@ -1,4 +1,4 @@
-import { capture, identifyUser } from '@orbiters/analytics/browser'
+import { capture, identifyUser } from '@rebase/analytics/browser'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { Admin, MemberProfile } from './api'
 
@@ -6,7 +6,7 @@ import type { Admin, MemberProfile } from './api'
  * What the hub tells PostHog beyond pageviews and autocapture (ORB-185, design
  * `docs/design/2026-09-12-posthog-analytics-design.md` § The hub): the wizard funnel,
  * the guide download, and who the person is once a session is known. Every call goes
- * through `@orbiters/analytics/browser`, which is silent on localhost and in tests, so
+ * through `@rebase/analytics/browser`, which is silent on localhost and in tests, so
  * nothing here checks whether analytics is on.
  */
 

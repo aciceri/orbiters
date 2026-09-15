@@ -1,4 +1,4 @@
-import { initAnalytics } from '@orbiters/analytics/browser'
+import { initAnalytics } from '@rebase/analytics/browser'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'

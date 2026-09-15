@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest'
  */
 const appCss = readFileSync(join(__dirname, 'tokens.css'), 'utf-8')
 const brandCss = readFileSync(
-  fileURLToPath(import.meta.resolve('@orbiters/brand/palette.css')),
+  fileURLToPath(import.meta.resolve('@rebase/brand/palette.css')),
   'utf-8',
 )
 const css = `${brandCss}\n${appCss}`
@@ -177,7 +177,7 @@ describe('design tokens', () => {
     // must not restate it: one @font-face for the brand, not one per surface.
     expect(appCss).not.toMatch(/@font-face/)
     const brandFont = readFileSync(
-      fileURLToPath(import.meta.resolve('@orbiters/brand/font.css')),
+      fileURLToPath(import.meta.resolve('@rebase/brand/font.css')),
       'utf-8',
     )
     const families = [...brandFont.matchAll(/@font-face\s*\{[^}]*font-family:\s*'([^']+)'/g)].map(

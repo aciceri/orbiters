@@ -3,7 +3,7 @@
  * above it, each laid over the one before like a cut-out (ORB-199, ORB-200). Writes the
  * six variants into `shared/brand/echo/`.
  *
- * Not part of any build, and run by hand: `pnpm --filter @orbiters/brand build:echo`.
+ * Not part of any build, and run by hand: `pnpm --filter @rebase/brand build:echo`.
  * The PNGs are committed, so a surface that shows the logo never waits on a render and
  * the file that ships is the file somebody looked at. A directory given as the first
  * argument receives the six files instead, so what this draws today can be compared

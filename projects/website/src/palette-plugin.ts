@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
 
-const TOKENS_CSS = fileURLToPath(import.meta.resolve('@orbiters/brand/palette.css'))
+const TOKENS_CSS = fileURLToPath(import.meta.resolve('@rebase/brand/palette.css'))
 /** The rules the two landing sheets share (grid line, tile, glyph, contrast guard),
  *  prepended after the tokens so neither sheet restates them. */
 const SYSTEM_CSS = resolve(__dirname, 'system.css')
@@ -11,7 +11,7 @@ const SYSTEM_CSS = resolve(__dirname, 'system.css')
  *  whole brand rather than a copy in each sheet. Prepended rather than @import-ed
  *  because an @import is only valid before any rule, and both sheets open with
  *  `:root`. */
-const FONT_CSS = fileURLToPath(import.meta.resolve('@orbiters/brand/font.css'))
+const FONT_CSS = fileURLToPath(import.meta.resolve('@rebase/brand/font.css'))
 
 /** The palette, the font stack and the radius scale, and nothing else. Fifteen
  *  today; the count is asserted so that a token added to or removed from
@@ -91,8 +91,8 @@ export function palettePlugin(): Plugin {
         "url('./fonts/", `url('${resolve(FONT_CSS, '../fonts')}/`,
       )
       return (
-        `/* injected from @orbiters/brand/font.css by palette-plugin.ts */\n${font}\n\n` +
-        `/* injected from @orbiters/brand/palette.css by palette-plugin.ts */\n:root {\n${block}\n}\n\n` +
+        `/* injected from @rebase/brand/font.css by palette-plugin.ts */\n${font}\n\n` +
+        `/* injected from @rebase/brand/palette.css by palette-plugin.ts */\n:root {\n${block}\n}\n\n` +
         `/* injected from src/system.css by palette-plugin.ts */\n${system}\n${code}`
       )
     },

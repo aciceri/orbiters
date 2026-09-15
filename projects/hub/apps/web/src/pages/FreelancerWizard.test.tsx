@@ -12,12 +12,12 @@ import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FREELANCER_STEPS, FreelancerWizard, readPerk } from './FreelancerWizard'
 
-vi.mock('@orbiters/analytics/browser', () => ({
+vi.mock('@rebase/analytics/browser', () => ({
   capture: vi.fn(),
   identifyUser: vi.fn(),
   resetUser: vi.fn(),
 }))
-import { capture } from '@orbiters/analytics/browser'
+import { capture } from '@rebase/analytics/browser'
 
 /** The wizard mounted on its own little router, so `navigate` has somewhere to go.
  *  `strict` wraps it the way `main.tsx` does, so React 19 simulates the unmount and

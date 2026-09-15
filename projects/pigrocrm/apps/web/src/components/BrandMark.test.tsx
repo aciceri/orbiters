@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { BRAND_TILES, BRAND_TILE_CLASSES } from '@orbiters/brand/mark'
+import { BRAND_TILES, BRAND_TILE_CLASSES } from '@rebase/brand/mark'
 
 import { BrandMark } from './BrandMark'
 

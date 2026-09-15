@@ -12,8 +12,8 @@ read by every surface.
 | `lockup.svg` | The mark at cap height, then the word | The same, plus the social pictures |
 | `wordmark-paper.svg`, `lockup-paper.svg` | The same two on a dark ground | The landing's dark bands, a dark slide |
 | `tools/build-wordmark.py` | How the four SVGs were drawn, and the only way to redraw them | Nobody at build time: run it by hand when the face changes |
-| `echo/` | The echo logo: «rebase» solid under three outlined copies of itself, five colourways as PNG | Covers, slides, social pictures; nothing yet at header size |
-| `tools/build-echo.mjs` | How the five PNGs were drawn, and the only way to redraw them | Nobody at build time: `pnpm --filter @orbiters/brand build:echo` |
+| `echo/` | The echo logo: «rebase» solid under three outlined copies of itself, six colourways as PNG | Covers, slides, social pictures; nothing yet at header size |
+| `tools/build-echo.mjs` | How the six PNGs were drawn, and the only way to redraw them | Nobody at build time: `pnpm --filter @orbiters/brand build:echo` |
 
 ## Why a package rather than a file in one of the projects
 
@@ -92,8 +92,9 @@ branch being replayed, which the plain wordmark does not say.
 | `echo/echo-ink.png` | light grounds, one colour | `--color-prussian-blue` | `--color-prussian-blue` |
 | `echo/echo-watermelon.png` | light grounds, one colour | `--color-watermelon` | `--color-watermelon` |
 | `echo/echo-watermelon-white-outlines.png` | dark grounds | `--color-watermelon` | white |
+| `echo/echo-black.png` | print, and a light ground that is not ours, one colour | black | black |
 
-All five are transparent, 2572x1222, and drawn by `tools/build-echo.mjs` from
+All six are transparent, 2572x1222, and drawn by `tools/build-echo.mjs` from
 `palette.css` and the committed woff2, so a change of colour or of face is a redraw and
 never an edit in a design tool. The script's header lists the rules that make it look
 right (the outline traced from the letter's edge rather than stroked, and what a letter

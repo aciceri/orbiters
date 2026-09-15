@@ -1,17 +1,19 @@
 /**
  * Draws the echo logo: «rebase» solid, with three outlined copies of the word stacked
  * above it, each laid over the one before like a cut-out (ORB-199, ORB-200). Writes the
- * five variants into `shared/brand/echo/`.
+ * six variants into `shared/brand/echo/`.
  *
  * Not part of any build, and run by hand: `pnpm --filter @orbiters/brand build:echo`.
  * The PNGs are committed, so a surface that shows the logo never waits on a render and
  * the file that ships is the file somebody looked at. A directory given as the first
- * argument receives the five files instead, so what this draws today can be compared
+ * argument receives the six files instead, so what this draws today can be compared
  * with what is committed without overwriting it.
  *
  * The colours come out of `palette.css` and the face out of `fonts/`, never restated
- * here. The one literal is white, which the palette does not carry (`--color-paper` is a
- * grey) and which is what the chosen dark-ground variant was drawn in.
+ * here. The two literals are white and black, which the palette does not carry
+ * (`--color-paper` is a grey, `--color-prussian-blue` a blue): white is what the chosen
+ * dark-ground variant was drawn in, and black is for print and for a surface that shows
+ * the logo in one colour it does not own, a partner's page or a monochrome document.
  *
  * How the picture is built, since each rule below fixed something that looked wrong:
  *
@@ -45,6 +47,7 @@ function token(name) {
 const ink = token('prussian-blue')
 const watermelon = token('watermelon')
 const white = '#ffffff'
+const black = '#000000'
 
 /** `word` is the solid word's colour, `outline` the copies'. */
 export const VARIANTS = [
@@ -53,6 +56,7 @@ export const VARIANTS = [
   { file: 'echo-ink.png', word: ink, outline: ink, ground: 'light' },
   { file: 'echo-watermelon.png', word: watermelon, outline: watermelon, ground: 'light' },
   { file: 'echo-watermelon-white-outlines.png', word: watermelon, outline: white, ground: 'dark' },
+  { file: 'echo-black.png', word: black, outline: black, ground: 'light' },
 ]
 
 function markup({ word, outline }) {

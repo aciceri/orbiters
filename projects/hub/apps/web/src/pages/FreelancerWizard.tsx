@@ -88,7 +88,11 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
   {
     id: 'cv',
     title: 'Il tuo CV',
-    hint: 'Un PDF, al massimo 5 MB. Lo leggiamo noi e chi ti proporrà un progetto; puoi chiederci di cancellarlo quando vuoi.',
+    // Optional since the wizard started turning away people who did not have a PDF to
+    // hand: the card is stored without one, the area they land in asks for it again,
+    // and `completa` on the admin side already says which cards are missing it.
+    optional: true,
+    hint: 'Un PDF, al massimo 5 MB. Se non ce l’hai qui, salta: puoi caricarlo quando vuoi dalla tua area. Lo leggiamo noi e chi ti proporrà un progetto; puoi chiederci di cancellarlo quando vuoi.',
     render: ({ value, set }) => (
       <FileField
         value={value.cv}
@@ -97,8 +101,13 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
         hint="PDF fino a 5 MB"
       />
     ),
+    // What is attached is still checked here, with the same two rules the server
+    // applies to the bytes; what is not attached is simply not a refusal.
     validate: (value) => {
-      if (!value.cv) return 'Serve il CV, in PDF.'
+      if (!value.cv) return null
+      // An attached file with no bytes is a broken pick, not a choice to skip: the
+      // server refuses it too, and being told here saves the round trip.
+      if (value.cv.size === 0) return 'Questo file è vuoto: riprova con il PDF.'
       if (value.cv.size > MAX_CV) return 'Il CV può pesare al massimo 5 MB.'
       if (value.cv.type && value.cv.type !== 'application/pdf') return 'Il CV deve essere un PDF.'
       return null

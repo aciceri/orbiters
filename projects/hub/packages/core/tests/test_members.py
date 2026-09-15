@@ -243,6 +243,25 @@ def test_an_incomplete_card_reads_as_such_and_has_no_cv_to_download(
         members.cv(freelancer_id)
 
 
+def test_a_wizard_card_that_came_without_a_cv_is_completed_from_the_area(
+    members: MemberService, hub_session: Session
+) -> None:
+    """The promise the wizard makes when it lets somebody past the CV: the card is
+    theirs already, it is simply not `completa`, and the upload here is what finishes
+    it. The same ending as a card an admin drafted, from the other beginning."""
+    freelancer_id = (
+        FreelancerService(hub_session).apply(FreelancerCreate(**GOOD, email="ada@studio.it")).id
+    )
+    assert members.profile(freelancer_id).completa is False
+    with pytest.raises(NotFound):
+        members.cv(freelancer_id)
+
+    after_cv = members.replace_cv(freelancer_id, PDF, "Ada CV.pdf", "application/pdf")
+    assert after_cv.completa is True and after_cv.cv_filename == "Ada CV.pdf"
+    texts = [c.testo for c in CommentService(hub_session).list("freelancer", freelancer_id)]
+    assert texts[0] == "CV caricato dalla persona"
+
+
 def test_the_person_completes_the_card_and_takes_it_over(
     members: MemberService, hub_session: Session
 ) -> None:

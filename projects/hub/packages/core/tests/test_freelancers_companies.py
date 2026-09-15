@@ -309,6 +309,44 @@ def test_the_wizard_takes_over_a_researched_card(clean: Session) -> None:
     assert applied.compilata_da == "persona" and applied.completa is True
 
 
+def test_an_application_without_a_cv_is_stored_and_waits_for_one(clean: Session) -> None:
+    """The CV is optional in the wizard, so `apply` takes none: the card exists, it is
+    not `completa`, and there is nothing to download until the person adds it from
+    their area."""
+    service = FreelancerService(clean)
+    read = service.apply(_application())
+    assert (read.cv_filename, read.cv_mime, read.cv_size) == (None, None, None)
+    assert read.completa is False
+    with pytest.raises(NotFound) as missing:
+        service.cv(read.id)
+    assert missing.value.details["entity"] == "cv"
+
+
+def test_an_empty_cv_is_refused_while_no_cv_at_all_is_not(clean: Session) -> None:
+    """`None` is "nobody attached a file"; `b""` is a file with nothing in it. The
+    second is a refusal, as it always was, and the caller is the one who can tell them
+    apart."""
+    service = FreelancerService(clean)
+    with pytest.raises(ValidationFailed) as refused:
+        service.apply(_application(), b"", "cv.pdf", "application/pdf")
+    assert refused.value.details["field"] == "cv"
+    assert service.apply(_application()).cv_filename is None
+
+
+def test_a_second_application_without_a_cv_keeps_the_one_already_stored(
+    clean: Session,
+) -> None:
+    """Somebody refreshing their answers from the wizard is not somebody deleting their
+    CV: the row keeps the bytes, and everything else is corrected as usual."""
+    service = FreelancerService(clean)
+    first = service.apply(_application(), PDF, "Ada CV.pdf", "application/pdf")
+    again = service.apply(_application(posizione="Tech lead"))
+    assert again.id == first.id
+    assert (again.cv_filename, again.cv_size) == ("Ada CV.pdf", len(PDF))
+    assert again.posizione == "Tech lead"
+    assert service.cv(again.id).content == PDF
+
+
 def test_a_card_without_a_cv_has_none_to_download(clean: Session) -> None:
     service = FreelancerService(clean)
     drafted = service.draft_from_signup(_signup(clean), _draft(), "Claude")

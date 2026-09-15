@@ -52,9 +52,10 @@ export function Area() {
       </header>
 
       {!profile.completa && (
-        // The card was written by an admin from the signup (ORB-155): what is missing
-        // is what a company would search by, so it is said here and not only in the
-        // dashes below.
+        // What is missing is what a company would search by, so it is said here and not
+        // only in the dashes below. Two ways to get here: a card an admin wrote from a
+        // signup (ORB-155), and a person who skipped the CV in the wizard, where it is
+        // optional. For the second the CV is the only thing that can be missing.
         <div role="status" className="rounded-2xl border-2 border-[var(--color-royal-gold)] bg-card p-5 text-sm">
           <p>
             La tua scheda è incompleta. Aggiungi CV, tariffa, posizione e modalità di lavoro

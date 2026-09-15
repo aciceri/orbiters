@@ -103,25 +103,48 @@ class FreelancerService:
         self.session = session
 
     def apply(
-        self, data: FreelancerCreate, cv: bytes, cv_filename: str, cv_mime: str
+        self,
+        data: FreelancerCreate,
+        cv: bytes | None = None,
+        cv_filename: str = "",
+        cv_mime: str = "",
     ) -> FreelancerRead:
         """One row per address. A second application from the same address is the same
         person correcting or refreshing theirs, so it overwrites what the wizard asked
         and leaves what the admin wrote (`stato`, `note`) alone. The first attribution
         stays, as it does for signups. A card an admin drafted from a signup (ORB-155)
         is taken over the same way: the person's answers replace the research and the
-        card becomes theirs (`compilata_da = "persona"`)."""
-        filename, mime = check_cv(cv, cv_filename, cv_mime)
+        card becomes theirs (`compilata_da = "persona"`).
+
+        **The CV is optional here.** A card without one is a state the model already
+        had -- `cv_of` answers `NotFound` for it, `completa` is false, and the member
+        area's `replace_cv` exists precisely to add it later -- and asking for a PDF
+        before a person can finish the form was turning away people who did not have
+        one to hand. A CV that *is* sent is checked exactly as before, and an
+        application that omits it **never clears a CV already stored**: somebody
+        refreshing their answers from the wizard is not somebody deleting their CV.
+
+        `cv is None` is "no file was attached"; `cv == b""` is an attached file with no
+        bytes in it, and that is a refusal like any other broken upload. The difference
+        is the caller's to make, and this signature is what lets them make it.
+        """
+        stored: tuple[bytes, str, str] | None = None
+        if cv is not None:
+            stored = (cv, *check_cv(cv, cv_filename, cv_mime))
         email = data.email.strip().lower()
         row = self._find(email)
         if row is None:
             utm = data.utm.model_dump() if data.utm is not None and not data.utm.is_empty() else {}
-            row = Freelancer(
-                email=email, cv_bytes=cv, cv_filename=filename, cv_mime=mime, cv_size=len(cv), **utm
-            )
+            row = Freelancer(email=email, **utm)
             self.session.add(row)
-        else:
-            row.cv_bytes, row.cv_filename, row.cv_mime, row.cv_size = cv, filename, mime, len(cv)
+        if stored is not None:
+            content, filename, mime = stored
+            row.cv_bytes, row.cv_filename, row.cv_mime, row.cv_size = (
+                content,
+                filename,
+                mime,
+                len(content),
+            )
         row.nome = data.nome
         row.cognome = data.cognome
         row.linkedin_url = data.linkedin_url

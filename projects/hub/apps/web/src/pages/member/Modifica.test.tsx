@@ -70,12 +70,16 @@ describe('the edit steps', () => {
     expect(cv.validate({ ...base, cv: png } as never)).not.toBeNull()
   })
 
-  it('require the CV, with the wizard’s own words, when there is none to keep', () => {
+  it('ask for the CV without demanding it when there is none to keep, and say so', () => {
     const steps = editSteps(false)
     expect(steps.map((step) => step.id)).not.toContain('email')
     const cv = steps.find((step) => step.id === 'cv')!
-    expect(cv.optional).toBeFalsy()
-    expect(cv.validate(base as never)).toBe('Serve il CV, in PDF.')
+    // Optional here too since the wizard stopped demanding a PDF: requiring it on this
+    // page would be the same wall one step later, in front of somebody who came to
+    // change their rate.
+    expect(cv.optional).toBe(true)
+    expect(cv.validate(base as never)).toBeNull()
+    expect(cv.hint).toContain('Non ne abbiamo ancora uno')
     const pdf = new File(['%PDF'], 'cv.pdf', { type: 'application/pdf' })
     expect(cv.validate({ ...base, cv: pdf } as never)).toBeNull()
   })
@@ -117,17 +121,29 @@ describe('/io/modifica', () => {
     expect(fetchSpy.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
   })
 
-  it('refuses to save a card without a CV until one is chosen, and sends nothing', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, WITHOUT_CV))
+  it('saves a card that has no CV, and says the CV can still arrive', async () => {
+    // A fresh Response per call, never `mockResolvedValue(answer(...))`: a body is read
+    // once, so the second request of this test (the PATCH) would find it consumed and
+    // the save would fail for a reason that has nothing to do with the CV.
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => answer(200, WITHOUT_CV))
     mount()
     const user = userEvent.setup()
     await screen.findByLabelText('Posizione')
-    const cvSection = screen.getByRole('region', { name: 'Il tuo CV' })
-    expect(within(cvSection).queryByText('(facoltativo)')).toBeNull()
+    // The heading now carries «(facoltativo)», so the region's accessible name does too.
+    const cvSection = screen.getByRole('region', { name: /Il tuo CV/ })
+    expect(within(cvSection).getByText('(facoltativo)')).toBeInTheDocument()
+    expect(cvSection).toHaveTextContent('Non ne abbiamo ancora uno')
+
     await user.click(screen.getByRole('button', { name: 'Salva' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Serve il CV, in PDF.')
-    // Only the profile was read; nothing was written.
-    expect(fetchSpy.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([['/api/hub/me', undefined]])
+
+    await screen.findByRole('heading', { name: 'La tua area' })
+    expect(screen.queryByRole('alert')).toBeNull()
+    const patch = fetchSpy.mock.calls.find(([, init]) => init?.method === 'PATCH')!
+    expect(patch[0]).toBe('/api/hub/me')
+    // Nothing was uploaded: the PUT is the CV route and nobody chose a file.
+    expect(fetchSpy.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
   })
 
   it('shows a server refusal under the field it names', async () => {

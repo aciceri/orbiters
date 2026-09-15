@@ -39,9 +39,10 @@ function StatePill({ stato }: { stato: string }) {
   )
 }
 
-/** Beside the state pill on a card an admin wrote from a signup and the person has not
- *  finished yet (ORB-155): the CV, the rate, the position or the remote preference is
- *  still missing. */
+/** Beside the state pill on a card that is missing the CV, the rate, the position or
+ *  the remote preference. Either an admin wrote it from a signup and the person has not
+ *  finished yet (ORB-155), or they filled the wizard and skipped the CV, which the
+ *  wizard lets them do. */
 function IncompletePill() {
   return <Badge variant="pill">Da completare</Badge>
 }

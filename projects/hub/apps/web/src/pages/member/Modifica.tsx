@@ -9,19 +9,25 @@ import type { Step } from '@/wizard/Wizard'
 /**
  * The wizard's steps, as a form: every question at once, because the person is
  * correcting and not answering for the first time. The email is not among them (it is
- * the identity the link proved). The CV is optional only while we hold one: `null` then
- * keeps it. On a card an admin wrote from a signup there is none to keep (ORB-155), so
- * the step stays the wizard's own, required, with its own words. Everything else,
- * control and rule alike, is the wizard's own.
+ * the identity the link proved). Everything else, control and rule alike, is the
+ * wizard's own.
+ *
+ * The CV is optional here in both cases, and the hint is what differs. While we hold
+ * one, `null` keeps it. When we hold none -- a card an admin wrote from a signup
+ * (ORB-155), or a person who skipped the step in the wizard -- this used to be the one
+ * required question on the page, which since the wizard stopped demanding a PDF would
+ * only have moved the same wall one step later: somebody correcting their rate would
+ * have been told to produce a CV first, and would have left with neither saved.
  */
 export function editSteps(hasCv: boolean): Step<FreelancerApplication>[] {
   return FREELANCER_STEPS.filter((step) => step.id !== 'email').map((step) =>
-    step.id === 'cv' && hasCv
+    step.id === 'cv'
       ? {
           ...step,
           optional: true,
-          hint: 'Solo se vuoi sostituirlo: un PDF, al massimo 5 MB. Altrimenti teniamo quello che abbiamo.',
-          validate: (value) => (value.cv ? step.validate(value) : null),
+          hint: hasCv
+            ? 'Solo se vuoi sostituirlo: un PDF, al massimo 5 MB. Altrimenti teniamo quello che abbiamo.'
+            : 'Non ne abbiamo ancora uno. Un PDF, al massimo 5 MB: caricalo adesso o quando vuoi.',
         }
       : step,
   )

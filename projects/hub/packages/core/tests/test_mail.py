@@ -148,6 +148,24 @@ def test_a_person_who_filled_their_card_is_told_it_is_complete() -> None:
     assert "Entra nella tua area" in mail.html
 
 
+def test_a_person_who_skipped_the_cv_is_asked_for_it_rather_than_congratulated() -> None:
+    """The CV is optional in the wizard, so «persona» no longer implies a complete card:
+    telling somebody their card is complete when it is missing the one thing a company
+    searches by would be false, and a reason never to come back and finish it."""
+    mail = welcome_mail(
+        "ada@studio.it",
+        "Ada",
+        ACCEDI,
+        kind="persona",
+        posizione="Backend developer",
+        completa=False,
+    )
+    _common(mail)
+    assert "scheda è completa" not in mail.text
+    assert "manca solo il CV" in mail.text and "dalla tua area" in mail.text
+    assert "Sei Backend developer" in mail.text
+
+
 def test_a_card_we_drafted_gets_a_recap_the_ask_to_complete_and_the_offer() -> None:
     summary = CardSummary(
         nome="Bruna",

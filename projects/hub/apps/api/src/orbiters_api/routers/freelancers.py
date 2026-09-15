@@ -1,10 +1,11 @@
-"""`POST /api/hub/freelancers`: the wizard's application, CV included.
+"""`POST /api/hub/freelancers`: the wizard's application, with the CV when there is one.
 
 Multipart, because the CV is a file: the fields arrive as form values and the PDF as
-`cv`. Everything is validated by `FreelancerCreate` and `check_cv` exactly as the MCP
-server would validate it, so the two adapters cannot accept different things. Public,
-rate-limited, and mute like the signup: the answer is `{"ok": true}` whether this was a
-first application or a correction of one.
+`cv`, which is optional -- a person with no PDF to hand finishes the form and adds it
+later from their area. Everything is validated by `FreelancerCreate` and `check_cv`
+exactly as the MCP server would validate it, so the two adapters cannot accept
+different things. Public, rate-limited, and mute like the signup: the answer is
+`{"ok": true}` whether this was a first application or a correction of one.
 """
 
 from decimal import Decimal, InvalidOperation
@@ -53,7 +54,11 @@ def apply(
     tariffa_giornaliera: Annotated[str, Form()],
     posizione: Annotated[str, Form()],
     remoto: Annotated[str, Form()],
-    cv: Annotated[UploadFile, File()],
+    # Optional: the wizard leaves the part out of the body when nobody attached a file,
+    # and FastAPI hands `None` here for a part with no filename and for `cv` sent as an
+    # empty string field, which is what other clients do for "nothing chosen". A part
+    # that *is* a file is a file, even when it carries no bytes: see below.
+    cv: Annotated[UploadFile | None, File()] = None,
     linkedin_url: Annotated[str | None, Form()] = None,
     links: Annotated[list[str] | None, Form()] = None,
     utm_source: Annotated[str | None, Form()] = None,
@@ -87,8 +92,16 @@ def apply(
         )
     except ValidationError as exc:
         raise _validation_422(exc) from exc
-    content = cv.file.read()
-    # A CV that is not a small PDF raises `ValidationFailed`, which the app's handler
-    # renders as the same 422 shape as the fields above.
-    FreelancerService(session).apply(data, content, cv.filename or "", cv.content_type or "")
+    # No CV at all is not a refusal: the card is stored without one and `completa` says
+    # so. An attached file is checked, and an attached file of zero bytes is checked
+    # too, which is the whole reason these two cases are told apart rather than folded
+    # into one falsy test: a truncated or empty upload would otherwise be read as "this
+    # person chose not to send a CV", and they would be told nothing. A CV that is not a
+    # small PDF raises `ValidationFailed`, which the app's handler renders as the same
+    # 422 shape as the fields above.
+    service = FreelancerService(session)
+    if cv is None:
+        service.apply(data)
+    else:
+        service.apply(data, cv.file.read(), cv.filename or "", cv.content_type or "")
     return Ack()

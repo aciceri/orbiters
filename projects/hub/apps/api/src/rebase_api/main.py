@@ -1,10 +1,22 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from rebase_api.deps import SessionDep
 from rebase_api.routers import admin, companies, freelancers, members, pigro, signups, tokens
+from rebase_core import analytics
 from rebase_core.errors import DomainError, NotFound, ValidationFailed
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Nothing at start; at stop, the last completion event leaves before the process
+    does (`rebase_core.analytics.shutdown`, a no-op when no key built a client)."""
+    yield
+    analytics.shutdown()
 
 
 async def domain_error_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -31,7 +43,7 @@ async def domain_error_handler(request: Request, exc: Exception) -> JSONResponse
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="rebase API", version="0.1.0")
+    app = FastAPI(title="rebase API", version="0.1.0", lifespan=lifespan)
     app.add_exception_handler(DomainError, domain_error_handler)
     app.include_router(signups.router)
     app.include_router(freelancers.router)

@@ -1,10 +1,16 @@
 """The hub's two public writes: multipart with a CV, and JSON. Both mute, both limited."""
 
+from collections.abc import Iterator
+from typing import Any
+
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from rebase_api.deps import get_tracker
 from rebase_api.ratelimit import SIGNUPS_PER_MINUTE
+from rebase_core.analytics import APPLICATION_COMPLETED, Tracker
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
 
@@ -227,3 +233,124 @@ def test_the_three_public_writes_share_one_budget_per_client(
     refused = client.post("/api/hub/companies", json=body)
     assert refused.status_code == 429
     assert refused.headers["Retry-After"] == "60"
+
+
+# ---- the completion event (REB-215) ----------------------------------------------------
+
+
+class RecordingCapture:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    def __call__(self, event: str, *, distinct_id: str, properties: dict[str, Any]) -> None:
+        self.calls.append((event, distinct_id, properties))
+
+
+@pytest.fixture
+def tracked(client: TestClient) -> Iterator[RecordingCapture]:
+    """A tracker whose SDK is this recorder. The default `client` has none at all --
+    `Settings(_env_file=None)` carries no key -- which is what the last test relies on."""
+    capture = RecordingCapture()
+    client.app.dependency_overrides[get_tracker] = lambda: Tracker(capture)  # type: ignore[attr-defined]
+    yield capture
+    client.app.dependency_overrides.pop(get_tracker, None)  # type: ignore[attr-defined]
+
+
+def _company() -> dict[str, object]:
+    return {
+        "nome_azienda": "ACME Srl",
+        "referente": "Ada Lovelace",
+        "email": "ada@acme.it",
+        "progetto": "Dobbiamo rifare il backend del portale clienti.",
+        "periodo_da": "2026-10-01",
+        "durata": "3 mesi",
+        "budget_giornaliero": "500",
+        "utm": {"utm_source": "linkedin", "origine": "home"},
+    }
+
+
+def test_an_application_is_one_completion_event_on_the_browsers_person(
+    client: TestClient, api_session: Session, tracked: RecordingCapture
+) -> None:
+    _clean(api_session)
+    response = client.post(
+        "/api/hub/freelancers",
+        data={**_form(), "distinct_id": "anon-1"},
+        files={"cv": ("Ada CV.pdf", PDF, "application/pdf")},
+    )
+    assert response.status_code == 201, response.text
+    # After the answer (a background task), on the browser's id, with what the funnel
+    # needs and nothing about the person.
+    assert tracked.calls == [
+        (
+            APPLICATION_COMPLETED,
+            "anon-1",
+            {
+                "tipo": "freelance",
+                "via": "server",
+                "cv": True,
+                "utm_source": "linkedin",
+                "$process_person_profile": False,
+            },
+        )
+    ]
+    assert "ada@studio.it" not in str(tracked.calls)
+
+
+def test_an_application_without_the_browser_id_still_counts(
+    client: TestClient, api_session: Session, tracked: RecordingCapture
+) -> None:
+    """The SDK was blocked: that is the case the server event exists for."""
+    _clean(api_session)
+    assert client.post("/api/hub/freelancers", data=_form()).status_code == 201
+    ((event, distinct_id, properties),) = tracked.calls
+    assert event == APPLICATION_COMPLETED
+    assert len(distinct_id) == 32
+    assert properties["cv"] is False
+
+
+def test_a_company_request_is_one_completion_event_too(
+    client: TestClient, api_session: Session, tracked: RecordingCapture
+) -> None:
+    _clean(api_session)
+    response = client.post("/api/hub/companies", json={**_company(), "distinct_id": "anon-2"})
+    assert response.status_code == 201, response.text
+    assert tracked.calls == [
+        (
+            APPLICATION_COMPLETED,
+            "anon-2",
+            {
+                "tipo": "azienda",
+                "via": "server",
+                "utm_source": "linkedin",
+                "origine": "home",
+                "$process_person_profile": False,
+            },
+        )
+    ]
+
+
+def test_a_browser_id_that_is_not_one_is_refused_before_anything_is_written(
+    client: TestClient, api_session: Session, tracked: RecordingCapture
+) -> None:
+    _clean(api_session)
+    too_long = "x" * 300
+    assert (
+        client.post("/api/hub/freelancers", data={**_form(), "distinct_id": too_long}).status_code
+        == 422
+    )
+    assert (
+        client.post("/api/hub/companies", json={**_company(), "distinct_id": too_long}).status_code
+        == 422
+    )
+    assert tracked.calls == []
+    assert api_session.execute(text("SELECT count(*) FROM freelancers")).scalar() == 0
+
+
+def test_without_a_key_nothing_is_tracked_and_the_application_still_lands(
+    client: TestClient, api_session: Session
+) -> None:
+    _clean(api_session)
+    assert client.post("/api/hub/freelancers", data=_form()).status_code == 201
+    assert client.post("/api/hub/companies", json=_company()).status_code == 201
+    assert api_session.execute(text("SELECT count(*) FROM freelancers")).scalar() == 1

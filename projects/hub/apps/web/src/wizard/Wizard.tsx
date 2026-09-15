@@ -45,6 +45,9 @@ export function Wizard<T>({
   submitError,
   submitLabel,
   onStep,
+  initialIndex = 0,
+  onIndexChange,
+  intro,
 }: {
   title: string
   steps: Step<T>[]
@@ -60,8 +63,16 @@ export function Wizard<T>({
    *  first one on mount, the review as `steps.length`, a jump back on a server error
    *  too. Memoise it, or it fires on every render. */
   onStep?: (index: number, total: number) => void
+  /** Where to start: the step a draft was left at (`wizard/draft.ts`), clamped to the
+   *  review, so a draft written by a longer version of the form still opens. */
+  initialIndex?: number
+  /** Every step change, the first one included, for whoever keeps the draft. */
+  onIndexChange?: (index: number) => void
+  /** Shown above the first question only: what this is and how long it takes, for the
+   *  person who arrived from an ad and is asked their name before anything else. */
+  intro?: ReactNode
 }) {
-  const [index, setIndex] = useState(0)
+  const [index, setIndex] = useState(() => Math.min(Math.max(0, initialIndex), steps.length))
   const [error, setError] = useState<string | null>(null)
   const review = index === steps.length
   const step = steps[index]
@@ -70,6 +81,9 @@ export function Wizard<T>({
   useEffect(() => {
     onStep?.(index, steps.length)
   }, [index, steps.length, onStep])
+  useEffect(() => {
+    onIndexChange?.(index)
+  }, [index, onIndexChange])
 
   // A server error that names a step sends the person back to it, once per error. State
   // adjusted during render, the way React asks for "state that follows a prop", rather
@@ -142,6 +156,8 @@ export function Wizard<T>({
           />
         </div>
       </div>
+
+      {intro && index === 0 && <div>{intro}</div>}
 
       {review ? (
         <section className="space-y-6" aria-label="Riepilogo">

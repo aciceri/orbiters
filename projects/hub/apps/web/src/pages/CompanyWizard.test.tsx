@@ -6,13 +6,15 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { CompanyWizard } from './CompanyWizard'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { loadDraft } from '@/wizard/draft'
+import { COMPANY_DRAFT_KEY, CompanyWizard } from './CompanyWizard'
 
 vi.mock('@rebase/analytics/browser', () => ({
   capture: vi.fn(),
+  distinctId: vi.fn(() => 'anon-1'),
   identifyUser: vi.fn(),
   resetUser: vi.fn(),
 }))
@@ -43,9 +45,13 @@ function captured(event: string) {
     .map(([, properties]) => properties)
 }
 
+// The draft lives in `localStorage`, which jsdom keeps across the tests of one file.
+beforeEach(() => window.localStorage.clear())
+
 afterEach(() => {
   vi.restoreAllMocks()
   vi.clearAllMocks()
+  window.localStorage.clear()
 })
 
 describe('CompanyWizard', () => {
@@ -78,5 +84,39 @@ describe('CompanyWizard', () => {
     const [url, init] = fetchSpy.mock.calls[0]!
     expect(url).toBe('/api/hub/companies')
     expect(JSON.parse(init?.body as string)).toMatchObject({ nome_azienda: 'ACME Srl', budget_giornaliero: '500' })
+  })
+})
+
+describe('CompanyWizard, the draft and the intro (REB-215)', () => {
+  it('introduces rebase above the first question', async () => {
+    mount()
+    expect(await screen.findByRole('complementary', { name: 'Cos’è rebase' })).toHaveTextContent('5 domande')
+  })
+
+  it('picks the answers up on the next visit and forgets them once sent', async () => {
+    const user = userEvent.setup()
+    mount()
+    await user.type(await screen.findByLabelText('Azienda'), 'ACME Srl{Enter}')
+    expect(loadDraft(COMPANY_DRAFT_KEY)).toMatchObject({ index: 1, value: { nome_azienda: 'ACME Srl' } })
+
+    cleanup()
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 201 }),
+    )
+    const router = mount()
+    expect(await screen.findByRole('note', { name: 'Risposte ritrovate' })).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Referente'), 'Ada Lovelace')
+    await user.type(screen.getByLabelText('Email'), 'ada@acme.it{Enter}')
+    await user.type(screen.getByLabelText('Progetto'), 'Dobbiamo rifare il backend del portale clienti.')
+    await user.click(screen.getByRole('button', { name: /Avanti/ }))
+    await user.type(screen.getByLabelText('Da quando'), '2026-10-01')
+    await user.type(screen.getByLabelText('Per quanto'), '3 mesi{Enter}')
+    await user.type(screen.getByLabelText('Budget a giornata'), '500{Enter}')
+    await user.click(screen.getByRole('button', { name: /Invia/ }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/grazie'))
+    expect(loadDraft(COMPANY_DRAFT_KEY)).toBeNull()
+    const body = JSON.parse(fetchSpy.mock.calls[0]![1]?.body as string)
+    expect(body.nome_azienda).toBe('ACME Srl')
+    expect(body.distinct_id).toBe('anon-1')
   })
 })

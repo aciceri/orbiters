@@ -16,7 +16,9 @@ Read it before changing the shape of anything here; this file does not restate i
 Three public flows and the admin area behind them:
 
 - `/hub/` — the chooser: «Sono un freelance» / «Cerco persone per un progetto».
-- `/hub/freelance` — the freelancer wizard (CV upload included), ending at `/hub/grazie`.
+- `/hub/freelance` — the freelancer wizard, ending at `/hub/grazie`. The CV is a step
+  of it and an optional one: a card without a PDF is stored, reads «da completare»,
+  and the person adds the file from `/hub/io` whenever they have it.
 - `/hub/aziende` — the company wizard.
 - `/hub/accedi` and `/hub/io`: a freelancer gets back in with a magic link by mail, to
   see or change what they sent.

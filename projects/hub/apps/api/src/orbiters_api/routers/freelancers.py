@@ -1,10 +1,11 @@
-"""`POST /api/hub/freelancers`: the wizard's application, CV included.
+"""`POST /api/hub/freelancers`: the wizard's application, with the CV when there is one.
 
 Multipart, because the CV is a file: the fields arrive as form values and the PDF as
-`cv`. Everything is validated by `FreelancerCreate` and `check_cv` exactly as the MCP
-server would validate it, so the two adapters cannot accept different things. Public,
-rate-limited, and mute like the signup: the answer is `{"ok": true}` whether this was a
-first application or a correction of one.
+`cv`, which is optional -- a person with no PDF to hand finishes the form and adds it
+later from their area. Everything is validated by `FreelancerCreate` and `check_cv`
+exactly as the MCP server would validate it, so the two adapters cannot accept
+different things. Public, rate-limited, and mute like the signup: the answer is
+`{"ok": true}` whether this was a first application or a correction of one.
 """
 
 from decimal import Decimal, InvalidOperation
@@ -53,7 +54,10 @@ def apply(
     tariffa_giornaliera: Annotated[str, Form()],
     posizione: Annotated[str, Form()],
     remoto: Annotated[str, Form()],
-    cv: Annotated[UploadFile, File()],
+    # Optional, and absent rather than empty: the wizard leaves the part out of the body
+    # when nobody attached a file, and a browser that sends an empty one is read as the
+    # same thing a few lines below.
+    cv: Annotated[UploadFile | None, File()] = None,
     linkedin_url: Annotated[str | None, Form()] = None,
     links: Annotated[list[str] | None, Form()] = None,
     utm_source: Annotated[str | None, Form()] = None,
@@ -87,8 +91,14 @@ def apply(
         )
     except ValidationError as exc:
         raise _validation_422(exc) from exc
-    content = cv.file.read()
+    content = cv.file.read() if cv is not None else b""
     # A CV that is not a small PDF raises `ValidationFailed`, which the app's handler
-    # renders as the same 422 shape as the fields above.
-    FreelancerService(session).apply(data, content, cv.filename or "", cv.content_type or "")
+    # renders as the same 422 shape as the fields above. No CV at all is not a refusal:
+    # the card is stored without one and `completa` says so.
+    FreelancerService(session).apply(
+        data,
+        content or None,
+        cv.filename or "" if cv is not None else "",
+        cv.content_type or "" if cv is not None else "",
+    )
     return Ack()

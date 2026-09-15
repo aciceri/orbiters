@@ -91,13 +91,17 @@ describe('the freelancer steps', () => {
     expect(validate({ ...base, tariffa_giornaliera: 'tanto' } as never)).not.toBeNull()
   })
 
-  it('want a PDF under five megabytes', () => {
+  it('want a PDF under five megabytes, or no CV at all', () => {
     const validate = step('cv').validate
     const pdf = new File(['%PDF'], 'cv.pdf', { type: 'application/pdf' })
     const png = new File(['x'], 'cv.png', { type: 'image/png' })
     expect(validate({ ...base, cv: pdf } as never)).toBeNull()
     expect(validate({ ...base, cv: png } as never)).not.toBeNull()
-    expect(validate({ ...base, cv: null } as never)).not.toBeNull()
+    // Optional since a PDF nobody had to hand was ending the form here: the step is
+    // marked optional, so the wizard shows «(facoltativo)» and lets it through, and
+    // the person adds the CV from their area.
+    expect(validate({ ...base, cv: null } as never)).toBeNull()
+    expect(step('cv').optional).toBe(true)
   })
 })
 
@@ -149,6 +153,37 @@ describe('FreelancerWizard', () => {
     expect(body.get('utm_source')).toBe('linkedin')
     expect(body.get('origine')).toBe('pigrocrm')
     expect(body.getAll('links')).toEqual(['https://github.com/ada'])
+    expect((body.get('cv') as File).name).toBe('Ada CV.pdf')
+  })
+
+  /** The CV is optional: somebody with no PDF to hand finishes the form, the body
+   *  carries no `cv` part at all rather than an empty one, and the area they land in is
+   *  where the file arrives later. */
+  it('lets a person through with no CV, and posts a body without the part', async () => {
+    const user = userEvent.setup({ applyAccept: false })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 201 }),
+    )
+    const router = mount()
+
+    await user.type(await screen.findByLabelText('Nome'), 'Ada')
+    await user.type(screen.getByLabelText('Cognome'), 'Lovelace{Enter}')
+    await user.type(screen.getByLabelText('Email'), 'ada@studio.it{Enter}')
+    await user.keyboard('{Enter}') // LinkedIn, optional
+    await user.click(screen.getByRole('button', { name: /Avanti/ })) // the CV, skipped
+    await user.type(screen.getByLabelText('Tariffa a giornata'), '450{Enter}')
+    await user.type(screen.getByLabelText('Posizione'), 'Backend developer{Enter}')
+    await user.click(screen.getByRole('radio', { name: /Da remoto/ }))
+    await user.click(screen.getByRole('button', { name: /Rivedi|Avanti/ }))
+    await user.click(screen.getByRole('button', { name: /Rivedi/ }))
+
+    expect(screen.getByRole('heading', { name: 'Tutto giusto?' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Invia/ }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/grazie'))
+
+    const body = fetchSpy.mock.calls[0]![1]?.body as FormData
+    expect(body.get('email')).toBe('ada@studio.it')
+    expect(body.has('cv')).toBe(false)
   })
 })
 

@@ -95,7 +95,7 @@ def test_the_page_the_person_started_from_is_stored_beside_the_campaign(
     assert api_session.execute(text("SELECT origine FROM companies")).scalar() == "home"
 
 
-def test_a_missing_or_non_pdf_cv_is_a_422_that_names_the_field(
+def test_a_cv_that_is_not_a_pdf_is_a_422_that_names_the_field(
     client: TestClient, api_session: Session
 ) -> None:
     _clean(api_session)
@@ -105,6 +105,21 @@ def test_a_missing_or_non_pdf_cv_is_a_422_that_names_the_field(
     assert response.status_code == 422
     assert {error["loc"][-1] for error in response.json()["detail"]} == {"cv"}
     assert api_session.execute(text("SELECT count(*) FROM freelancers")).scalar() == 0
+
+
+def test_an_application_with_no_cv_at_all_is_accepted_and_stored_without_one(
+    client: TestClient, api_session: Session
+) -> None:
+    """The CV is optional: somebody with no PDF to hand finishes the form and the card
+    waits for it. The part is absent from the body, which is what the wizard sends."""
+    _clean(api_session)
+    response = client.post("/api/hub/freelancers", data=_form())
+    assert response.status_code == 201, response.text
+    row = api_session.execute(
+        text("SELECT email, cv_bytes, cv_filename, cv_size FROM freelancers")
+    ).one()
+    assert row.email == "ada@studio.it"
+    assert (row.cv_bytes, row.cv_filename, row.cv_size) == (None, None, None)
 
 
 def test_a_field_the_form_refuses_is_a_422_in_the_same_shape_as_a_json_body(

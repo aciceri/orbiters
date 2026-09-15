@@ -94,7 +94,8 @@ Every `joinorbiters.com` that is configuration, a link or a test expectation bec
 Python packages, the deploy workflows' environment URLs, the analytics host lists, the
 site's own pages and the pitch's QR code. Left as they were: the specs and plans under
 `docs/superpowers/` (they describe a moment), the rows of `DECISIONS.md` before today,
-the GitHub org (`joinorbiters/orbiters`, a rename of its own), the Linear workspace slug,
+the GitHub org (`joinorbiters/orbiters`, a rename of its own, done on 2026-09-15 as
+`letsrebase/rebase`, ORB-204), the Linear workspace slug,
 the LinkedIn page slug, and the guide PDF (a binary, rebuilt by
 `projects/hub/tools/build_guide_pdf.py` in a follow-up).
 

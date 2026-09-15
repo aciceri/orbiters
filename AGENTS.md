@@ -1,4 +1,4 @@
-# AGENTS.md — working in the Orbiters monorepo
+# AGENTS.md — working in the rebase monorepo
 
 Orientation for agents and for humans. Read this before touching anything at the
 root. Facts that are true of one project only live in that project's own
@@ -7,7 +7,7 @@ there — both Claude Code and omp load the nearest one.
 
 ## What this repository is
 
-One repository for every Orbiters project. PigroCRM is the first of them and, today,
+One repository for every rebase project. PigroCRM is the first of them and, today,
 the only one; it is a project in here, not the point of the place. Projects are
 allowed to use different stacks, and are expected to share as much of their
 dependency graph and their tooling as they honestly can.

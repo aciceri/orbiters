@@ -199,7 +199,7 @@ give the Deployments tab a real per-environment history, and they are where a re
 reviewer on production goes the day the account is on a paid plan.
 
 ```
-gh api -X PUT repos/joinorbiters/<repo>/environments/<name>-preview
+gh api -X PUT repos/letsrebase/rebase/environments/<name>-preview
 gh secret set DEPLOY_HOST --env <name>-preview --body '...'
 ```
 

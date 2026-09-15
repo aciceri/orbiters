@@ -1,6 +1,6 @@
 # website
 
-letsrebase.com: the public site. Today that is the Orbiters landing at `/`, the
+letsrebase.com: the public site. Today that is the rebase landing at `/`, the
 community page with its signup form at `/orbiters`, and the two policy pages
 (`/privacy`, `/termini`); it is called `website` rather than `landing` because it is
 expected to grow past those.
@@ -26,15 +26,15 @@ pnpm --filter website lint
 
 | Page | Served at | What it is |
 |---|---|---|
-| `src/index.html` | `letsrebase.com/` | The Orbiters landing: two doors into the hub, how it works, the four voices, the perks. Since 2026-09-11 (ORB-145) |
-| `src/pigrocrm.html` | `/pigrocrm` | PigroCRM's own page (ORB-159): one door into Orbiters beside a drawn Claude conversation, the four things inside, the guide, the closing box. Its own `pigrocrm.css` on top of `landing.css` |
+| `src/index.html` | `letsrebase.com/` | The rebase landing: two doors into the hub, how it works, the four voices, the perks. Since 2026-09-11 (ORB-145) |
+| `src/pigrocrm.html` | `/pigrocrm` | PigroCRM's own page (ORB-159): one door into rebase beside a drawn Claude conversation, the four things inside, the guide, the closing box. Its own `pigrocrm.css` on top of `landing.css` |
 | `src/orbiters.html` | `/orbiters` | The community page and its signup form, the front door until 2026-09-11 |
 | `src/privacy.html` | `/privacy` | Privacy notice |
 | `src/termini.html` | `/termini` | Terms |
 | `src/pitch.html` | `/pitch` | The pitch deck, nineteen slides with keyboard, swipe and wheel navigation; shared by link, `noindex`. Its own stylesheet, `pitch.css`; its pictures under `src/pitch/` |
 
-The Orbiters form posts to `POST /api/orbiters/signups`, which since 2026-09-09 is
-implemented in the Orbiters hub's API (`projects/hub/apps/api`) and reached on the same
+The community form posts to `POST /api/orbiters/signups`, which since 2026-09-09 is
+implemented in the rebase hub's API (`projects/hub/apps/api`) and reached on the same
 origin. The landing's two calls to action point at `/hub/freelance` and `/hub/aziende`,
 the hub's wizards, on the same origin again. Those paths are the things this project
 does not own, and why the dev server proxies `/api` and leaves `/hub/` alone.
@@ -78,7 +78,7 @@ have.
 
 `deploy/letsrebase.conf` is the host's vhost: it terminates TLS and sends everything
 here except what belongs to the other tenants of the origin: `/hub/`, `/api/hub/` and
-`/api/orbiters/signups` go to the Orbiters hub (`projects/hub`), `/health` stays on
+`/api/orbiters/signups` go to the rebase hub (`projects/hub`), `/health` stays on
 PigroCRM's stack, and `/app` and `/app/` redirect to `pigro.letsrebase.com`, which is
 the CRM.
 

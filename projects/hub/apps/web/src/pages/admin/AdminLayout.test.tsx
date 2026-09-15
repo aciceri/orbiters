@@ -20,7 +20,7 @@ vi.mock('@rebase/analytics/browser', () => ({
 import { identifyUser, resetUser } from '@rebase/analytics/browser'
 import { ME_KEY } from '@/lib/auth'
 
-const IVAN = { id: 'a1', email: 'ivan@orbiters.it', nome: 'Ivan', attivo: true, created_at: '2026-09-10T10:00:00Z' }
+const IVAN = { id: 'a1', email: 'ivan@rebase.it', nome: 'Ivan', attivo: true, created_at: '2026-09-10T10:00:00Z' }
 
 function answer(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -55,7 +55,7 @@ describe('the admin frame and PostHog (ORB-185)', () => {
     mount()
     await screen.findByRole('heading', { name: 'Dentro' })
     expect(identifyUser).toHaveBeenCalledTimes(1)
-    expect(identifyUser).toHaveBeenCalledWith('a1', { email: 'ivan@orbiters.it', nome: 'Ivan', ruolo: 'admin' })
+    expect(identifyUser).toHaveBeenCalledWith('a1', { email: 'ivan@rebase.it', nome: 'Ivan', ruolo: 'admin' })
   })
 
   it('identifies the same admin once, however many times the session is fetched again', async () => {

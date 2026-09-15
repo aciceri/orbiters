@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from rebase_core.admin import AdminService
 from rebase_core.config import Settings
 
-CREDENTIALS = {"email": "ivan@orbiters.it", "password": "una-password-lunga"}
+CREDENTIALS = {"email": "ivan@rebase.it", "password": "una-password-lunga"}
 
 
 def _settings(api_engine: Engine) -> Settings:
@@ -67,12 +67,12 @@ def test_another_admins_token_is_not_found(
     client: TestClient, admin: None, api_session: Session, api_engine: Engine
 ) -> None:
     AdminService(api_session, _settings(api_engine)).create(
-        "ada@orbiters.it", "Ada", "una-password-lunga"
+        "ada@rebase.it", "Ada", "una-password-lunga"
     )
     assert (
         client.post(
             "/api/hub/auth/login",
-            json={"email": "ada@orbiters.it", "password": "una-password-lunga"},
+            json={"email": "ada@rebase.it", "password": "una-password-lunga"},
         ).status_code
         == 200
     )

@@ -21,7 +21,7 @@
      Orbiters and the landing, whose grid of square tiles cannot draw a rounded corner.
      The app is not that page: it is used eight hours a day, and the reference product
      Ivan brought is rounded everywhere. The landing and Orbiters keep the pixel system
-     in their own stylesheets (landing/landing.css, orbiters.css, system.css); this
+     in their own stylesheets (landing/landing.css, community.css, system.css); this
      token governs the app alone. Every --radius-* in `@theme inline` below derives from
      it, so 10 puts the buttons and inputs at 10, the menus and dialogs at 14
      (--radius-xl) and the cards at 18 (--radius-2xl). */

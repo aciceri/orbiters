@@ -46,7 +46,7 @@ def ivan_token(mcp_engine: Engine) -> Iterator[str]:
     )
     with session_factory(mcp_engine)() as session:
         admin = AdminService(session, settings).create(
-            "ivan@orbiters.it", "Ivan", "una-password-lunga"
+            "ivan@rebase.it", "Ivan", "una-password-lunga"
         )
         _, raw = AdminTokenService(session).create(admin.id, "Claude Code")
     try:

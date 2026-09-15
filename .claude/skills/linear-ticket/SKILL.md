@@ -11,7 +11,7 @@ Read it once per session. This skill is the sequence of calls and the traps. Con
 
 ## First call of the session
 
-The MCP server is `linear-orbiters`, the only Linear surface for this board. Two reads
+The MCP server is `linear-rebase`, the only Linear surface for this board. Two reads
 before any write. `list_projects` or `list_issues` with `team: "rebase"`, and check the
 team that comes back is **rebase** (`REB-`): two workspaces are enrolled on this
 machine, and filing a client's work in the wrong company's board is the failure mode.
@@ -20,9 +20,9 @@ it is the account this session writes as, it is what `assignee: "me"` will mean,
 what every ownership test below compares against, and it is not necessarily the person
 talking to you. Both people on this team run agents against the same board.
 
-## When `linear-orbiters` is not in the session
+## When `linear-rebase` is not in the session
 
-A session can have no `linear-orbiters` and still have a Linear tool: a server named
+A session can have no `linear-rebase` and still have a Linear tool: a server named
 `linear`, logged in to another company's workspace. On 2026-09-15 `get_user "me"` on it
 answered an `@paid.ai` account in team `PAID`, and `list_issues` with `team: "rebase"`
 answered an empty list rather than an error. An empty list from the first read is a

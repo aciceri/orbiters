@@ -4,8 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AdminAdmins } from './Admins'
 
-const IVAN = { id: '1', email: 'ivan@orbiters.it', nome: 'Ivan', attivo: true, created_at: '2026-09-10T10:00:00Z' }
-const ADA = { id: '2', email: 'ada@orbiters.it', nome: 'Ada', attivo: true, created_at: '2026-09-10T11:00:00Z' }
+const IVAN = { id: '1', email: 'ivan@rebase.it', nome: 'Ivan', attivo: true, created_at: '2026-09-10T10:00:00Z' }
+const ADA = { id: '2', email: 'ada@rebase.it', nome: 'Ada', attivo: true, created_at: '2026-09-10T11:00:00Z' }
 
 function answer(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -27,7 +27,7 @@ describe('the Amministratori page', () => {
     // ORB-125: Ivan wants the form behind a button, not on the page.
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => answer(200, [IVAN]))
     mount()
-    await screen.findByText('ivan@orbiters.it')
+    await screen.findByText('ivan@rebase.it')
     expect(screen.queryByLabelText('Nome')).toBeNull()
     expect(screen.queryByRole('dialog')).toBeNull()
 
@@ -50,12 +50,12 @@ describe('the Amministratori page', () => {
       answer(422, { detail: [{ loc: ['body', 'email'], msg: 'esiste già un amministratore con questa email' }] }),
     )
     mount()
-    await screen.findByText('ivan@orbiters.it')
+    await screen.findByText('ivan@rebase.it')
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Nuovo amministratore' }))
     const dialog = await screen.findByRole('dialog')
     await user.type(within(dialog).getByLabelText('Nome'), 'Ancora')
-    await user.type(within(dialog).getByLabelText('Email'), 'ivan@orbiters.it')
+    await user.type(within(dialog).getByLabelText('Email'), 'ivan@rebase.it')
     await user.type(within(dialog).getByLabelText('Password'), 'una-password-lunga')
     await user.click(within(dialog).getByRole('button', { name: 'Crea amministratore' }))
 
@@ -85,12 +85,12 @@ describe('the Amministratori page', () => {
     spy.mockReturnValueOnce(pending)
     spy.mockResolvedValueOnce(answer(200, [IVAN, ADA]))
     mount()
-    await screen.findByText('ivan@orbiters.it')
+    await screen.findByText('ivan@rebase.it')
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Nuovo amministratore' }))
     const dialog = await screen.findByRole('dialog')
     await user.type(within(dialog).getByLabelText('Nome'), 'Ada')
-    await user.type(within(dialog).getByLabelText('Email'), 'ada@orbiters.it')
+    await user.type(within(dialog).getByLabelText('Email'), 'ada@rebase.it')
     await user.type(within(dialog).getByLabelText('Password'), 'una-password-lunga')
     await user.click(within(dialog).getByRole('button', { name: 'Crea amministratore' }))
     expect(await within(dialog).findByRole('button', { name: 'Salvo…' })).toBeDisabled()
@@ -102,7 +102,7 @@ describe('the Amministratori page', () => {
 
     settle(answer(201, ADA))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    expect(screen.getByRole('status')).toHaveTextContent('ada@orbiters.it')
+    expect(screen.getByRole('status')).toHaveTextContent('ada@rebase.it')
   })
 
   it('closes on success, refreshes the list and says who was created on the page', async () => {
@@ -111,21 +111,21 @@ describe('the Amministratori page', () => {
     spy.mockResolvedValueOnce(answer(201, ADA))
     spy.mockResolvedValueOnce(answer(200, [IVAN, ADA]))
     mount()
-    await screen.findByText('ivan@orbiters.it')
+    await screen.findByText('ivan@rebase.it')
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Nuovo amministratore' }))
     const dialog = await screen.findByRole('dialog')
     await user.type(within(dialog).getByLabelText('Nome'), 'Ada')
-    await user.type(within(dialog).getByLabelText('Email'), 'ada@orbiters.it')
+    await user.type(within(dialog).getByLabelText('Email'), 'ada@rebase.it')
     await user.type(within(dialog).getByLabelText('Password'), 'una-password-lunga')
     await user.click(within(dialog).getByRole('button', { name: 'Crea amministratore' }))
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    expect(await screen.findByRole('status')).toHaveTextContent('ada@orbiters.it')
-    await screen.findByText('ada@orbiters.it', { selector: 'td p' })
+    expect(await screen.findByRole('status')).toHaveTextContent('ada@rebase.it')
+    await screen.findByText('ada@rebase.it', { selector: 'td p' })
     const [, init] = spy.mock.calls[1]!
     expect(init?.method).toBe('POST')
-    expect(JSON.parse(init?.body as string)).toEqual({ nome: 'Ada', email: 'ada@orbiters.it', password: 'una-password-lunga' })
+    expect(JSON.parse(init?.body as string)).toEqual({ nome: 'Ada', email: 'ada@rebase.it', password: 'una-password-lunga' })
 
     // Opening it again starts from an empty form.
     await user.click(screen.getByRole('button', { name: 'Nuovo amministratore' }))
@@ -139,20 +139,20 @@ describe('the Amministratori page', () => {
     spy.mockResolvedValueOnce(answer(200, { ...ADA, nome: 'Ada Lovelace' }))
     spy.mockResolvedValueOnce(answer(200, [IVAN, { ...ADA, nome: 'Ada Lovelace' }]))
     mount()
-    await screen.findByText('ada@orbiters.it')
+    await screen.findByText('ada@rebase.it')
     expect(screen.queryByRole('dialog')).toBeNull()
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Modifica Ada (ada@orbiters.it)' }))
+    await user.click(screen.getByRole('button', { name: 'Modifica Ada (ada@rebase.it)' }))
     const dialog = await screen.findByRole('dialog', { name: 'Modifica amministratore' })
     expect(within(dialog).getByLabelText('Nome')).toHaveValue('Ada')
-    expect(within(dialog).getByLabelText('Email')).toHaveValue('ada@orbiters.it')
+    expect(within(dialog).getByLabelText('Email')).toHaveValue('ada@rebase.it')
     expect(within(dialog).getByLabelText('Nuova password')).toHaveValue('')
     expect(within(dialog).getByLabelText('Nuova password')).not.toBeRequired()
 
     // Escape brings focus back to the pencil that opened it, then the edit goes through.
     await user.keyboard('{Escape}')
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Modifica Ada (ada@orbiters.it)' })).toHaveFocus())
-    await user.click(screen.getByRole('button', { name: 'Modifica Ada (ada@orbiters.it)' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Modifica Ada (ada@rebase.it)' })).toHaveFocus())
+    await user.click(screen.getByRole('button', { name: 'Modifica Ada (ada@rebase.it)' }))
     await screen.findByRole('dialog', { name: 'Modifica amministratore' })
 
     const reopened = screen.getByRole('dialog')
@@ -160,12 +160,12 @@ describe('the Amministratori page', () => {
     await user.type(within(reopened).getByLabelText('Nome'), 'Ada Lovelace')
     await user.click(within(reopened).getByRole('button', { name: 'Salva modifiche' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    expect(screen.getByRole('status')).toHaveTextContent('Amministratore aggiornato: ada@orbiters.it')
+    expect(screen.getByRole('status')).toHaveTextContent('Amministratore aggiornato: ada@rebase.it')
     await screen.findByText('Ada Lovelace')
     const [url, init] = spy.mock.calls[1]!
     expect(url).toBe('/api/hub/admins/2')
     expect(init?.method).toBe('PATCH')
-    expect(JSON.parse(init?.body as string)).toEqual({ nome: 'Ada Lovelace', email: 'ada@orbiters.it' })
+    expect(JSON.parse(init?.body as string)).toEqual({ nome: 'Ada Lovelace', email: 'ada@rebase.it' })
 
     // The create dialog after an edit is empty again, not Ada's row.
     await user.click(screen.getByRole('button', { name: 'Nuovo amministratore' }))
@@ -181,9 +181,9 @@ describe('the Amministratori page', () => {
     spy.mockResolvedValueOnce(answer(200, ADA))
     spy.mockResolvedValueOnce(answer(200, [IVAN, ADA]))
     mount()
-    await screen.findByText('ada@orbiters.it')
+    await screen.findByText('ada@rebase.it')
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Modifica Ada (ada@orbiters.it)' }))
+    await user.click(screen.getByRole('button', { name: 'Modifica Ada (ada@rebase.it)' }))
     const dialog = await screen.findByRole('dialog')
     const password = within(dialog).getByLabelText('Nuova password')
     // Ten characters typed, so the browser lets it through and the server has its say.
@@ -197,6 +197,6 @@ describe('the Amministratori page', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Salva modifiche' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     const [, init] = spy.mock.calls[2]!
-    expect(JSON.parse(init?.body as string)).toEqual({ nome: 'Ada', email: 'ada@orbiters.it', password: 'dieci-lett-ancora' })
+    expect(JSON.parse(init?.body as string)).toEqual({ nome: 'Ada', email: 'ada@rebase.it', password: 'dieci-lett-ancora' })
   })
 })

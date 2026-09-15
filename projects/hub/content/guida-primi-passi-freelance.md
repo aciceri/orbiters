@@ -228,6 +228,6 @@ che hanno già avuto la stessa telefonata difficile che stai per avere tu, e
 PigroCRM, lo strumento per fatturare e farti pagare, gratis per chi è dentro.
 
 Se stai per fare il salto o l'hai appena fatto, entri da qui:
-[orbiters.com/hub/freelance](/hub/freelance). Se hai un progetto e cerchi la persona
+[letsrebase.com/hub/freelance](/hub/freelance). Se hai un progetto e cerchi la persona
 giusta per farlo, si comincia da qui:
-[orbiters.com/hub/aziende](/hub/aziende).
+[letsrebase.com/hub/aziende](/hub/aziende).

@@ -7,7 +7,7 @@ import { BrandMark } from './BrandMark'
 
 /**
  * The mark is the brand's, not this application's: the landing and the community page
- * draw the same four tiles as box-shadows on one element, and Orbiters' favicon is the
+ * draw the same four tiles as box-shadows on one element, and the community page's favicon is the
  * same field at glyph scale. Three surfaces, three technologies, one order, so each
  * side asserts against `shared/brand` rather than against another surface's source.
  *

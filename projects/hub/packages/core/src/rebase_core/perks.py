@@ -23,7 +23,7 @@ from rebase_core.schemas import GuideDownloadRead, GuideStats
 
 PERKS_DIR = Path(__file__).resolve().parent / "perks"
 
-GUIDE_FILENAME = "orbiters-guida-primi-passi-freelance.pdf"
+GUIDE_FILENAME = "rebase-guida-primi-passi-freelance.pdf"
 GUIDE_PATH = PERKS_DIR / GUIDE_FILENAME
 
 

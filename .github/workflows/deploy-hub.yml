@@ -18,8 +18,7 @@
 # beside the running one rather than moving it. So the host moves first and the tag
 # second: stop the old project, move `/srv/orbiters-data` to `/srv/rebase-data`, rename
 # the database and the role with `ALTER`, rewrite the `.env` keys to `REBASE_*`, then
-# push the tag. Preview was migrated that way on 2026-09-15; production moves with the
-# first `hub-v*` tag after this change.
+# deploy. Both environments were migrated that way on 2026-09-15, preview first.
 name: Deploy hub
 
 on:

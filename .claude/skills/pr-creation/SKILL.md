@@ -18,7 +18,7 @@ it and a document disagree, the document is right and the skill has a bug.
    the `linear-ticket` skill. No issue, no branch: the issue is where the reasons live,
    and a PR written first loses them. A Linear tool that fails, or that answers a team
    other than **rebase**, is not a reason to go on without the card: file it from the
-   web app as the `linear-ticket` skill § When `linear-orbiters` is not in the session
+   web app as the `linear-ticket` skill § When `linear-rebase` is not in the session
    says, or stop and tell the person. Yours means what `docs/tracker.md` § Who owns a
    card says: assigned to the account this session writes as, or unassigned and filed by
    it, or labelled `parallel` and unclaimed. A card assigned to the other person is not

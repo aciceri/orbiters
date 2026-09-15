@@ -20,7 +20,7 @@ def ivan(hub_engine: Engine, hub_session: Session) -> Iterator[AdminRead]:
         _env_file=None,  # type: ignore[call-arg]
     )
     service = AdminService(hub_session, settings)
-    yield service.create("ivan@orbiters.it", "Ivan", "una-password-lunga")
+    yield service.create("ivan@rebase.it", "Ivan", "una-password-lunga")
     hub_session.rollback()
     for table in ("admin_tokens", "admin_sessions", "admin_users"):
         hub_session.execute(text(f"DELETE FROM {table}"))
@@ -39,7 +39,7 @@ def test_a_token_is_minted_once_and_resolves_to_its_admin(
     assert raw not in stored[0] and stored[1] == read.prefix
 
     resolved = tokens.resolve(raw)
-    assert resolved.id == ivan.id and resolved.email == "ivan@orbiters.it"
+    assert resolved.id == ivan.id and resolved.email == "ivan@rebase.it"
     [listed] = tokens.list(ivan.id)
     assert listed.id == read.id and listed.last_used_at is not None
 

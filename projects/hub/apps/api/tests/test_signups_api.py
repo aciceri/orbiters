@@ -1,4 +1,4 @@
-"""`POST /api/orbiters/signups`: public, idempotent, and mute.
+"""`POST /api/community/signups`: public, idempotent, and mute.
 
 Mute is the security property these tests are here to keep: the one unauthenticated
 write in this API answers the same thing to everybody, so posting somebody else's
@@ -36,7 +36,7 @@ def _body(email: str, **extra: object) -> dict[str, object]:
 
 
 def test_a_visitor_with_no_account_can_sign_up(client: TestClient, api_session: Session) -> None:
-    response = client.post("/api/orbiters/signups", json=_body("Ada@Studio.it"))
+    response = client.post("/api/community/signups", json=_body("Ada@Studio.it"))
     assert response.status_code == 201, response.text
     # All of it: the answer says the request was accepted and nothing else.
     assert response.json() == {"ok": True}
@@ -45,7 +45,7 @@ def test_a_visitor_with_no_account_can_sign_up(client: TestClient, api_session: 
 
 def test_the_profile_travels_with_the_name(client: TestClient, api_session: Session) -> None:
     response = client.post(
-        "/api/orbiters/signups",
+        "/api/community/signups",
         json=_body("ada@studio.it", linkedin_url="https://www.linkedin.com/in/ada"),
     )
     assert response.status_code == 201, response.text
@@ -63,11 +63,11 @@ def test_posting_someone_elses_address_discloses_nothing_about_them(
     201 and the same body as the person who signed up, learns neither the stored name
     nor the profile, and cannot even tell that the address was already there."""
     first = client.post(
-        "/api/orbiters/signups",
+        "/api/community/signups",
         json=_body("ada@studio.it", linkedin_url="https://www.linkedin.com/in/ada"),
     )
     probe = client.post(
-        "/api/orbiters/signups", json={"email": "ada@studio.it", "nome": "x", "cognome": "y"}
+        "/api/community/signups", json={"email": "ada@studio.it", "nome": "x", "cognome": "y"}
     )
     assert (probe.status_code, probe.json()) == (first.status_code, first.json())
     assert "Lovelace" not in probe.text and "linkedin" not in probe.text
@@ -83,7 +83,7 @@ def test_a_profile_with_a_newline_in_it_is_a_422_not_a_stored_line_break(
     client: TestClient,
 ) -> None:
     response = client.post(
-        "/api/orbiters/signups",
+        "/api/community/signups",
         json=_body(
             "ada@studio.it",
             linkedin_url="https://www.linkedin.com/in/ada\nBcc: qualcuno@altrove.it",
@@ -99,7 +99,8 @@ def test_the_422_names_the_field_it_refused_so_the_form_can_point_at_it(
     """The landing reads `detail[].loc` to decide which field to mark and focus; without
     this contract it can only blame the address, which is a dead end for the visitor."""
     response = client.post(
-        "/api/orbiters/signups", json=_body("ada@studio.it", linkedin_url="https://example.com/ada")
+        "/api/community/signups",
+        json=_body("ada@studio.it", linkedin_url="https://example.com/ada"),
     )
     assert response.status_code == 422
     assert {error["loc"][-1] for error in response.json()["detail"]} == {"linkedin_url"}
@@ -109,16 +110,16 @@ def test_too_many_signups_from_one_client_are_refused_in_italian(
     client: TestClient,
 ) -> None:
     for index in range(SIGNUPS_PER_MINUTE):
-        accepted = client.post("/api/orbiters/signups", json=_body(f"ada{index}@studio.it"))
+        accepted = client.post("/api/community/signups", json=_body(f"ada{index}@studio.it"))
         assert accepted.status_code == 201, accepted.text
-    refused = client.post("/api/orbiters/signups", json=_body("ancora@studio.it"))
+    refused = client.post("/api/community/signups", json=_body("ancora@studio.it"))
     assert refused.status_code == 429
     assert refused.headers["Retry-After"] == "60"
     assert "Troppe richieste" in refused.json()["detail"]
 
 
 def test_a_signup_without_a_name_is_a_422(client: TestClient) -> None:
-    response = client.post("/api/orbiters/signups", json={"email": "ada@studio.it"})
+    response = client.post("/api/community/signups", json={"email": "ada@studio.it"})
     assert response.status_code == 422
     # FastAPI's own request-validation shape, the one the form's field highlighting
     # reads .
@@ -130,7 +131,8 @@ def test_a_profile_that_is_not_on_linkedin_is_a_422_not_a_row(
     client: TestClient,
 ) -> None:
     response = client.post(
-        "/api/orbiters/signups", json=_body("ada@studio.it", linkedin_url="https://example.com/ada")
+        "/api/community/signups",
+        json=_body("ada@studio.it", linkedin_url="https://example.com/ada"),
     )
     assert response.status_code == 422
 
@@ -140,15 +142,15 @@ def test_the_same_address_again_answers_exactly_the_same_thing(
 ) -> None:
     """One row, two identical successes. It used to be 201 then 200 with `nuova`, which
     told any caller whether an address was already on the list."""
-    first = client.post("/api/orbiters/signups", json=_body("ada@studio.it"))
-    second = client.post("/api/orbiters/signups", json=_body("ADA@studio.it"))
+    first = client.post("/api/community/signups", json=_body("ada@studio.it"))
+    second = client.post("/api/community/signups", json=_body("ADA@studio.it"))
     assert (first.status_code, first.json()) == (201, {"ok": True})
     assert (second.status_code, second.json()) == (201, {"ok": True})
     assert api_session.execute(text("SELECT count(*) FROM signups")).scalar() == 1
 
 
 def test_an_address_that_is_not_one_is_a_422(client: TestClient) -> None:
-    response = client.post("/api/orbiters/signups", json=_body("ciao"))
+    response = client.post("/api/community/signups", json=_body("ciao"))
     assert response.status_code == 422
 
 
@@ -156,7 +158,7 @@ def test_the_attribution_travels_with_the_email_and_is_stored(
     client: TestClient, api_session: Session
 ) -> None:
     response = client.post(
-        "/api/orbiters/signups",
+        "/api/community/signups",
         json=_body(
             "ada@studio.it",
             utm={
@@ -177,7 +179,7 @@ def test_an_attribution_longer_than_the_column_is_a_422_not_a_500(
     client: TestClient,
 ) -> None:
     response = client.post(
-        "/api/orbiters/signups", json=_body("ada@studio.it", utm={"utm_source": "x" * 201})
+        "/api/community/signups", json=_body("ada@studio.it", utm={"utm_source": "x" * 201})
     )
     assert response.status_code == 422
 
@@ -270,7 +272,7 @@ def test_a_signup_measures_one_conversion_with_the_id_the_browser_used(
     client: TestClient, api_session: Session, pixel: RecordingHttp
 ) -> None:
     response = client.post(
-        "/api/orbiters/signups", json=_body("ada@studio.it", pixel_event_id=EVENT_ID)
+        "/api/community/signups", json=_body("ada@studio.it", pixel_event_id=EVENT_ID)
     )
 
     assert response.status_code == 201, response.text
@@ -291,7 +293,7 @@ def test_the_click_identifier_and_the_browser_cookie_reach_the_event(
     first-party cookie, which the browser sends to this endpoint too. Without them the
     server event is a conversion the platform cannot attribute to a click."""
     response = client.post(
-        "/api/orbiters/signups",
+        "/api/community/signups",
         json=_body("ada@studio.it", pixel_event_id=EVENT_ID, oppref="clic-123"),
         headers={
             # Sent as a header rather than through the client's cookie jar: the jar
@@ -320,7 +322,7 @@ def test_an_address_the_proxy_could_not_name_is_left_out_rather_than_invented(
     is fine for a rate-limit bucket and is not an IP. Forwarding it would put a word
     where a third party expects an address."""
     response = client.post(
-        "/api/orbiters/signups",
+        "/api/community/signups",
         json=_body("ada@studio.it", pixel_event_id=EVENT_ID),
         headers={"X-Real-IP": "non-un-indirizzo"},
     )
@@ -332,7 +334,7 @@ def test_an_address_the_proxy_could_not_name_is_left_out_rather_than_invented(
 def test_the_subscribers_address_does_not_travel(client: TestClient, pixel: RecordingHttp) -> None:
     """Not raw, not hashed. The installation has not asked for it -- and pasting a pixel
     id must not be what starts sending an ad platform the mailing list."""
-    client.post("/api/orbiters/signups", json=_body("ada@studio.it", pixel_event_id=EVENT_ID))
+    client.post("/api/community/signups", json=_body("ada@studio.it", pixel_event_id=EVENT_ID))
 
     body = pixel.calls[-1][3].decode()
     assert "ada@studio.it" not in body
@@ -351,7 +353,7 @@ def test_an_installation_without_a_pixel_sends_nothing(
         "pixel_from_settings",
         lambda settings: calls.append(settings) or None,  # type: ignore[func-returns-value]
     )
-    response = client.post("/api/orbiters/signups", json=_body("ada@studio.it"))
+    response = client.post("/api/community/signups", json=_body("ada@studio.it"))
 
     assert response.status_code == 201, response.text
     assert _row(api_session, "ada@studio.it") == ("Ada", "Lovelace", None)
@@ -363,7 +365,7 @@ def test_a_signup_without_a_pixel_event_id_still_converts(
     """A client that posted without the pixel -- JavaScript off, a script, a curl. The
     event gets an id of its own, which makes it unpairable, and that is right: there is
     no browser event to pair it with."""
-    response = client.post("/api/orbiters/signups", json=_body("ada@studio.it"))
+    response = client.post("/api/community/signups", json=_body("ada@studio.it"))
 
     assert response.status_code == 201, response.text
     assert pixel.event()["id"]
@@ -383,7 +385,7 @@ def test_a_failed_conversion_never_becomes_a_failed_signup(
     pixel.raises = bool(failure.get("raises", False))
 
     response = client.post(
-        "/api/orbiters/signups", json=_body("ada@studio.it", pixel_event_id=EVENT_ID)
+        "/api/community/signups", json=_body("ada@studio.it", pixel_event_id=EVENT_ID)
     )
 
     assert response.status_code == 201, response.text
@@ -397,7 +399,7 @@ def test_a_malformed_event_id_is_refused_before_anything_is_written(
     """It is interpolated into a JSON body sent to a third party, so it is checked like
     every other field of this public body -- and a 422 means no row and no event."""
     response = client.post(
-        "/api/orbiters/signups",
+        "/api/community/signups",
         json=_body("ada@studio.it", pixel_event_id="../../etc/passwd"),
     )
 

@@ -4,11 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const source = readFileSync(join(__dirname, 'typewriter.js'), 'utf-8')
 const pages = {
-  'orbiters.html': readFileSync(join(__dirname, 'orbiters.html'), 'utf-8'),
+  'community.html': readFileSync(join(__dirname, 'community.html'), 'utf-8'),
   'index.html': readFileSync(join(__dirname, 'index.html'), 'utf-8'),
 }
 const scripts = {
-  'orbiters.js': readFileSync(join(__dirname, 'orbiters.js'), 'utf-8'),
+  'community.js': readFileSync(join(__dirname, 'community.js'), 'utf-8'),
   'landing.js': readFileSync(join(__dirname, 'landing.js'), 'utf-8'),
 }
 

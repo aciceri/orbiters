@@ -220,7 +220,7 @@ def test_the_three_public_writes_share_one_budget_per_client(
         assert client.post("/api/hub/companies", json=body).status_code == 201
     assert (
         client.post(
-            "/api/orbiters/signups", json={"email": "ada@studio.it", "nome": "Ada", "cognome": "L"}
+            "/api/community/signups", json={"email": "ada@studio.it", "nome": "Ada", "cognome": "L"}
         ).status_code
         == 201
     )

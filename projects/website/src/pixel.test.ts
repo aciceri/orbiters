@@ -21,7 +21,7 @@ const PIXEL_ID = '9r6qrnPxBV8WDVGtpuaqxh'
 const SDK_URL = 'https://bzrcdn.openai.com/sdk/oaiq.min.js'
 const POSTHOG_URL = `${POSTHOG_ASSET_HOST}/static/array.js`
 
-const MEASURED = ['index.html', 'pigrocrm.html', 'orbiters.html'] as const
+const MEASURED = ['index.html', 'pigrocrm.html', 'community.html'] as const
 const UNMEASURED = ['privacy.html', 'termini.html'] as const
 const ALL = [...MEASURED, ...UNMEASURED]
 
@@ -32,7 +32,7 @@ const page = Object.fromEntries(
   ALL.map((name) => [name, readFileSync(join(__dirname, name), 'utf-8')]),
 ) as Record<(typeof ALL)[number], string>
 const consent = readFileSync(join(__dirname, 'consent.js'), 'utf-8')
-const orbiters = readFileSync(join(__dirname, 'orbiters.js'), 'utf-8')
+const community = readFileSync(join(__dirname, 'community.js'), 'utf-8')
 
 describe.each(MEASURED)('%s', (name) => {
   it('loads the consent script, and that is the only way the pixel can arrive', () => {
@@ -106,8 +106,8 @@ describe('consent.js', () => {
       [SDK_URL, POSTHOG_HOST, POSTHOG_ASSET_HOST].sort(),
     )
     // Not duplicated into the page script: one id, one place.
-    expect(orbiters).not.toContain(PIXEL_ID)
-    expect(orbiters).not.toContain(POSTHOG_KEY)
+    expect(community).not.toContain(PIXEL_ID)
+    expect(community).not.toContain(POSTHOG_KEY)
   })
 
   it('carries the same PostHog project as every other surface', () => {
@@ -161,13 +161,13 @@ describe('consent.js', () => {
 
 describe('the conversion event', () => {
   it('is registration_completed, as a customer action, after the API said yes', () => {
-    expect(orbiters).toContain("'measure', 'registration_completed', { type: 'customer_action' }")
+    expect(community).toContain("'measure', 'registration_completed', { type: 'customer_action' }")
     // The order is the whole point: the call sits after `say('Sei in orbita...')`,
     // which runs only on a response that was `ok`. A conversion measured on the click
     // would count a 422 and a dead network as signups. `lastIndexOf`, because the first
     // `measure(id)` in the file is the function's own definition.
-    expect(orbiters.lastIndexOf('measure(id)')).toBeGreaterThan(
-      orbiters.indexOf('if (!response.ok) throw'),
+    expect(community.lastIndexOf('measure(id)')).toBeGreaterThan(
+      community.indexOf('if (!response.ok) throw'),
     )
   })
 
@@ -175,18 +175,18 @@ describe('the conversion event', () => {
     // OpenAI deduplicates on (pixel id, event name, event_id): the browser event and
     // the server event are one conversion only if they carry the same id. One id per
     // submit, generated once, used twice.
-    expect(orbiters).toContain('payload.pixel_event_id = id')
-    expect(orbiters).toContain('event_id: id')
-    expect(orbiters.match(/var id = eventId\(\)/g)).toHaveLength(1)
+    expect(community).toContain('payload.pixel_event_id = id')
+    expect(community).toContain('event_id: id')
+    expect(community.match(/var id = eventId\(\)/g)).toHaveLength(1)
   })
 
   it('is a no-op under a refusal, because there is no oaiq and no posthog to call', () => {
     // With consent denied `consent.js` never defines either stub, so these guards are
     // what make a signup under a refusal measure nothing at all -- and they are also
     // what keeps a blocked SDK from breaking the page.
-    const measure = orbiters.slice(
-      orbiters.indexOf('function measure(id)'),
-      orbiters.indexOf('/* The four fields'),
+    const measure = community.slice(
+      community.indexOf('function measure(id)'),
+      community.indexOf('/* The four fields'),
     )
     expect(measure).toContain("typeof window.oaiq === 'function'")
     expect(measure).toContain("typeof window.posthog?.capture === 'function'")

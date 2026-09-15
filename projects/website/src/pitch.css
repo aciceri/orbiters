@@ -3,7 +3,7 @@
    the font and the pictures, and the font is the shared one from `shared/brand`, the
    woff2 the landing already serves, so the two sheets point at one asset. The colours
    are the palette's five, restated as this sheet's own variables below because the
-   palette plugin feeds only landing.css and orbiters.css; a colour changed in the
+   palette plugin feeds only landing.css and community.css; a colour changed in the
    palette and not here is a deck that drifts, which is the price of a self-contained
    page. No consent notice and no pixel: the page measures nothing. */
 @font-face {

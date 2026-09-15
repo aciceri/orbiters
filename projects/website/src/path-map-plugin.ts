@@ -20,15 +20,16 @@ import type { Plugin } from 'vite'
 export const PAGES: Readonly<Record<string, string>> = {
   '/': '/index.html',
   '/pigrocrm': '/pigrocrm.html',
-  '/orbiters': '/orbiters.html',
+  '/community': '/community.html',
   '/pitch': '/pitch.html',
   '/privacy': '/privacy.html',
   '/termini': '/termini.html',
 }
 
 /** `location = <path> { return 301 <to>; }`. nginx's `return` drops the query string
- *  and so does this. */
-export const REDIRECTS: Readonly<Record<string, string>> = {}
+ *  and so does this. `/orbiters` is the community page's name before REB-212 moved it
+ *  to `/community`; kept so a bookmark or an inbound link still lands. */
+export const REDIRECTS: Readonly<Record<string, string>> = { '/orbiters': '/community' }
 
 /**
  * Paths the host's vhost (`deploy/letsrebase.conf`) hands to other tenants of the
@@ -84,7 +85,9 @@ function handle(req: IncomingMessage, res: ServerResponse, next: () => void): vo
   switch (decision.kind) {
     case 'redirect':
       res.statusCode = 301
-      res.setHeader('Location', decision.to)
+      // With the query string, as nginx does with `$is_args$args`: the links that still
+      // say /orbiters are ads and newsletters, and they carry the utm_* the form reads.
+      res.setHeader('Location', `${decision.to}${query ? `?${query}` : ''}`)
       res.end()
       return
     case 'page':

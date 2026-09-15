@@ -1,7 +1,7 @@
 # website
 
 letsrebase.com: the public site. Today that is the rebase landing at `/`, the
-community page with its signup form at `/orbiters`, and the two policy pages
+community page with its signup form at `/community`, and the two policy pages
 (`/privacy`, `/termini`); it is called `website` rather than `landing` because it is
 expected to grow past those.
 
@@ -28,12 +28,12 @@ pnpm --filter website lint
 |---|---|---|
 | `src/index.html` | `letsrebase.com/` | The rebase landing: two doors into the hub, how it works, the four voices, the perks. Since 2026-09-11 (ORB-145) |
 | `src/pigrocrm.html` | `/pigrocrm` | PigroCRM's own page (ORB-159): one door into rebase beside a drawn Claude conversation, the four things inside, the guide, the closing box. Its own `pigrocrm.css` on top of `landing.css` |
-| `src/orbiters.html` | `/orbiters` | The community page and its signup form, the front door until 2026-09-11 |
+| `src/community.html` | `/community` | The community page and its signup form, the front door until 2026-09-11. `/orbiters` still answers, as a 301 (REB-212, 2026-09-15) |
 | `src/privacy.html` | `/privacy` | Privacy notice |
 | `src/termini.html` | `/termini` | Terms |
 | `src/pitch.html` | `/pitch` | The pitch deck, nineteen slides with keyboard, swipe and wheel navigation; shared by link, `noindex`. Its own stylesheet, `pitch.css`; its pictures under `src/pitch/` |
 
-The community form posts to `POST /api/orbiters/signups`, which since 2026-09-09 is
+The community form posts to `POST /api/community/signups`, which since 2026-09-09 is
 implemented in the rebase hub's API (`projects/hub/apps/api`) and reached on the same
 origin. The landing's two calls to action point at `/hub/freelance` and `/hub/aziende`,
 the hub's wizards, on the same origin again. Those paths are the things this project
@@ -78,7 +78,7 @@ have.
 
 `deploy/letsrebase.conf` is the host's vhost: it terminates TLS and sends everything
 here except what belongs to the other tenants of the origin: `/hub/`, `/api/hub/` and
-`/api/orbiters/signups` go to the rebase hub (`projects/hub`), `/health` stays on
+`/api/community/signups` go to the rebase hub (`projects/hub`), `/health` stays on
 PigroCRM's stack, and `/app` and `/app/` redirect to `pigro.letsrebase.com`, which is
 the CRM.
 

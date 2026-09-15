@@ -390,9 +390,9 @@ describe('the notice clears the 44px touch-target floor without shouting (ORB-87
   })
 
   it('keeps every consent control a real `a`/`button`, so the shared focus-visible rule already covers it', () => {
-    // landing.css and orbiters.css each carry one `::where(a, button…):focus-visible`
+    // landing.css and community.css each carry one `::where(a, button…):focus-visible`
     // rule with no scope narrower than the whole page (landing-style.test.ts and
-    // orbiters.test.ts hold those). This notice earns a visible focus ring for free
+    // community.test.ts hold those). This notice earns a visible focus ring for free
     // as long as consent.js keeps building real anchors and buttons rather than a
     // `div` with a click handler -- checked here on the DOM the same file already
     // builds, not by grepping the source for the word `createElement`.

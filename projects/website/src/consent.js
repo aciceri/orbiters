@@ -12,7 +12,7 @@
  *   - with JavaScript off, nothing here runs, so there is no notice and no tracker,
  *     which is the correct pair;
  *   - a refusal is remembered and the notice does not come back;
- *   - `orbiters.js` calls `window.oaiq` and `window.posthog` if they are there. Both
+ *   - `community.js` calls `window.oaiq` and `window.posthog` if they are there. Both
  *     stubs below are defined only once consent is granted, so a signup made under a
  *     refusal measures nothing.
  *

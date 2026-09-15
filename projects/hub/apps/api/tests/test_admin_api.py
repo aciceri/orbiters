@@ -588,7 +588,7 @@ def test_when_the_crm_refuses_or_falls_over_the_answer_is_a_502_sentence(
 
 def _signup(client: TestClient, email: str = "ada@studio.it") -> str:
     response = client.post(
-        "/api/orbiters/signups", json={"email": email, "nome": "Ada", "cognome": "Lovelace"}
+        "/api/community/signups", json={"email": email, "nome": "Ada", "cognome": "Lovelace"}
     )
     assert response.status_code in (200, 201), response.text
     _login(client)

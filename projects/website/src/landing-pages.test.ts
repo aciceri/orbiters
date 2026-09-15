@@ -25,7 +25,7 @@ describe.each(PAGES)('%s', (name) => {
     // letsrebase.com, not on pigro.letsrebase.com, and it is the Orbiters signup
     // form that links to them, so they title themselves after the site they are on
     // rather than after the CRM. index.html is the landing (at / since ORB-145;
-    // orbiters.html is the community page at /orbiters) and still names the CRM in
+    // community.html is the community page at /community) and still names the CRM in
     // its title, the perk, regardless of Ivan's separate «freelance» exception
     // (ORB-24, positioning.md line 85); see the brand-link assertion below for the
     // same title/brand split.
@@ -90,8 +90,8 @@ describe.each(PAGES)('%s', (name) => {
     // covers. ORB-36 reopened that: privacy.html and termini.html are served on
     // letsrebase.com, not on pigro.letsrebase.com, the Orbiters signup form is
     // what links to them, and their own text already covers Orbiters' data (the
-    // signup) alongside PigroCRM's (orbiters.test.ts separately asserts
-    // privacy.html names Orbiters and links /orbiters). All three pages here sign
+    // signup) alongside PigroCRM's (community.test.ts separately asserts
+    // privacy.html names Orbiters and links /community). All three pages here sign
     // as Orbiters now; the titolare del trattamento the two legal pages name, and
     // the substance of what each policy says, did not move with the brand.
     expect(page).toMatch(
@@ -133,7 +133,7 @@ describe('index.html', () => {
     expect(page).toMatch(/<a class="cta" href="\/hub\/freelance">Entra come talento<\/a>/)
     expect(page).toMatch(/<a class="cta secondary" href="\/hub\/aziende">[^<]+<\/a>/)
     // The old door, the email form on `/`, is not what this page sells any more.
-    expect(page).not.toMatch(/<a class="cta" href="\/orbiters">/)
+    expect(page).not.toMatch(/<a class="cta" href="\/community">/)
     // Whoever is already in finds the CRM through its own page (ORB-165): the landing
     // no longer links the registration form directly.
     expect(page).toMatch(/<a class="cta" href="\/pigrocrm">Scopri PigroCRM<\/a>/)

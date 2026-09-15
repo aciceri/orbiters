@@ -1,4 +1,4 @@
-"""The Orbiters signup list: one table, one idempotent write, and an answer that says
+"""The rebase signup list: one table, one idempotent write, and an answer that says
 nothing about the row.
 
 The container `hub_engine` starts is brought to `head` by this package's migrations,
@@ -10,8 +10,8 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from orbiters_core.schemas import SignupAck, SignupCreate, SignupListItem, SignupRead, SignupUtm
-from orbiters_core.service import SignupService
+from rebase_core.schemas import SignupAck, SignupCreate, SignupListItem, SignupRead, SignupUtm
+from rebase_core.service import SignupService
 
 
 def _create(email: str, **extra: object) -> SignupCreate:

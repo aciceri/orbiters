@@ -5,9 +5,9 @@ from alembic.migration import MigrationContext
 from sqlalchemy import Engine, create_engine, text
 from testcontainers.community.postgres import PostgresContainer
 
-import orbiters_core.models  # noqa: F401
-from orbiters_core.db import Base
-from orbiters_core.migrate import head_revision, upgrade_to_head
+import rebase_core.models  # noqa: F401
+from rebase_core.db import Base
+from rebase_core.migrate import head_revision, upgrade_to_head
 
 
 def test_the_migrations_produce_exactly_the_models_schema(hub_engine: Engine) -> None:

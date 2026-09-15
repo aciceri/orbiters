@@ -24,9 +24,9 @@ products that need to agree on something agree through `shared/`.
 ## Layout
 
 ```
-packages/core/   orbiters_core: models, migrations, services, the ad conversion, the perk files
-apps/api/        orbiters_api: FastAPI, one process, its own database
-apps/mcp/        orbiters_mcp: stdio, the same services in process
+packages/core/   rebase_core: models, migrations, services, the ad conversion, the perk files
+apps/api/        rebase_api: FastAPI, one process, its own database
+apps/mcp/        rebase_mcp: stdio, the same services in process
 apps/web/        pnpm package `hub`: the SPA at letsrebase.com/hub/ (wizards, the member area, admin)
 content/         the prose a perk is made of, reviewed as prose
 tools/           the one script that turns that prose into a file a member downloads
@@ -38,7 +38,7 @@ each directory's `ruff.toml` says so.
 ## The guide is a generated file, committed, and easy to leave stale
 
 `content/guida-primi-passi-freelance.md` is typeset by `tools/build_guide_pdf.py`, with
-pandoc and Typst, into `packages/core/src/orbiters_core/perks/`, and the result is
+pandoc and Typst, into `packages/core/src/rebase_core/perks/`, and the result is
 **committed**. It is the one build output in git here, and the script's docstring says
 why: the alternative puts those two binaries plus fontTools inside `Dockerfile.api` for
 one document.
@@ -64,7 +64,7 @@ From the repository root:
 ```
 uv sync --frozen
 uv run pytest -q projects/hub/packages/core/tests projects/hub/apps/api/tests projects/hub/apps/mcp/tests
-uv run --env-file projects/hub/.env uvicorn orbiters_api.main:app --port 8010
+uv run --env-file projects/hub/.env uvicorn rebase_api.main:app --port 8010
 ```
 
 The tests bring a `testcontainers` Postgres to `head` with this package's migrations,
@@ -117,5 +117,5 @@ the CRM's API, never its database: `ORBITERS_PIGRO_API_URL` (the CRM's public or
 also where each space is linked) and `ORBITERS_PIGRO_REGISTRY_TOKEN`, which must equal
 the `PIGROCRM_REGISTRY_TOKEN` in the CRM's own host `.env`. One value, set by hand in
 both files, generated once; without it the page answers 503 with a sentence and the CRM
-side does not even have the route. The call goes through `orbiters_core.http`, the seam
+side does not even have the route. The call goes through `rebase_core.http`, the seam
 the mail uses, so the tests hand a fake and never reach a CRM.

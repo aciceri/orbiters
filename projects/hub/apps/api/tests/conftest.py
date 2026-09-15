@@ -6,12 +6,12 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 from testcontainers.community.postgres import PostgresContainer
 
-from orbiters_api.deps import get_session
-from orbiters_api.main import create_app
-from orbiters_api.ratelimit import reset_rate_limit
-from orbiters_core.config import Settings, get_settings
-from orbiters_core.db import create_engine_from_settings, session_factory
-from orbiters_core.migrate import upgrade_to_head
+from rebase_api.deps import get_session
+from rebase_api.main import create_app
+from rebase_api.ratelimit import reset_rate_limit
+from rebase_core.config import Settings, get_settings
+from rebase_core.db import create_engine_from_settings, session_factory
+from rebase_core.migrate import upgrade_to_head
 
 
 @pytest.fixture(scope="session")

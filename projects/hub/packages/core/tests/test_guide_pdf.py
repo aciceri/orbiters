@@ -15,7 +15,7 @@ import json
 import re
 from pathlib import Path
 
-from orbiters_core.perks import GUIDE_FILENAME, GUIDE_PATH, guide_bytes
+from rebase_core.perks import GUIDE_FILENAME, GUIDE_PATH, guide_bytes
 
 REPO = Path(__file__).resolve().parents[5]
 LOCK = json.loads((REPO / "projects/hub/tools/guide-pdf.lock.json").read_text(encoding="utf-8"))

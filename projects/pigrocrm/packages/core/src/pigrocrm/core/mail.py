@@ -6,7 +6,7 @@ mail that does not arrive. Nothing here raises past `send`, and nothing logs an 
 or the key. The HTML is the same box the hub's mails use (tables, inline styles, the
 brand values written out), with PigroCRM's name and the site's legal pages.
 
-Same shape as `orbiters_core/mail.py` on purpose, and not an import of it: the two
+Same shape as `rebase_core/mail.py` on purpose, and not an import of it: the two
 products do not import each other (root `AGENTS.md`), and eighty lines are cheaper than
 a dependency between two release trains.
 """

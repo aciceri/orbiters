@@ -31,7 +31,7 @@ type Mode = { kind: 'closed' } | { kind: 'create' } | { kind: 'edit'; admin: Adm
  * Who reads this area, a button that adds one more, and a pencil on every row (ORB-123,
  * ORB-125, ORB-129). The page is the list; the form lives in one dialog that either
  * creates or edits, so the two flows cannot drift. The creating admin chooses the
- * password and hands it over out of band, as `orbiters createadmin` does on the server;
+ * password and hands it over out of band, as `rebase createadmin` does on the server;
  * when editing, an empty password means «keep it». The rules (one address, ten
  * characters) are the service's, and a 422 comes back naming the field, so the dialog
  * stays open and points at it. On success it closes, the list refreshes and the page says

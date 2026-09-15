@@ -9,13 +9,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
-from orbiters_api.deps import get_http_call
-from orbiters_core.admin import AdminService
-from orbiters_core.config import Settings, get_settings
-from orbiters_core.perks import PerkService
+from rebase_api.deps import get_http_call
+from rebase_core.admin import AdminService
+from rebase_core.config import Settings, get_settings
+from rebase_core.perks import PerkService
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
-CREDENTIALS = {"email": "ivan@orbiters.it", "password": "una-password-lunga"}
+CREDENTIALS = {"email": "ivan@rebase.it", "password": "una-password-lunga"}
 
 
 @pytest.fixture
@@ -71,7 +71,7 @@ def test_without_the_cookie_every_admin_route_is_a_401(client: TestClient, admin
         assert client.get(path).status_code == 401, path
     refused = client.post(
         "/api/hub/admins",
-        json={"email": "x@orbiters.it", "nome": "X", "password": "una-password-lunga"},
+        json={"email": "x@rebase.it", "nome": "X", "password": "una-password-lunga"},
     )
     assert refused.status_code == 401
     assert client.patch(f"/api/hub/admins/{MISSING}", json={"nome": "X"}).status_code == 401
@@ -123,7 +123,7 @@ def test_login_sets_a_secure_httponly_cookie_and_the_lists_open(
 
     login = client.post("/api/hub/auth/login", json=CREDENTIALS)
     assert login.status_code == 200, login.text
-    assert login.json()["email"] == "ivan@orbiters.it"
+    assert login.json()["email"] == "ivan@rebase.it"
     cookie = login.headers["set-cookie"].lower()
     assert "orbiters_admin=" in cookie and "httponly" in cookie and "secure" in cookie
 
@@ -275,31 +275,31 @@ def test_an_admin_lists_the_admins_and_creates_one_who_can_then_log_in(
     _login(client)
     before = client.get("/api/hub/admins")
     assert before.status_code == 200
-    assert [row["email"] for row in before.json()] == ["ivan@orbiters.it"]
+    assert [row["email"] for row in before.json()] == ["ivan@rebase.it"]
     assert before.json()[0]["attivo"] is True and "created_at" in before.json()[0]
     assert "password_hash" not in before.json()[0]
 
     created = client.post(
         "/api/hub/admins",
         json={
-            "email": "Lorenzo@Orbiters.it",
+            "email": "Lorenzo@Rebase.it",
             "nome": " Lorenzo ",
             "password": "una-password-lunga",
         },
     )
     assert created.status_code == 201, created.text
-    assert created.json()["email"] == "lorenzo@orbiters.it"
+    assert created.json()["email"] == "lorenzo@rebase.it"
     assert created.json()["nome"] == "Lorenzo"
     assert "password" not in created.text and "password_hash" not in created.text
 
     after = client.get("/api/hub/admins").json()
-    assert [row["email"] for row in after] == ["ivan@orbiters.it", "lorenzo@orbiters.it"]
+    assert [row["email"] for row in after] == ["ivan@rebase.it", "lorenzo@rebase.it"]
 
     # The new admin's credentials open a session of their own.
     assert client.post("/api/hub/auth/logout").status_code == 204
     login = client.post(
         "/api/hub/auth/login",
-        json={"email": "lorenzo@orbiters.it", "password": "una-password-lunga"},
+        json={"email": "lorenzo@rebase.it", "password": "una-password-lunga"},
     )
     assert login.status_code == 200 and login.json()["nome"] == "Lorenzo"
 
@@ -310,12 +310,12 @@ def test_creating_an_admin_points_the_form_at_the_field_that_is_wrong(
     _login(client)
     duplicate = client.post(
         "/api/hub/admins",
-        json={"email": "IVAN@orbiters.it", "nome": "Ancora", "password": "una-password-lunga"},
+        json={"email": "IVAN@rebase.it", "nome": "Ancora", "password": "una-password-lunga"},
     )
     assert duplicate.status_code == 422
     assert duplicate.json()["detail"][0]["loc"][-1] == "email"
     short = client.post(
-        "/api/hub/admins", json={"email": "corta@orbiters.it", "nome": "Corta", "password": "breve"}
+        "/api/hub/admins", json={"email": "corta@rebase.it", "nome": "Corta", "password": "breve"}
     )
     assert short.status_code == 422
     assert short.json()["detail"][0]["loc"][-1] == "password"
@@ -328,7 +328,7 @@ def test_creating_an_admin_points_the_form_at_the_field_that_is_wrong(
     for nome in ("   ", "x" * 121, "Ada\x00"):
         bad_name = client.post(
             "/api/hub/admins",
-            json={"email": "nome@orbiters.it", "nome": nome, "password": "una-password-lunga"},
+            json={"email": "nome@rebase.it", "nome": nome, "password": "una-password-lunga"},
         )
         assert bad_name.status_code == 422, nome
         assert bad_name.json()["detail"][0]["loc"][-1] == "nome"
@@ -337,14 +337,14 @@ def test_creating_an_admin_points_the_form_at_the_field_that_is_wrong(
     extra = client.post(
         "/api/hub/admins",
         json={
-            "email": "extra@orbiters.it",
+            "email": "extra@rebase.it",
             "nome": "Extra",
             "password": "una-password-lunga",
             "attivo": False,
         },
     )
     assert extra.status_code == 422
-    assert [row["email"] for row in client.get("/api/hub/admins").json()] == ["ivan@orbiters.it"]
+    assert [row["email"] for row in client.get("/api/hub/admins").json()] == ["ivan@rebase.it"]
 
 
 def test_an_admin_changes_another_admins_name_address_or_password(
@@ -354,36 +354,35 @@ def test_an_admin_changes_another_admins_name_address_or_password(
     _login(client)
     created = client.post(
         "/api/hub/admins",
-        json={"email": "lorenzo@orbiters.it", "nome": "Lorenzo", "password": "una-password-lunga"},
+        json={"email": "lorenzo@rebase.it", "nome": "Lorenzo", "password": "una-password-lunga"},
     ).json()
 
     renamed = client.patch(f"/api/hub/admins/{created['id']}", json={"nome": " Lorenzo Fiore "})
     assert renamed.status_code == 200, renamed.text
     assert (
-        renamed.json()["nome"] == "Lorenzo Fiore"
-        and renamed.json()["email"] == "lorenzo@orbiters.it"
+        renamed.json()["nome"] == "Lorenzo Fiore" and renamed.json()["email"] == "lorenzo@rebase.it"
     )
     assert "password" not in renamed.text
 
     moved = client.patch(
         f"/api/hub/admins/{created['id']}",
-        json={"email": "Lorenzo.Fiore@Orbiters.it", "password": "nuova-password-lunga"},
+        json={"email": "Lorenzo.Fiore@Rebase.it", "password": "nuova-password-lunga"},
     )
     assert moved.status_code == 200, moved.text
-    assert moved.json()["email"] == "lorenzo.fiore@orbiters.it"
+    assert moved.json()["email"] == "lorenzo.fiore@rebase.it"
     listed = client.get("/api/hub/admins").json()
-    assert [row["email"] for row in listed] == ["ivan@orbiters.it", "lorenzo.fiore@orbiters.it"]
+    assert [row["email"] for row in listed] == ["ivan@rebase.it", "lorenzo.fiore@rebase.it"]
 
     # The new credentials open a session; the old password does not.
     assert client.post("/api/hub/auth/logout").status_code == 204
     old = client.post(
         "/api/hub/auth/login",
-        json={"email": "lorenzo.fiore@orbiters.it", "password": "una-password-lunga"},
+        json={"email": "lorenzo.fiore@rebase.it", "password": "una-password-lunga"},
     )
     assert old.status_code == 401
     new = client.post(
         "/api/hub/auth/login",
-        json={"email": "lorenzo.fiore@orbiters.it", "password": "nuova-password-lunga"},
+        json={"email": "lorenzo.fiore@rebase.it", "password": "nuova-password-lunga"},
     )
     assert new.status_code == 200 and new.json()["nome"] == "Lorenzo Fiore"
 
@@ -395,10 +394,10 @@ def test_changing_an_admin_points_the_form_at_the_field_that_is_wrong(
     me = client.get("/api/hub/auth/me").json()
     other = client.post(
         "/api/hub/admins",
-        json={"email": "lorenzo@orbiters.it", "nome": "Lorenzo", "password": "una-password-lunga"},
+        json={"email": "lorenzo@rebase.it", "nome": "Lorenzo", "password": "una-password-lunga"},
     ).json()
     for body, field in (
-        ({"email": "IVAN@orbiters.it"}, "email"),
+        ({"email": "IVAN@rebase.it"}, "email"),
         ({"email": "non-una-mail"}, "email"),
         ({"nome": "   "}, "nome"),
         ({"nome": "x" * 121}, "nome"),
@@ -413,7 +412,7 @@ def test_changing_an_admin_points_the_form_at_the_field_that_is_wrong(
     assert kept.status_code == 200
     # One's own row is editable like any other; the same address on itself is no duplicate.
     own = client.patch(
-        f"/api/hub/admins/{me['id']}", json={"email": "IVAN@orbiters.it", "nome": "Ivan S."}
+        f"/api/hub/admins/{me['id']}", json={"email": "IVAN@rebase.it", "nome": "Ivan S."}
     )
     assert own.status_code == 200 and own.json()["nome"] == "Ivan S."
     assert client.get("/api/hub/auth/me").json()["nome"] == "Ivan S."
@@ -426,14 +425,14 @@ def test_a_new_password_logs_the_other_admin_out_and_keeps_me_in(
     _login(client)
     other = client.post(
         "/api/hub/admins",
-        json={"email": "lorenzo@orbiters.it", "nome": "Lorenzo", "password": "una-password-lunga"},
+        json={"email": "lorenzo@rebase.it", "nome": "Lorenzo", "password": "una-password-lunga"},
     ).json()
     # Lorenzo logs in from his own browser.
     lorenzo = TestClient(client.app, base_url="https://testserver")
     assert (
         lorenzo.post(
             "/api/hub/auth/login",
-            json={"email": "lorenzo@orbiters.it", "password": "una-password-lunga"},
+            json={"email": "lorenzo@rebase.it", "password": "una-password-lunga"},
         ).status_code
         == 200
     )

@@ -10,16 +10,16 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from orbiters_api.deps import get_sender
-from orbiters_api.ratelimit import reset_rate_limit
-from orbiters_core.admin import AdminService
-from orbiters_core.config import Settings, get_settings
-from orbiters_core.mail import Mail, RecordingSender
-from orbiters_core.models import GuideDownload
-from orbiters_core.perks import GUIDE_PATH
+from rebase_api.deps import get_sender
+from rebase_api.ratelimit import reset_rate_limit
+from rebase_core.admin import AdminService
+from rebase_core.config import Settings, get_settings
+from rebase_core.mail import Mail, RecordingSender
+from rebase_core.models import GuideDownload
+from rebase_core.perks import GUIDE_PATH
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
-ADMIN = {"email": "ivan@orbiters.it", "password": "una-password-lunga"}
+ADMIN = {"email": "ivan@rebase.it", "password": "una-password-lunga"}
 
 
 class RefusingSender:
@@ -96,7 +96,7 @@ def test_a_refused_mail_is_logged_without_the_address(
     # disables every logger that already existed and is not in `alembic.ini`'s own
     # `[loggers]` list -- this module's among them. Undo that here so `caplog` can see
     # what this test is about; nothing at runtime relies on the logger being disabled.
-    logging.getLogger("orbiters_api.routers.members").disabled = False
+    logging.getLogger("rebase_api.routers.members").disabled = False
     client.app.dependency_overrides[get_sender] = lambda: RefusingSender()  # type: ignore[attr-defined]
     _apply(client, "ada@studio.it")
     with caplog.at_level(logging.WARNING):
@@ -312,9 +312,9 @@ def test_a_member_never_sees_another_members_row(
 def test_a_member_completes_the_card_an_admin_drafted(
     client: TestClient, sender: RecordingSender, clean: None, api_session: Session
 ) -> None:
-    from orbiters_core.freelancers import FreelancerService
-    from orbiters_core.schemas import FreelancerDraft, SignupCreate
-    from orbiters_core.service import SignupService
+    from rebase_core.freelancers import FreelancerService
+    from rebase_core.schemas import FreelancerDraft, SignupCreate
+    from rebase_core.service import SignupService
 
     signup = SignupService(api_session).subscribe(
         SignupCreate(email="ada@studio.it", nome="Ada", cognome="Lovelace")
@@ -353,7 +353,7 @@ def test_a_member_completes_the_card_an_admin_drafted(
 def test_a_login_shows_up_on_the_admin_side(
     client: TestClient, sender: RecordingSender, clean: None, api_session: Session
 ) -> None:
-    from orbiters_core.admin import AdminService
+    from rebase_core.admin import AdminService
 
     _apply(client, "ada@studio.it")
     _enter(client, sender, "ada@studio.it")

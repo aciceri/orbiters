@@ -12,9 +12,9 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 from testcontainers.community.postgres import PostgresContainer
 
-from orbiters_core.config import Settings
-from orbiters_core.db import create_engine_from_settings, session_factory
-from orbiters_core.migrate import upgrade_to_head
+from rebase_core.config import Settings
+from rebase_core.db import create_engine_from_settings, session_factory
+from rebase_core.migrate import upgrade_to_head
 
 
 def settings_for(url: str) -> Settings:

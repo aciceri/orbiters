@@ -8,7 +8,7 @@ requires-python = ">=3.13,<3.14"
 # project adds its packages here and to `[tool.uv.workspace] members` below.
 dependencies = [
   "pigrocrm-core", "pigrocrm-api", "pigrocrm-mcp",
-  "orbiters-core", "orbiters-api", "orbiters-mcp",
+  "rebase-core", "rebase-api", "rebase-mcp",
 ]
 
 [tool.uv.workspace]
@@ -30,9 +30,9 @@ members = [
 pigrocrm-core = { workspace = true }
 pigrocrm-api = { workspace = true }
 pigrocrm-mcp = { workspace = true }
-orbiters-core = { workspace = true }
-orbiters-api = { workspace = true }
-orbiters-mcp = { workspace = true }
+rebase-core = { workspace = true }
+rebase-api = { workspace = true }
+rebase-mcp = { workspace = true }
 
 [dependency-groups]
 dev = [

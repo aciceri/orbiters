@@ -23,7 +23,7 @@ Three public flows and the admin area behind them:
 - `/hub/accedi` and `/hub/io`: a freelancer gets back in with a magic link by mail, to
   see or change what they sent.
 - `/hub/admin/login` and the freelancer, company and signup lists behind it — a cookie
-  session. The first admin is created with `orbiters createadmin` (below); the next ones
+  session. The first admin is created with `rebase createadmin` (below); the next ones
   from «Amministratori» inside the area, where they are also edited.
 - Every login through the magic link is recorded in `member_logins` (ORB-158): the
   admin area shows who entered and when under «Accessi», and each card carries its
@@ -42,9 +42,9 @@ to the same path.
 ## Layout
 
 ```
-packages/core/   orbiters_core: models, Alembic migrations, services, the ad conversion
-apps/api/        orbiters_api: FastAPI, one process, its own database
-apps/mcp/        orbiters_mcp: stdio, the same services in process
+packages/core/   rebase_core: models, Alembic migrations, services, the ad conversion
+apps/api/        rebase_api: FastAPI, one process, its own database
+apps/mcp/        rebase_mcp: stdio, the same services in process
 apps/web/        pnpm package `hub`: the SPA at letsrebase.com/hub/
 ```
 
@@ -57,7 +57,7 @@ Python, from the repository root:
 ```
 uv sync --frozen
 uv run pytest -q projects/hub/packages/core/tests projects/hub/apps/api/tests projects/hub/apps/mcp/tests
-uv run --env-file projects/hub/.env uvicorn orbiters_api.main:app --port 8010
+uv run --env-file projects/hub/.env uvicorn rebase_api.main:app --port 8010
 ```
 
 The tests bring a `testcontainers` Postgres to `head` with this package's migrations,
@@ -105,7 +105,7 @@ compose file: the deploy passes `--env-file` explicitly and never rsyncs one.
 The first administrator, once the stack is up:
 
 ```
-docker compose -p orbiters exec api uv run --no-sync orbiters createadmin --email you@example.com --nome "Nome Cognome"
+docker compose -p orbiters exec api uv run --no-sync rebase createadmin --email you@example.com --nome "Nome Cognome"
 ```
 
 Asks for the password on the terminal, twice, and never takes it as an argument.
@@ -113,8 +113,8 @@ Asks for the password on the terminal, twice, and never takes it as an argument.
 Telling the people with a card that their area is open (ORB-157), once, by hand:
 
 ```
-docker compose -p orbiters exec api uv run --no-sync orbiters welcome --email you@example.com
-docker compose -p orbiters exec api uv run --no-sync orbiters welcome --all
+docker compose -p orbiters exec api uv run --no-sync rebase welcome --email you@example.com
+docker compose -p orbiters exec api uv run --no-sync rebase welcome --all
 ```
 
 `--all` covers every address the hub knows, signups and cards alike, and the mail speaks

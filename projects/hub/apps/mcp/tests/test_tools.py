@@ -7,10 +7,10 @@ from mcp import Client
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
-from orbiters_core.perks import guide_bytes
-from orbiters_core.schemas import SignupCreate
-from orbiters_core.service import SignupService
-from orbiters_mcp.server import build_server
+from rebase_core.perks import guide_bytes
+from rebase_core.schemas import SignupCreate
+from rebase_core.service import SignupService
+from rebase_mcp.server import build_server
 
 
 def _payload(result: Any) -> dict[str, Any]:
@@ -83,8 +83,8 @@ async def test_the_admin_tools_read_and_move_a_candidate_without_the_cv(
 ) -> None:
     from decimal import Decimal
 
-    from orbiters_core.freelancers import FreelancerService
-    from orbiters_core.schemas import FreelancerCreate
+    from rebase_core.freelancers import FreelancerService
+    from rebase_core.schemas import FreelancerCreate
 
     session = factory()
     try:
@@ -157,8 +157,8 @@ def _wipe(factory: sessionmaker[Session]) -> None:
 def _seed_freelancer(factory: sessionmaker[Session]) -> str:
     from decimal import Decimal
 
-    from orbiters_core.freelancers import FreelancerService
-    from orbiters_core.schemas import FreelancerCreate
+    from rebase_core.freelancers import FreelancerService
+    from rebase_core.schemas import FreelancerCreate
 
     session = factory()
     try:
@@ -184,8 +184,8 @@ def _seed_company(factory: sessionmaker[Session]) -> str:
     from datetime import date
     from decimal import Decimal
 
-    from orbiters_core.companies import CompanyService
-    from orbiters_core.schemas import CompanyCreate
+    from rebase_core.companies import CompanyService
+    from rebase_core.schemas import CompanyCreate
 
     session = factory()
     try:
@@ -328,8 +328,8 @@ async def test_the_cv_is_read_as_text_and_a_card_without_one_answers_a_sentence(
 ) -> None:
     from decimal import Decimal
 
-    from orbiters_core.freelancers import FreelancerService
-    from orbiters_core.schemas import FreelancerCreate, FreelancerDraft
+    from rebase_core.freelancers import FreelancerService
+    from rebase_core.schemas import FreelancerCreate, FreelancerDraft
 
     session = factory()
     try:

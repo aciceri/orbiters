@@ -3,9 +3,9 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-import orbiters_core.models  # noqa: F401  (populates Base.metadata)
-from orbiters_core.config import get_settings
-from orbiters_core.db import Base
+import rebase_core.models  # noqa: F401  (populates Base.metadata)
+from rebase_core.config import get_settings
+from rebase_core.db import Base
 
 config = context.config
 

@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from orbiters_core.http import USER_AGENT, urllib_call
+from rebase_core.http import USER_AGENT, urllib_call
 
 
 class _Response:
@@ -37,7 +37,7 @@ def test_every_call_names_itself_unless_the_caller_already_did(
     urllib_call("POST", "https://api.example.test/x", {"Content-Type": "application/json"}, b"{}")
     urllib_call("GET", "https://api.example.test/y", {"User-Agent": "altro/1"}, b"")
     assert seen[0].get_header("User-agent") == USER_AGENT
-    assert USER_AGENT.startswith("orbiters-hub/")
+    assert USER_AGENT.startswith("rebase-hub/")
     assert seen[1].get_header("User-agent") == "altro/1"
     assert seen[0].get_header("Content-type") == "application/json"
     # A GET with nothing to send carries no body at all: `data=b""` would make urllib

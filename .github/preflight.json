@@ -129,7 +129,7 @@
       "when": [
         "projects/hub/content/**",
         "projects/hub/tools/**",
-        "projects/hub/packages/core/src/orbiters_core/perks/**",
+        "projects/hub/packages/core/src/rebase_core/perks/**",
         "shared/brand/palette.css",
         "shared/brand/fonts/**"
       ],

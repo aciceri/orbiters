@@ -1,7 +1,7 @@
 """The text of a CV, as `read_freelancer_cv` answers it (ORB-206)."""
 
-from orbiters_core.cv_text import MAX_CHARS, MAX_PAGES, TRUNCATION_MARKER, CvText, extract_text
-from orbiters_core.perks import guide_bytes
+from rebase_core.cv_text import MAX_CHARS, MAX_PAGES, TRUNCATION_MARKER, CvText, extract_text
+from rebase_core.perks import guide_bytes
 
 
 def test_a_real_pdf_answers_its_pages_and_its_text() -> None:

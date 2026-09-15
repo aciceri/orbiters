@@ -3,7 +3,7 @@
 There was no limiter anywhere in this API until ORB-173: everything else is behind a
 session or a token. `POST /api/tenants/membro` is unauthenticated by design and relays
 each question to the hub, so without a bucket anyone could sweep a mailing list through
-it. The shape is the hub's `orbiters_api.ratelimit`, which itself came from PigroCRM's
+it. The shape is the hub's `rebase_api.ratelimit`, which itself came from PigroCRM's
 old signup route on 2026-09-09; the two products share no code (`AGENTS.md`), so this
 is a copy on purpose and deliberately tiny rather than a dependency.
 """

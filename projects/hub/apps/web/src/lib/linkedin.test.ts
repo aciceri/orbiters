@@ -7,6 +7,7 @@ describe('linkedinProfile', () => {
   it.each([
     'ada-lovelace',
     '  ada-lovelace  ',
+    'ada-lovelace/?utm_source=share',
     'linkedin.com/in/ada-lovelace',
     'www.linkedin.com/in/ada-lovelace/',
     'it.linkedin.com/in/ada-lovelace',
@@ -41,14 +42,21 @@ describe('linkedinProfile', () => {
 })
 
 describe('linkedinFieldValue', () => {
-  it('reduces a pasted profile to the name the field asks for', () => {
+  it('reduces a profile that arrives in one go to the name the field asks for', () => {
     expect(linkedinFieldValue('https://it.linkedin.com/in/ada-lovelace/?trk=share')).toBe('ada-lovelace')
     expect(linkedinFieldValue(ADA)).toBe('ada-lovelace')
   })
 
-  it('leaves a name, a half-typed address and another page alone', () => {
-    expect(linkedinFieldValue('ada-lov')).toBe('ada-lov')
-    expect(linkedinFieldValue('linkedin.')).toBe('linkedin.')
+  it('leaves typing alone, so an address typed by hand stays an address', () => {
+    let field = ''
+    for (const key of 'linkedin.com/in/ada-lovelace/?utm_source=share') {
+      field = linkedinFieldValue(field + key, field)
+    }
+    expect(field).toBe('linkedin.com/in/ada-lovelace/?utm_source=share')
+    expect(linkedinProfile(field)).toBe(ADA)
+  })
+
+  it('keeps another page as it is', () => {
     expect(linkedinFieldValue('https://www.linkedin.com/company/rebase')).toBe(
       'https://www.linkedin.com/company/rebase',
     )

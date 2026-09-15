@@ -82,7 +82,9 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
             inputMode="url"
             placeholder="mario-rossi"
             value={value.linkedin_url}
-            onChange={(linkedin_url) => set({ linkedin_url: linkedinFieldValue(linkedin_url) })}
+            onChange={(linkedin_url) =>
+              set({ linkedin_url: linkedinFieldValue(linkedin_url, value.linkedin_url) })
+            }
             autoFocus={autoFocus}
           />
         </div>

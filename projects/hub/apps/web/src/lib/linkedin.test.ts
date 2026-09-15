@@ -18,6 +18,11 @@ describe('linkedinProfile', () => {
     expect(linkedinProfile(input)).toBe(ADA)
   })
 
+  it('stores a name one way, whether it was typed or percent-encoded', () => {
+    expect(linkedinProfile('linkedin.com/in/j%C3%BCrgen-m')).toBe(`${'https://www.linkedin.com/in/'}j${String.fromCharCode(0xfc)}rgen-m`)
+    expect(linkedinProfile(`j${String.fromCharCode(0xfc)}rgen-m`)).toBe(linkedinProfile('linkedin.com/in/j%C3%BCrgen-m'))
+  })
+
   it('keeps another page on LinkedIn as it is, over https', () => {
     expect(linkedinProfile('http://www.linkedin.com/company/rebase')).toBe(
       'https://www.linkedin.com/company/rebase',
@@ -36,6 +41,21 @@ describe('linkedinProfile', () => {
     'javascript:alert(1)//linkedin.com/',
     'ada lovelace',
     'https://www.linkedin.com/in/ada\nBcc: qualcuno@altrove.it',
+    // The review of PR #113: what a browser and Python's urlsplit read differently,
+    // and what does not belong in a stored link.
+    'https://evil.com\\.linkedin.com/company/x',
+    'https://www.linkedin.com\\in\\ada',
+    'https://user:pw@www.linkedin.com/company/x',
+    'https://www.linkedin.com:443/in/ada',
+    'https://www.linkedin.com/in/',
+    'https://www.linkedin.com/in/a<b>',
+    'https://www.linkedin.com/in/%2e%2e',
+    '//www.linkedin.com/in/ada',
+    'https:www.linkedin.com/in/ada',
+    'https:/www.linkedin.com/in/ada',
+    `https://www.linkedin.com/in/ada${String.fromCharCode(0x200b)}`,
+    `https://www.linkedin.com/company/${'x'.repeat(300)}`,
+    'a'.repeat(300),
   ])('refuses %j', (input) => {
     expect(linkedinProfile(input)).toBeNull()
   })
@@ -54,6 +74,10 @@ describe('linkedinFieldValue', () => {
     }
     expect(field).toBe('linkedin.com/in/ada-lovelace/?utm_source=share')
     expect(linkedinProfile(field)).toBe(ADA)
+  })
+
+  it('reduces a profile pasted over a longer value selected whole', () => {
+    expect(linkedinFieldValue('linkedin.com/in/bob', 'https://www.linkedin.com/company/rebase')).toBe('bob')
   })
 
   it('keeps another page as it is', () => {

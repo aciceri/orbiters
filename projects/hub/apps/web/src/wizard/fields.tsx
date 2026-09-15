@@ -19,6 +19,7 @@ export function TextField({
   type?: string
   inputMode?: 'text' | 'email' | 'decimal' | 'url'
   'aria-label': string
+  'aria-describedby'?: string
 }) {
   const ref = useRef<HTMLInputElement>(null)
   useEffect(() => {

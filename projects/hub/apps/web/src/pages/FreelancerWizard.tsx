@@ -75,10 +75,13 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
           {/* The fixed half of the address, shown while the field holds a name: an
               address pasted whole is reduced to its name as it lands (ORB-203). */}
           {isLinkedinName(value.linkedin_url) && (
-            <span className="text-lg text-muted-foreground">linkedin.com/in/</span>
+            <span id="linkedin-prefix" className="text-lg text-muted-foreground">
+              linkedin.com/in/
+            </span>
           )}
           <TextField
             aria-label="Profilo LinkedIn"
+            aria-describedby={isLinkedinName(value.linkedin_url) ? 'linkedin-prefix' : undefined}
             inputMode="url"
             placeholder="mario-rossi"
             value={value.linkedin_url}

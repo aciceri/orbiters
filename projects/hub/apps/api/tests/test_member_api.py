@@ -237,7 +237,7 @@ def test_a_member_changes_their_answers_and_the_admin_sees_the_comment(
         json={
             "nome": "Ada",
             "cognome": "Lovelace",
-            "linkedin_url": "http://linkedin.com/in/ada",
+            "linkedin_url": "https://example.com/in/ada",
             "tariffa_giornaliera": "500",
             "posizione": "Backend developer",
             "remoto": "remoto",

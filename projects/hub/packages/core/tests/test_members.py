@@ -34,8 +34,10 @@ GOOD = {
 def test_member_update_applies_the_wizards_rules_and_nothing_else() -> None:
     update = MemberUpdate(**GOOD)
     assert update.links == ["https://github.com/ada"]
+    pasted = MemberUpdate(**{**GOOD, "linkedin_url": "linkedin.com/in/ada/?trk=share"})
+    assert pasted.linkedin_url == "https://www.linkedin.com/in/ada"
     for bad in (
-        {**GOOD, "linkedin_url": "http://www.linkedin.com/in/ada"},
+        {**GOOD, "linkedin_url": "https://example.com/in/ada"},
         {**GOOD, "tariffa_giornaliera": "0"},
         {**GOOD, "posizione": "   "},
         {**GOOD, "remoto": "da casa"},

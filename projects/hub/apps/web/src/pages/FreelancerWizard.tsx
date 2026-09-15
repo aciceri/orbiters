@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { readPerkParam, useWizardAnalytics } from '@/lib/analytics'
 import { ApiError, applyAsFreelancer, type FreelancerApplication } from '@/lib/api'
+import { isLinkedinName, LINKEDIN_OWN_PROFILE, linkedinFieldValue, linkedinProfile } from '@/lib/linkedin'
 import { resolveAttribution } from '@/lib/utm'
 import { ChoiceField, FileField, LinksField, TextField } from '@/wizard/fields'
 import { Wizard, type Step } from '@/wizard/Wizard'
@@ -19,7 +20,6 @@ const EMPTY: FreelancerApplication = {
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const LINKEDIN = /^https:\/\/([a-z0-9-]+\.)*linkedin\.com\//i
 const MAX_CV = 5 * 1024 * 1024
 
 export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
@@ -67,23 +67,45 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
   {
     id: 'linkedin_url',
     title: 'Il tuo profilo LinkedIn',
-    hint: 'Se ce l’hai. Incolla l’indirizzo completo.',
+    hint: 'Se ce l’hai. Basta il nome che segue linkedin.com/in/, oppure incolla l’indirizzo com’è.',
     optional: true,
     render: ({ value, set, autoFocus }) => (
-      <TextField
-        aria-label="Profilo LinkedIn"
-        inputMode="url"
-        placeholder="https://www.linkedin.com/in/…"
-        value={value.linkedin_url}
-        onChange={(linkedin_url) => set({ linkedin_url })}
-        autoFocus={autoFocus}
-      />
+      <div className="grid gap-2">
+        <div className="flex items-center gap-2">
+          {/* The fixed half of the address, shown while the field holds a name: an
+              address pasted whole is reduced to its name as it lands (ORB-203). */}
+          {isLinkedinName(value.linkedin_url) && (
+            <span id="linkedin-prefix" className="text-lg text-muted-foreground">
+              linkedin.com/in/
+            </span>
+          )}
+          <TextField
+            aria-label="Profilo LinkedIn"
+            aria-describedby={isLinkedinName(value.linkedin_url) ? 'linkedin-prefix' : undefined}
+            inputMode="url"
+            placeholder="mario-rossi"
+            value={value.linkedin_url}
+            onChange={(linkedin_url) =>
+              set({ linkedin_url: linkedinFieldValue(linkedin_url, value.linkedin_url) })
+            }
+            autoFocus={autoFocus}
+          />
+        </div>
+        <a
+          className="w-fit text-sm underline underline-offset-2"
+          href={LINKEDIN_OWN_PROFILE}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Apri il tuo profilo LinkedIn
+        </a>
+      </div>
     ),
     validate: (value) =>
-      !value.linkedin_url.trim() || LINKEDIN.test(value.linkedin_url.trim())
-        ? null
-        : 'Serve l’indirizzo https di un profilo su linkedin.com, oppure niente.',
-    summary: (value) => value.linkedin_url.trim(),
+      linkedinProfile(value.linkedin_url) === null
+        ? 'Serve il tuo profilo su linkedin.com, oppure niente.'
+        : null,
+    summary: (value) => linkedinProfile(value.linkedin_url) ?? value.linkedin_url.trim(),
   },
   {
     id: 'cv',

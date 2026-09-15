@@ -402,7 +402,7 @@ jobs:
     with:
       filter: website
 
-  # The Orbiters hub (projects/hub): its own Python gate, without the renderer -- it
+  # The rebase hub (projects/hub): its own Python gate, without the renderer -- it
   # produces no PDF and shells out to nothing.
   hub-py:
     name: hub · python

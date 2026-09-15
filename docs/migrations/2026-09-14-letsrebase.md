@@ -96,7 +96,8 @@ site's own pages and the pitch's QR code. Left as they were: the specs and plans
 `docs/superpowers/` (they describe a moment), the rows of `DECISIONS.md` before today,
 the GitHub org (`joinorbiters/orbiters`, a rename of its own), the Linear workspace slug,
 the LinkedIn page slug, and the guide PDF (a binary, rebuilt by
-`projects/hub/tools/build_guide_pdf.py` in a follow-up).
+`projects/hub/tools/build_guide_pdf.py` in a follow-up). The org rename landed the next
+day: the repository is `letsrebase/rebase` since 2026-09-15 (ORB-204).
 
 ## What is not done by this migration
 
@@ -112,8 +113,9 @@ the LinkedIn page slug, and the guide PDF (a binary, rebuilt by
 - **Agents on the MCP server.** A client configured with
   `https://pigro.joinorbiters.com/<slug>/mcp` gets a 308; most do not follow it with the
   bearer token, so the URL in the client has to change.
-- **Search Console, PostHog, LinkedIn, the GitHub org, the brand in the copy**: cards of
-  their own, linked from ORB-193.
+- **Search Console, PostHog, LinkedIn, the brand in the copy**: cards of their own,
+  linked from ORB-193. The GitHub org was one of them and is done: `letsrebase/rebase`
+  since 2026-09-15 (ORB-204).
 
 ## Rolling back
 

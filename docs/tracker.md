@@ -10,7 +10,7 @@ are not part of this repo's flow.
 
 | | |
 |---|---|
-| Workspace | `joinorbiters` |
+| Workspace | `joinorbiters`, the Linear slug, which the GitHub org rename of 2026-09-15 did not touch |
 | Team | **Orbiters**, issue prefix `ORB-`. One team, and that does not change |
 | Initiative | a product, permanent: `Website`, `Hub`, `PigroCRM`, `Monorepo` |
 | Project | a release, or a body of work with an end. It closes when it ships, which is what lets its issues archive |
@@ -248,11 +248,13 @@ would mislead a reader is worse.
 
 ## Commits and issues
 
-Linear's GitHub app (`linear-code`) is installed on `joinorbiters` since 2026-09-09,
+Linear's GitHub app (`linear-code`) is installed on the GitHub org since 2026-09-09,
 on every repository, granted by the org owner (`slavni96`) after Lorenzo was made an
-owner of the org the same day. Installing it gives Linear the pull request and issue
-events, and the diffs show up in Linear for anyone whose personal GitHub account is
-connected there.
+owner of the org the same day. That org was `joinorbiters` then and is `letsrebase`
+since 2026-09-15 (ORB-204); the installation followed the rename, and so did the links
+Linear had already attached to pull requests. Installing it gives Linear the pull
+request and issue events, and the diffs show up in Linear for anyone whose personal
+GitHub account is connected there.
 
 **Linking works, and it is measured.** PR #33 attached itself to ORB-80 within 25
 seconds of `gh pr create`, matching on the `orb-80` in the branch name rather than on

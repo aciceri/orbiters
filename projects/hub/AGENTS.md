@@ -1,11 +1,11 @@
-# AGENTS.md — working on the Orbiters hub
+# AGENTS.md — working on the rebase hub
 
 The root [`AGENTS.md`](../../AGENTS.md) covers the monorepo. This file is only about
 this project.
 
 ## What it is
 
-Orbiters, the freelance community, as a product of its own: the signup list the
+rebase, the freelance community, as a product of its own: the signup list the
 community site collects, the freelancer profiles and the company requests the hub's
 wizards will collect, and the admin area that reads them. Its design record is
 `docs/superpowers/specs/`, English, one document per step; read the 2026-09-09 spec
@@ -15,7 +15,7 @@ with a magic link by mail (`/hub/accedi`, `/hub/io`): spec
 
 ## The one rule
 
-**Nothing here imports PigroCRM, and PigroCRM imports nothing from here.** Orbiters was
+**Nothing here imports PigroCRM, and PigroCRM imports nothing from here.** The hub was
 split out of the CRM on 2026-09-09 precisely so the two can change independently: its
 own settings (`ORBITERS_*`), its own Postgres, its own Alembic history, its own API and
 MCP server. `ruff.toml` bans the three `pigrocrm*` module roots in every package. Two

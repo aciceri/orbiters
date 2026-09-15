@@ -1,6 +1,6 @@
-# Orbiters hub
+# rebase hub
 
-Orbiters, the freelance community, as a product of its own: the signup form the
+rebase, the freelance community, as a product of its own: the signup form the
 community site collects, the freelancer and company wizards, and the admin area that
 reads them. Served at `letsrebase.com/hub/`. Split out of PigroCRM on 2026-09-09 so
 the two products change independently — its own settings (`ORBITERS_*`), its own

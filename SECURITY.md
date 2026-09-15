@@ -6,7 +6,7 @@ This covers everything in this monorepo: `projects/pigrocrm`, `projects/hub` and
 ## Reporting a vulnerability
 
 Use GitHub's private vulnerability reporting: open
-[Report a vulnerability](https://github.com/joinorbiters/orbiters/security/advisories/new).
+[Report a vulnerability](https://github.com/letsrebase/rebase/security/advisories/new).
 It alerts both maintainers directly and keeps the report out of the public issue
 tracker while it is looked at. A public issue is the wrong channel for a
 vulnerability: please do not open one for a security problem, even a suspected one.

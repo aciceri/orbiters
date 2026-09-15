@@ -1,6 +1,6 @@
 # @orbiters/analytics
 
-The one PostHog project every Orbiters surface reports to, and the policy the two
+The one PostHog project every rebase surface reports to, and the policy the two
 SPAs initialise it with. Design: `docs/design/2026-09-12-posthog-analytics-design.md`.
 
 | File | What it holds | Who reads it |

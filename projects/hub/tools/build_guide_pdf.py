@@ -5,7 +5,7 @@
 
 The guide is a perk of the community, so it is not a public file: the hub's API serves
 it to a member behind their own session (`GET /api/hub/me/guida`), which is why the PDF
-lives inside `orbiters_core` as package data rather than in the website's `dist`.
+lives inside `rebase_core` as package data rather than in the website's `dist`.
 Lorenzo's call on ORB-70, 2026-09-10: «la guida deve essere scaricabile dall'hub una
 volta registrati».
 
@@ -54,7 +54,7 @@ PALETTE = REPO / "shared" / "brand" / "palette.css"
 FONT = REPO / "shared" / "brand" / "fonts" / "outfit-variable-latin.woff2"
 LOCK = TOOLS / "guide-pdf.lock.json"
 
-# Package data of `orbiters_core`, so the API can read it in a container that carries no
+# Package data of `rebase_core`, so the API can read it in a container that carries no
 # static site: `Dockerfile.api` copies `projects/hub/packages` whole. The file name is
 # what a member's browser saves, and it stays readable in a downloads folder a week
 # later, which is the whole requirement on it.
@@ -63,7 +63,7 @@ OUTPUT = (
     / "packages"
     / "core"
     / "src"
-    / "orbiters_core"
+    / "rebase_core"
     / "perks"
     / ("orbiters-guida-primi-passi-freelance.pdf")
 )

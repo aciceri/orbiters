@@ -12,8 +12,8 @@ from typing import Any
 
 import pytest
 
-from orbiters_core.config import Settings
-from orbiters_core.conversions import (
+from rebase_core.config import Settings
+from rebase_core.conversions import (
     CONVERSIONS_URL,
     NETWORK_ERROR_STATUS,
     USER_AGENT_MAX_LENGTH,

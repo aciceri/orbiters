@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from orbiters_api.ratelimit import SIGNUPS_PER_MINUTE
+from rebase_api.ratelimit import SIGNUPS_PER_MINUTE
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
 

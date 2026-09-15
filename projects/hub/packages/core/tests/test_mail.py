@@ -8,8 +8,8 @@ import json
 
 import pytest
 
-from orbiters_core.config import Settings
-from orbiters_core.mail import (
+from rebase_core.config import Settings
+from rebase_core.mail import (
     RESEND_URL,
     CardSummary,
     Mail,

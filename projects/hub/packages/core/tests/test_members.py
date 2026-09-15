@@ -10,13 +10,13 @@ from pydantic import ValidationError
 from sqlalchemy import Engine, select, text
 from sqlalchemy.orm import Session
 
-from orbiters_core.comments import CommentService
-from orbiters_core.config import Settings
-from orbiters_core.errors import NotFound, ValidationFailed
-from orbiters_core.freelancers import FreelancerService
-from orbiters_core.members import MemberService
-from orbiters_core.models import Freelancer, MagicLinkToken, MemberSession
-from orbiters_core.schemas import FreelancerCreate, MemberProfile, MemberUpdate, StatusChange
+from rebase_core.comments import CommentService
+from rebase_core.config import Settings
+from rebase_core.errors import NotFound, ValidationFailed
+from rebase_core.freelancers import FreelancerService
+from rebase_core.members import MemberService
+from rebase_core.models import Freelancer, MagicLinkToken, MemberSession
+from rebase_core.schemas import FreelancerCreate, MemberProfile, MemberUpdate, StatusChange
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
 
@@ -219,8 +219,8 @@ def test_a_row_that_is_not_there_is_not_found(members: MemberService) -> None:
 
 
 def _draft_card(session: Session, email: str = "ada@studio.it") -> UUID:
-    from orbiters_core.schemas import FreelancerDraft, SignupCreate
-    from orbiters_core.service import SignupService
+    from rebase_core.schemas import FreelancerDraft, SignupCreate
+    from rebase_core.service import SignupService
 
     signup = SignupService(session).subscribe(
         SignupCreate(email=email, nome="Ada", cognome="Lovelace")
@@ -307,7 +307,7 @@ def test_confirming_a_researched_card_unchanged_still_makes_it_the_persons(
 def test_entering_is_recorded_and_the_card_and_the_stats_read_it_back(
     members: MemberService, hub_session: Session
 ) -> None:
-    from orbiters_core.logins import LoginService
+    from rebase_core.logins import LoginService
 
     ada = _apply(hub_session, "ada@studio.it")
     _apply(hub_session, "bob@studio.it")
@@ -341,10 +341,10 @@ def test_entering_is_recorded_and_the_card_and_the_stats_read_it_back(
 def test_the_welcome_mailing_speaks_to_every_address_the_hub_knows(
     members: MemberService, hub_session: Session
 ) -> None:
-    from orbiters_core.cli import send_welcome
-    from orbiters_core.mail import RecordingSender
-    from orbiters_core.schemas import SignupCreate
-    from orbiters_core.service import SignupService
+    from rebase_core.cli import send_welcome
+    from rebase_core.mail import RecordingSender
+    from rebase_core.schemas import SignupCreate
+    from rebase_core.service import SignupService
 
     _apply(hub_session, "ada@studio.it")  # a card the person filled, no signup
     _draft_card(hub_session, "bruna@studio.it")  # a signup and a card we drafted

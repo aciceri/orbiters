@@ -10,7 +10,7 @@ prose reviewed on its own terms, not markup or code.
 ## How a file here becomes something a member downloads
 
 `../tools/build_guide_pdf.py` typesets this Markdown with pandoc and Typst into
-`../packages/core/src/orbiters_core/perks/`, from where `GET /api/hub/me/guida` hands it
+`../packages/core/src/rebase_core/perks/`, from where `GET /api/hub/me/guida` hands it
 to a resolved member session and 401s everybody else. It is a perk, so there is no public
 URL for it: the landing on `letsrebase.com` announces it and links to the wizard.
 
@@ -20,7 +20,7 @@ says something the repository no longer does.
 
 ```
 uv run python projects/hub/tools/build_guide_pdf.py   # rewrite the PDF and its lock
-git add projects/hub/packages/core/src/orbiters_core/perks projects/hub/tools/guide-pdf.lock.json
+git add projects/hub/packages/core/src/rebase_core/perks projects/hub/tools/guide-pdf.lock.json
 ```
 
 Three checks hold that together, deliberately in different tiers.

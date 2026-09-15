@@ -9,11 +9,11 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from orbiters_core.companies import CompanyService
-from orbiters_core.errors import NotFound, ValidationFailed
-from orbiters_core.freelancers import FreelancerService, check_cv
-from orbiters_core.models import CV_MAX_BYTES
-from orbiters_core.schemas import (
+from rebase_core.companies import CompanyService
+from rebase_core.errors import NotFound, ValidationFailed
+from rebase_core.freelancers import FreelancerService, check_cv
+from rebase_core.models import CV_MAX_BYTES
+from rebase_core.schemas import (
     CompanyCreate,
     FreelancerCreate,
     FreelancerDraft,
@@ -211,8 +211,8 @@ def test_a_company_request_outside_the_form_is_refused(bad: dict[str, object]) -
 
 
 def _signup(session: Session, email: str = "ada@studio.it", **extra: object) -> UUID:
-    from orbiters_core.schemas import SignupCreate
-    from orbiters_core.service import SignupService
+    from rebase_core.schemas import SignupCreate
+    from rebase_core.service import SignupService
 
     payload: dict[str, object] = {"email": email, "nome": "Ada", "cognome": "Lovelace"}
     payload.update(extra)
@@ -261,7 +261,7 @@ def test_a_card_from_a_signup_is_incomplete_and_carries_the_signup_attribution(
     assert comment.testo.startswith("Scheda creata dall'iscrizione del ")
     assert "https://www.linkedin.com/in/ada" in comment.testo and "https://ada.dev" in comment.testo
     # «Iscrizioni» can now point at it.
-    from orbiters_core.service import SignupService
+    from rebase_core.service import SignupService
 
     item = SignupService(clean).list_recent().iscrizioni[0]
     assert item.freelancer_id == read.id

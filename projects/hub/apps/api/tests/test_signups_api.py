@@ -15,10 +15,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from orbiters_api.ratelimit import SIGNUPS_PER_MINUTE
-from orbiters_api.routers import signups as signups_router
-from orbiters_core.config import Settings, get_settings
-from orbiters_core.conversions import hashed_email
+from rebase_api.ratelimit import SIGNUPS_PER_MINUTE
+from rebase_api.routers import signups as signups_router
+from rebase_core.config import Settings, get_settings
+from rebase_core.conversions import hashed_email
 
 
 def _row(session: Session, email: str) -> tuple[str | None, str | None, str | None]:
@@ -189,7 +189,7 @@ def test_the_rate_limit_key_is_the_address_nginx_saw_not_the_one_the_client_wrot
     the same observed address and wins when present."""
     from starlette.requests import Request
 
-    from orbiters_api.ratelimit import client_key as _client_key
+    from rebase_api.ratelimit import client_key as _client_key
 
     def req(headers: dict[str, str], client: tuple[str, int] | None = ("127.0.0.1", 1)) -> Request:
         raw = [(k.lower().encode(), v.encode()) for k, v in headers.items()]

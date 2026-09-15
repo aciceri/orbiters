@@ -6,7 +6,7 @@
 // document into a comment and left an unclosed raw span behind it.)
 //
 // Nothing here spells a colour. The five values arrive as variables, read out of
-// `@orbiters/brand/palette.css` at build time by the same rule `palette-plugin.ts`
+// `@rebase/brand/palette.css` at build time by the same rule `palette-plugin.ts`
 // follows for the stylesheets: one source for the palette, and a hex typed into a
 // template is the fork both mechanisms exist to prevent.
 //

@@ -223,6 +223,30 @@ class AdminUser(Base, PrimaryKeyMixin, TimestampMixin):
     __table_args__ = (Index("uq_admin_users_email_lower", func.lower(email), unique=True),)
 
 
+ADMIN_TOKEN_PREFIX_LENGTH = 20
+
+
+class AdminToken(Base, PrimaryKeyMixin, TimestampMixin):
+    """A personal token of an admin, for an agent (REB-213): the credential the MCP
+    server takes as a bearer. Only the sha256 of the value is stored; the value itself
+    is shown once, at creation, and never again. `prefix` is the visible head of it, so a
+    list can tell two tokens apart. No expiry: `revoked_at` is the end of a token, and a
+    revoked one is refused like an unknown one. Hangs on the admin with a plain foreign
+    key, as the sessions do: an admin is never deleted, only deactivated, and a
+    deactivated admin's tokens stop resolving with them."""
+
+    __tablename__ = "admin_tokens"
+
+    admin_id: Mapped[UUID] = mapped_column(ForeignKey("admin_users.id"), nullable=False, index=True)
+    nome: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), nullable=False)
+    token_hash: Mapped[str] = mapped_column(
+        String(ADMIN_SESSION_TOKEN_HASH_LENGTH), nullable=False, unique=True
+    )
+    prefix: Mapped[str] = mapped_column(String(ADMIN_TOKEN_PREFIX_LENGTH), nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+
 class AdminSession(Base, PrimaryKeyMixin):
     """One opaque cookie, stored hashed, sliding expiry. Not a JWT pair: the admin area is
     a handful of people reading a handful of lists, and a database lookup per request is

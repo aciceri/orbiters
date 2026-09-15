@@ -107,6 +107,21 @@ def test_a_cv_that_is_not_a_pdf_is_a_422_that_names_the_field(
     assert api_session.execute(text("SELECT count(*) FROM freelancers")).scalar() == 0
 
 
+def test_an_attached_but_empty_cv_is_refused_rather_than_read_as_no_cv(
+    client: TestClient, api_session: Session
+) -> None:
+    """The difference the optional CV has to keep: a part that is there and carries no
+    bytes is a broken upload, and telling the person nothing would leave them thinking
+    they had sent a CV."""
+    _clean(api_session)
+    response = client.post(
+        "/api/hub/freelancers", data=_form(), files={"cv": ("cv.pdf", b"", "application/pdf")}
+    )
+    assert response.status_code == 422
+    assert {error["loc"][-1] for error in response.json()["detail"]} == {"cv"}
+    assert api_session.execute(text("SELECT count(*) FROM freelancers")).scalar() == 0
+
+
 def test_an_application_with_no_cv_at_all_is_accepted_and_stored_without_one(
     client: TestClient, api_session: Session
 ) -> None:

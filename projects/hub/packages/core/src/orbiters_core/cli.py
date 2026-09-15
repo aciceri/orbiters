@@ -16,6 +16,7 @@ from orbiters_core.db import create_engine_from_settings, session_factory
 from orbiters_core.errors import DomainError
 from orbiters_core.mail import CardSummary, EmailSender, sender_from_settings, welcome_mail
 from orbiters_core.models import Freelancer, Signup
+from orbiters_core.schemas import FreelancerRead
 
 
 def createadmin(email: str | None, nome: str | None) -> int:
@@ -111,7 +112,19 @@ def send_welcome(
             continue
         if card is not None and card.compilata_da == "persona":
             kind = "persona"
-            mail = welcome_mail(card.email, card.nome, accedi, kind=kind, posizione=card.posizione)
+            mail = welcome_mail(
+                card.email,
+                card.nome,
+                accedi,
+                kind=kind,
+                posizione=card.posizione,
+                # Read through the schema so «completa» is the one definition the admin
+                # area and the member area already read (`_is_complete`), never a second
+                # list of columns written here. For this voice the CV is the only thing
+                # that can be missing: the rate, the position and the remote option are
+                # steps of the wizard the person went through.
+                completa=FreelancerRead.model_validate(card).completa,
+            )
         elif card is not None:
             kind = "admin"
             mail = welcome_mail(

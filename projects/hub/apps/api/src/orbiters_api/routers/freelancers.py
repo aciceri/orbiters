@@ -54,9 +54,10 @@ def apply(
     tariffa_giornaliera: Annotated[str, Form()],
     posizione: Annotated[str, Form()],
     remoto: Annotated[str, Form()],
-    # Optional, and absent rather than empty: the wizard leaves the part out of the body
-    # when nobody attached a file, and a browser that sends an empty one is read as the
-    # same thing a few lines below.
+    # Optional: the wizard leaves the part out of the body when nobody attached a file,
+    # and FastAPI hands `None` here for a part with no filename and for `cv` sent as an
+    # empty string field, which is what other clients do for "nothing chosen". A part
+    # that *is* a file is a file, even when it carries no bytes: see below.
     cv: Annotated[UploadFile | None, File()] = None,
     linkedin_url: Annotated[str | None, Form()] = None,
     links: Annotated[list[str] | None, Form()] = None,
@@ -91,14 +92,16 @@ def apply(
         )
     except ValidationError as exc:
         raise _validation_422(exc) from exc
-    content = cv.file.read() if cv is not None else b""
-    # A CV that is not a small PDF raises `ValidationFailed`, which the app's handler
-    # renders as the same 422 shape as the fields above. No CV at all is not a refusal:
-    # the card is stored without one and `completa` says so.
-    FreelancerService(session).apply(
-        data,
-        content or None,
-        cv.filename or "" if cv is not None else "",
-        cv.content_type or "" if cv is not None else "",
-    )
+    # No CV at all is not a refusal: the card is stored without one and `completa` says
+    # so. An attached file is checked, and an attached file of zero bytes is checked
+    # too, which is the whole reason these two cases are told apart rather than folded
+    # into one falsy test: a truncated or empty upload would otherwise be read as "this
+    # person chose not to send a CV", and they would be told nothing. A CV that is not a
+    # small PDF raises `ValidationFailed`, which the app's handler renders as the same
+    # 422 shape as the fields above.
+    service = FreelancerService(session)
+    if cv is None:
+        service.apply(data)
+    else:
+        service.apply(data, cv.file.read(), cv.filename or "", cv.content_type or "")
     return Ack()

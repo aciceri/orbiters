@@ -105,6 +105,9 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
     // applies to the bytes; what is not attached is simply not a refusal.
     validate: (value) => {
       if (!value.cv) return null
+      // An attached file with no bytes is a broken pick, not a choice to skip: the
+      // server refuses it too, and being told here saves the round trip.
+      if (value.cv.size === 0) return 'Questo file è vuoto: riprova con il PDF.'
       if (value.cv.size > MAX_CV) return 'Il CV può pesare al massimo 5 MB.'
       if (value.cv.type && value.cv.type !== 'application/pdf') return 'Il CV deve essere un PDF.'
       return null

@@ -408,9 +408,13 @@ class CommentCreate(BaseModel):
 
 
 def _is_complete(card: "MemberProfile | FreelancerRead") -> bool:
-    """A card the wizard would have accepted: CV, rate, position and remote option all
-    there. What «Da completare» in the admin area and the notice in the member area read
-    (ORB-155). The name and the address are never missing, so they are not checked."""
+    """CV, rate, position and remote option all there. What «Da completare» in the admin
+    area and the notice in the member area read (ORB-155), and what the welcome mailing
+    reads before it tells somebody their card is complete. The name and the address are
+    never missing, so they are not checked.
+
+    No longer "a card the wizard would have accepted": the wizard accepts one without a
+    CV, and this stays the fuller bar, which is the point of having it."""
     return all(
         value is not None
         for value in (card.cv_size, card.tariffa_giornaliera, card.posizione, card.remoto)
@@ -430,6 +434,8 @@ class MemberProfile(BaseModel):
     linkedin_url: str | None
     # `None` on a card an admin wrote from a signup and the person has not completed
     # yet (ORB-155): no CV, no rate, no position, no remote option until they say so.
+    # `cv_filename` and `cv_size` are `None` on a card the wizard made too, where the
+    # CV is an optional step.
     cv_filename: str | None
     cv_size: int | None
     tariffa_giornaliera: Decimal | None
@@ -495,7 +501,8 @@ class FreelancerRead(BaseModel):
     cognome: str
     email: str
     linkedin_url: str | None
-    # `None` on a card born from a signup that the person has not completed (ORB-155).
+    # `None` on a card born from a signup that the person has not completed (ORB-155),
+    # and on one whose owner skipped the wizard's optional CV step.
     cv_filename: str | None
     cv_mime: str | None
     cv_size: int | None

@@ -265,6 +265,7 @@ def welcome_mail(
     *,
     kind: str,
     posizione: str | None = None,
+    completa: bool = True,
     summary: CardSummary | None = None,
     wizard_link: str | None = None,
 ) -> Mail:
@@ -323,11 +324,24 @@ def welcome_mail(
     )
 
     if kind == "persona":
-        card_text = (
-            f"La tua scheda è completa: sei {posizione}, e le aziende possono trovarti."
-            if posizione
-            else "La tua scheda è completa: le aziende possono trovarti."
-        )
+        # «Completa» is a fact about the card, not about who wrote it: since the wizard
+        # stopped demanding a CV a person can have filled the form themselves and still
+        # be missing the file, and telling them the card is complete would be both
+        # false and a reason never to come back and finish it.
+        if not completa:
+            card_text = (
+                f"Sei {posizione}: manca solo il CV perché le aziende possano trovarti, "
+                "e lo carichi dalla tua area."
+                if posizione
+                else "Manca solo il CV perché le aziende possano trovarti, e lo carichi "
+                "dalla tua area."
+            )
+        else:
+            card_text = (
+                f"La tua scheda è completa: sei {posizione}, e le aziende possono trovarti."
+                if posizione
+                else "La tua scheda è completa: le aziende possono trovarti."
+            )
         middle_text = enter_text + "\n" + card_text + "\n"
         middle_html = enter_html + f"<p {paragraph}>{e(card_text)}</p>"
     elif kind == "admin":

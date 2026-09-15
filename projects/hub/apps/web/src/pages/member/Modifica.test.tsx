@@ -122,11 +122,12 @@ describe('/io/modifica', () => {
   })
 
   it('saves a card that has no CV, and says the CV can still arrive', async () => {
+    // A fresh Response per call, never `mockResolvedValue(answer(...))`: a body is read
+    // once, so the second request of this test (the PATCH) would find it consumed and
+    // the save would fail for a reason that has nothing to do with the CV.
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockImplementation(async (_url, init) =>
-        init?.method === 'PATCH' ? answer(200, WITHOUT_CV) : answer(200, WITHOUT_CV),
-      )
+      .mockImplementation(async () => answer(200, WITHOUT_CV))
     mount()
     const user = userEvent.setup()
     await screen.findByLabelText('Posizione')

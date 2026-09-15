@@ -322,6 +322,17 @@ def test_an_application_without_a_cv_is_stored_and_waits_for_one(clean: Session)
     assert missing.value.details["entity"] == "cv"
 
 
+def test_an_empty_cv_is_refused_while_no_cv_at_all_is_not(clean: Session) -> None:
+    """`None` is "nobody attached a file"; `b""` is a file with nothing in it. The
+    second is a refusal, as it always was, and the caller is the one who can tell them
+    apart."""
+    service = FreelancerService(clean)
+    with pytest.raises(ValidationFailed) as refused:
+        service.apply(_application(), b"", "cv.pdf", "application/pdf")
+    assert refused.value.details["field"] == "cv"
+    assert service.apply(_application()).cv_filename is None
+
+
 def test_a_second_application_without_a_cv_keeps_the_one_already_stored(
     clean: Session,
 ) -> None:

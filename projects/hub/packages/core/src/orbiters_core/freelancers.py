@@ -123,29 +123,27 @@ class FreelancerService:
         one to hand. A CV that *is* sent is checked exactly as before, and an
         application that omits it **never clears a CV already stored**: somebody
         refreshing their answers from the wizard is not somebody deleting their CV.
+
+        `cv is None` is "no file was attached"; `cv == b""` is an attached file with no
+        bytes in it, and that is a refusal like any other broken upload. The difference
+        is the caller's to make, and this signature is what lets them make it.
         """
-        stored = check_cv(cv, cv_filename, cv_mime) if cv else None
+        stored: tuple[bytes, str, str] | None = None
+        if cv is not None:
+            stored = (cv, *check_cv(cv, cv_filename, cv_mime))
         email = data.email.strip().lower()
         row = self._find(email)
         if row is None:
             utm = data.utm.model_dump() if data.utm is not None and not data.utm.is_empty() else {}
             row = Freelancer(email=email, **utm)
-            if stored is not None:
-                filename, mime = stored
-                row.cv_bytes, row.cv_filename, row.cv_mime, row.cv_size = (
-                    cv,
-                    filename,
-                    mime,
-                    len(cv or b""),
-                )
             self.session.add(row)
-        elif stored is not None:
-            filename, mime = stored
+        if stored is not None:
+            content, filename, mime = stored
             row.cv_bytes, row.cv_filename, row.cv_mime, row.cv_size = (
-                cv,
+                content,
                 filename,
                 mime,
-                len(cv or b""),
+                len(content),
             )
         row.nome = data.nome
         row.cognome = data.cognome

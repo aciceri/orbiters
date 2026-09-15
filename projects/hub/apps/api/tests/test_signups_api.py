@@ -99,7 +99,8 @@ def test_the_422_names_the_field_it_refused_so_the_form_can_point_at_it(
     """The landing reads `detail[].loc` to decide which field to mark and focus; without
     this contract it can only blame the address, which is a dead end for the visitor."""
     response = client.post(
-        "/api/community/signups", json=_body("ada@studio.it", linkedin_url="https://example.com/ada")
+        "/api/community/signups",
+        json=_body("ada@studio.it", linkedin_url="https://example.com/ada"),
     )
     assert response.status_code == 422
     assert {error["loc"][-1] for error in response.json()["detail"]} == {"linkedin_url"}
@@ -130,7 +131,8 @@ def test_a_profile_that_is_not_on_linkedin_is_a_422_not_a_row(
     client: TestClient,
 ) -> None:
     response = client.post(
-        "/api/community/signups", json=_body("ada@studio.it", linkedin_url="https://example.com/ada")
+        "/api/community/signups",
+        json=_body("ada@studio.it", linkedin_url="https://example.com/ada"),
     )
     assert response.status_code == 422
 

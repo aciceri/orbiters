@@ -1,4 +1,4 @@
-/* Orbiters. palette-plugin.ts prepends the fifteen shared tokens and landing/system.css
+/* The community page. palette-plugin.ts prepends the fifteen shared tokens and landing/system.css
    (grid line, tile, glyph, contrast guard), exactly as for landing.css. What is left
    here is this page's own layout: the field over the whole viewport and one box. */
 :root {
@@ -9,7 +9,7 @@
   --orb-cta: var(--color-watermelon-strong);
   --orb-cta-ink: #ffffff;
   --orb-focus: var(--color-watermelon);
-  /* The tile size, read by orbiters.js so the grid on the canvas and the grid on the
+  /* The tile size, read by community.js so the grid on the canvas and the grid on the
      page are the same grid. The system's 16px from a tablet up; 14px on a phone,
      where the field is the whole page and 16px tiles read as noise. */
   --orb-cell: 14px;
@@ -20,7 +20,7 @@
   /* A viewport is almost never a whole number of cells. What is left over (`slack`)
      is split between the two edges, so the grid starts at `origin` and the partial
      column, when there is one, is half a cell at most on either side instead of a whole
-     clipped column on the right. orbiters.js does not repeat this arithmetic: it reads
+     clipped column on the right. community.js does not repeat this arithmetic: it reads
      the body's computed background-position, which is where the origin ends up. */
   --orb-slack: mod(100vw, var(--orb-cell));
   --orb-origin: round(down, var(--orb-slack) / 2, 1px);
@@ -233,7 +233,7 @@ h1 {
    control instead of a citation mid-sentence, and `min-height` clears the 44px
    touch-target floor even at the note's smaller type, where the padding alone would
    not -- this is the page people actually reach on a phone. No shadow at this tier,
-   the same as `.box`'s own step reads at a different tier entirely. orbiters.css has
+   the same as `.box`'s own step reads at a different tier entirely. community.css has
    no shared `*` border reset the way landing.css does, so the border is spelled out in
    full here rather than as `border-width` alone. */
 .note a {

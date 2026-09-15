@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 
-const PAGES = ['/', '/pigrocrm', '/privacy', '/termini', '/orbiters', '/pitch'] as const
+const PAGES = ['/', '/pigrocrm', '/privacy', '/termini', '/community', '/pitch'] as const
 const BUDGET_BYTES = 40 * 1024
 // The hosts these pages may ever talk to besides their own: the ChatGPT Ads measurement
 // SDK and PostHog. "May ever" is the whole subtlety -- `consent.js` injects both only
@@ -13,7 +13,7 @@ const TRACKER_HOSTS = [PIXEL_HOST, ...POSTHOG_HOSTS]
 const CONSENT_KEY = 'orbiters.consent'
 // The three pages that carry the notice, and therefore the three that can end up with
 // a tracker. `src/pixel.test.ts` owns which pages declare it.
-const MEASURED_PATHS = ['/', '/pigrocrm', '/orbiters'] as const
+const MEASURED_PATHS = ['/', '/pigrocrm', '/community'] as const
 const towards = (hosts: readonly string[]) => (url: string) => hosts.includes(new URL(url).host)
 
 test.describe('every page of the site', () => {
@@ -134,7 +134,7 @@ test.describe('every page of the site', () => {
       test.use({ viewport: { width, height: 844 }, deviceScaleFactor: 1 })
 
       test('sits on its grid', async ({ page }) => {
-        await page.goto('/orbiters', { waitUntil: 'networkidle' })
+        await page.goto('/community', { waitUntil: 'networkidle' })
         const m = await page.evaluate(() => {
           const cell = parseFloat(
             getComputedStyle(document.documentElement).getPropertyValue('--orb-cell'),
@@ -261,7 +261,7 @@ test.describe('every page of the site', () => {
       test('sits under the box on the community page, and the box stays centred above it', async ({
         page,
       }) => {
-        await page.goto('/orbiters', { waitUntil: 'networkidle' })
+        await page.goto('/community', { waitUntil: 'networkidle' })
         const shown = await page.evaluate(geometry)
         expect(shown.noticeTop).not.toBeNull()
         // The room is what the notice covers, its height plus its distance from the edge,
@@ -315,7 +315,7 @@ test.describe('every page of the site', () => {
   // while it does. The layout half is checked for every word at every width without
   // waiting for the cycle to reach it; the motion half once per page.
   const ROLES = ['Developer', 'AI engineer', 'CTO', 'Fractional CTO', 'Tech lead', 'Freelance']
-  const TITLED = ['/', '/orbiters'] as const
+  const TITLED = ['/', '/community'] as const
 
   /** The tops that must not move, and the title's height, with `word` in the role. */
   function titledLayout(word: string | null) {
@@ -476,11 +476,17 @@ test.describe('the path map, as production serves it', () => {
   const source = (name: string) =>
     readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf-8').match(/<title>([^<]+)<\/title>/)?.[1]
 
-  test('/ is the landing and /orbiters is the community page (ORB-145)', async ({ page }) => {
+  test('/ is the landing and /community is the community page (ORB-145)', async ({ page }) => {
     await page.goto('/')
     await expect(page).toHaveTitle(source('index.html')!)
-    await page.goto('/orbiters')
-    await expect(page).toHaveTitle(source('orbiters.html')!)
+    await page.goto('/community')
+    await expect(page).toHaveTitle(source('community.html')!)
+  })
+
+  test('/orbiters redirects to /community, its name before REB-212', async ({ request }) => {
+    const response = await request.get('/orbiters', { maxRedirects: 0 })
+    expect(response.status()).toBe(301)
+    expect(response.headers()['location']).toBe('/community')
   })
 
   test('/pigrocrm is the CRM\'s own page again (ORB-159)', async ({ page }) => {
@@ -489,7 +495,7 @@ test.describe('the path map, as production serves it', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Il CRM che lavora')
   })
 
-  for (const path of ['/nonexistent', '/pigrocrm/', '/index.html', '/orbiters.html']) {
+  for (const path of ['/nonexistent', '/pigrocrm/', '/index.html', '/community.html']) {
     test(`${path} is a 404, not the landing by fallback`, async ({ page }) => {
       const response = await page.goto(path)
       expect(response?.status()).toBe(404)

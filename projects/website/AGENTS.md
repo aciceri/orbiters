@@ -42,13 +42,15 @@ silently thinner site.
 after the landing page, `index.html`, which is PigroCRM's own page and shares its
 stylesheet with `/privacy` and `/termini`. The **project** was renamed from `landing` to
 `website` on 2026-09-09 because it is the whole site; the page inside it did not go
-anywhere. `src/orbiters.*` is the community page and stands apart.
+anywhere. `src/community.*` is the community page and stands apart; `/orbiters` is its
+name before REB-212 (2026-09-15), kept as a 301.
 
 ## What this project does not own
 
-`POST /api/orbiters/signups` is PigroCRM's, implemented in `projects/pigrocrm/apps/api`
-and reached on the same origin. The dev and preview servers proxy `/api` for that reason
-alone; `WEBSITE_API_URL` repoints it.
+`POST /api/community/signups` (`/api/orbiters/signups` before REB-212, still proxied) is
+the rebase hub's, implemented in `projects/hub/apps/api`, and reached on the same
+origin. The dev and preview servers proxy `/api` for that reason alone;
+`WEBSITE_API_URL` repoints it.
 
 Serving is owned here since 2026-09-09: this project builds its own image and runs its
 own container. What that means in practice is that the path map exists twice, in

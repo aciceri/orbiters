@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest'
 const PAGES = [
   'index.html',
   'pigrocrm.html',
-  'orbiters.html',
+  'community.html',
   'pitch.html',
   'privacy.html',
   'termini.html',

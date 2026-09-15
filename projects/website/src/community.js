@@ -9,7 +9,7 @@
   var doc = document
 
   /* The x of the first grid line, read off the body's computed background-position:
-     orbiters.css centres the grid in the viewport, and the canvas has to land its
+     community.css centres the grid in the viewport, and the canvas has to land its
      tiles on the same lines. Read from the page rather than recomputed here, so there
      is one copy of that arithmetic. Two gradient layers, hence "6px, 6px": parseFloat
      takes the first. */
@@ -170,7 +170,7 @@
       payload.pixel_event_id = id
       if (oppref) payload.oppref = oppref
       button.disabled = true
-      fetch('/api/orbiters/signups', {
+      fetch('/api/community/signups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -219,7 +219,7 @@
     }
   }
 
-  window.__orbiters = { utmFrom: utmFrom, opprefFrom: opprefFrom, eventId: eventId }
+  window.__community = { utmFrom: utmFrom, opprefFrom: opprefFrom, eventId: eventId }
 
   if (doc.readyState === 'loading') {
     doc.addEventListener('DOMContentLoaded', start)

@@ -32,7 +32,7 @@ import { REDIRECTS, route } from './path-map-plugin'
  *   route to resolve.
  * - A link that resolves through `REDIRECTS` is treated as wrong, not merely checked
  *   for a working target. `REDIRECTS` exists for a bookmark or an inbound link this
- *   site does not control (`/orbiters`, from before the community page took `/`);
+ *   site does not control (`/orbiters`, the community page's name before REB-212);
  *   markup this build produces itself should say what it means directly. That rule is
  *   what the three links this issue names actually trip: none of them 404, all three
  *   still 301 to a page that exists, and all three are "wrong" only in that sense,
@@ -43,7 +43,7 @@ import { REDIRECTS, route } from './path-map-plugin'
  *   cannot, follow it further.
  */
 
-const PAGE_FILES = ['index.html', 'pigrocrm.html', 'orbiters.html', 'privacy.html', 'termini.html', 'pitch.html'] as const
+const PAGE_FILES = ['index.html', 'pigrocrm.html', 'community.html', 'privacy.html', 'termini.html', 'pitch.html'] as const
 type PageFile = (typeof PAGE_FILES)[number]
 
 const SRC_DIR = join(__dirname)
@@ -61,7 +61,7 @@ function idsOn(page: string): Set<string> {
 /** The site's own trusted external destinations. Mirrors the allowlist
  *  `landing-pages.test.ts`'s "requests nothing from another origin" test already
  *  enforces for `href`/`src` subresources, kept as its own list here because that
- *  file does not cover `orbiters.html`, and because an `<a>` a visitor clicks is a
+ *  file does not cover `community.html`, and because an `<a>` a visitor clicks is a
  *  different concern from a subresource the page fetches for itself: this list is
  *  free to diverge from that one without either test lying about what it guarantees.
  *  No `example.com` here on purpose: it is the host the suite's fixtures use, and a link
@@ -162,16 +162,19 @@ describe('idsOn, the id-extraction helper behind the fragment check', () => {
 
 describe('checkHref, edge cases none of the four pages exercise today', () => {
   it('catches a mistyped absolute asset path, and passes the real one', () => {
-    expect(checkHref('index.html', '/orbiters-logo.svg')).toBeUndefined()
-    expect(checkHref('index.html', '/orbiter-logo.svg')).toMatch(/no file under src\/ answers it/)
+    expect(checkHref('index.html', '/rebase-logo.svg')).toBeUndefined()
+    expect(checkHref('index.html', '/rebase-log.svg')).toMatch(/no file under src\/ answers it/)
   })
 
   it('drops the query string before routing, like the dev server does', () => {
     expect(checkHref('index.html', '/privacy?utm_source=newsletter')).toBeUndefined()
     // The redirect-is-wrong rule still applies once the query string is gone.
     expect(checkHref('index.html', '/pigrocrm?utm_source=newsletter')).toBeUndefined()
-    expect(checkHref('index.html', '/orbiters?utm_source=newsletter')).toBeUndefined()
-    // The map knows no redirects any more; an unknown path is still refused.
+    expect(checkHref('index.html', '/community?utm_source=newsletter')).toBeUndefined()
+    expect(checkHref('index.html', '/orbiters?utm_source=newsletter')).toMatch(
+      /redirect to \/community/,
+    )
+    // An unknown path is still refused.
     expect(checkHref('index.html', '/vecchia?utm_source=newsletter')).toMatch(/404s it/)
   })
 

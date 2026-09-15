@@ -70,8 +70,8 @@ export function extractSharedTokens(css: string): Record<string, string> {
 }
 
 /** The stylesheets that receive the tokens and the shared system: the landing's own
- *  and Orbiters'. */
-const TOKEN_CONSUMERS = ['src/landing.css', 'src/orbiters.css']
+ *  and the community page's. */
+const TOKEN_CONSUMERS = ['src/landing.css', 'src/community.css']
 
 /** Prepends the shared tokens, then system.css, to each stylesheet in TOKEN_CONSUMERS,
  *  at build and at dev time. */

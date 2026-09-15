@@ -1,9 +1,11 @@
-"""`POST /api/orbiters/signups`: a signup for the rebase community.
+"""`POST /api/community/signups`: a signup for the rebase community.
 
 Public, deliberately: the page that posts here is the community site, and its visitor
 has no account -- that is the whole point of the form. The path is the one the website
-has always posted to; it moved here from PigroCRM's API on 2026-09-09 with its body,
-its answer and its limiter unchanged, so the form and the ad conversion never noticed.
+posts to since 2026-09-15 (REB-212); before that it was `/api/orbiters/signups`, which
+still proxies here from nginx so an old link or a cached page keeps working. Before
+2026-09-09 the whole endpoint lived on PigroCRM's API; its body, its answer and its
+limiter carried over unchanged, so the form and the ad conversion never noticed.
 
 Two properties follow from being public, and both live here:
 
@@ -37,7 +39,7 @@ from rebase_core.service import SignupService
 # sends it to this endpoint too, which is the only reason the server event can carry it.
 OBREF_COOKIE = "__obref"
 
-router = APIRouter(prefix="/api/orbiters", tags=["orbiters"])
+router = APIRouter(prefix="/api/community", tags=["community"])
 
 
 def _visitor_ip(request: Request) -> str | None:

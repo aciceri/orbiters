@@ -1,5 +1,5 @@
 /* The part of the visual system the two landing sheets share, injected once.
-   palette-plugin.ts prepends this file to landing.css and to orbiters.css right after
+   palette-plugin.ts prepends this file to landing.css and to community.css right after
    the tokens, so the grid line, the tile, the step and the glyph are written here and
    nowhere else in the landing. The app cannot consume this file (Tailwind owns its
    cascade), so tokens.css restates the grid line and BrandMark.tsx the glyph; the
@@ -9,7 +9,7 @@
 :root {
   /* Prussian Blue at 7%: the line of the grid every page sits on. */
   --system-grid: color-mix(in oklab, var(--color-prussian-blue) 7%, transparent);
-  /* The tile. Orbiters shrinks it to 14px on a phone (see orbiters.css) so the field
+  /* The tile. The community page shrinks it to 14px on a phone (see community.css) so the field
      stays legible there; the landing and the app keep 16px. */
   --system-cell: 16px;
 }
@@ -153,7 +153,7 @@ body::after {
   }
 }
 
-/* Text for the ear only: the form's labels on Orbiters and the title's first line on
+/* Text for the ear only: the form's labels on the community page and the title's first line on
    both pages, which names the roles the typewriter cycles through. Out of the layout
    entirely, so it moves nothing. */
 .sr-only {

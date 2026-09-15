@@ -1,7 +1,7 @@
-/* The field of tiles, shared by the landing and by Orbiters.
+/* The field of tiles, shared by the landing and by the community page.
  *
  * Written as an IIFE that publishes `window.__pigroField`, not as an ES module with
- * exports: the page scripts that use it (`landing.js`, `orbiters.js`) stay
+ * exports: the page scripts that use it (`landing.js`, `community.js`) stay
  * self-contained, their tests can load them with `new Function`, and this one only
  * has to run first -- module scripts execute in document order, which is enough.
  * Colours are read from the CSS custom properties the palette plugin injects, so

@@ -47,33 +47,34 @@ describe('the path map, against deploy/nginx.conf', () => {
 })
 
 describe('route', () => {
-  it('puts the landing at the front door and the community page under its old name (ORB-145)', () => {
+  it('puts the landing at the front door, the community page at /community, and redirects its old name (ORB-145, REB-212)', () => {
     expect(route('/')).toEqual({ kind: 'page', file: '/index.html' })
-    expect(route('/orbiters')).toEqual({ kind: 'page', file: '/orbiters.html' })
+    expect(route('/community')).toEqual({ kind: 'page', file: '/community.html' })
+    expect(route('/orbiters')).toEqual({ kind: 'redirect', to: '/community' })
     expect(route('/pitch')).toEqual({ kind: 'page', file: '/pitch.html' })
     expect(route('/privacy')).toEqual({ kind: 'page', file: '/privacy.html' })
     expect(route('/termini')).toEqual({ kind: 'page', file: '/termini.html' })
   })
 
-  it('serves PigroCRM its own page at /pigrocrm again (ORB-159), and keeps no redirect', () => {
+  it('serves PigroCRM its own page at /pigrocrm again (ORB-159), and keeps no redirect of its own', () => {
     expect(route('/pigrocrm')).toEqual({ kind: 'page', file: '/pigrocrm.html' })
-    expect(REDIRECTS).toEqual({})
+    expect(REDIRECTS['/pigrocrm']).toBeUndefined()
   })
 
   it('404s what nginx 404s: unknown paths, trailing slashes, and the files under their own names', () => {
-    for (const path of ['/nonexistent', '/pigrocrm/', '/privacy/', '/index.html', '/orbiters.html', '/privacy.html']) {
+    for (const path of ['/nonexistent', '/pigrocrm/', '/privacy/', '/index.html', '/community.html', '/privacy.html']) {
       expect(route(path), path).toEqual({ kind: 'not-found' })
     }
   })
 
   it('lets the built assets, the sources and the dev client through, with no html fallback behind them', () => {
-    for (const path of ['/assets/landing-BwJRpj9t.css', '/orbiters.js', '/orbiters-logo.svg', '/@vite/client', '/@fs/x/y.ts']) {
+    for (const path of ['/assets/landing-BwJRpj9t.css', '/community.js', '/rebase-logo.svg', '/@vite/client', '/@fs/x/y.ts']) {
       expect(route(path), path).toEqual({ kind: 'file' })
     }
   })
 
   it('proxies /api and answers a stand-in for the other tenants of the origin, whole prefixes only', () => {
-    expect(route('/api/orbiters/signups')).toEqual({ kind: 'proxy' })
+    expect(route('/api/community/signups')).toEqual({ kind: 'proxy' })
     expect(route('/app/')).toMatchObject({ kind: 'elsewhere' })
     expect(route('/app')).toMatchObject({ kind: 'elsewhere' })
     expect(route('/hub/freelance')).toMatchObject({ kind: 'elsewhere' })

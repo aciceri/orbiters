@@ -2,15 +2,15 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const html = readFileSync(join(__dirname, 'orbiters.html'), 'utf-8')
-const css = readFileSync(join(__dirname, 'orbiters.css'), 'utf-8')
-const js = readFileSync(join(__dirname, 'orbiters.js'), 'utf-8')
+const html = readFileSync(join(__dirname, 'community.html'), 'utf-8')
+const css = readFileSync(join(__dirname, 'community.css'), 'utf-8')
+const js = readFileSync(join(__dirname, 'community.js'), 'utf-8')
 
 function meta(name: string): string | undefined {
   return html.match(new RegExp(`<meta\\s+(?:name|property)="${name}"\\s+content="([^"]*)"`))?.[1]
 }
 
-describe('orbiters.html', () => {
+describe('community.html', () => {
   it('is in Italian, names itself, and describes itself', () => {
     expect(html).toMatch(/<html lang="it">/)
     expect(html.match(/<title>([^<]+)<\/title>/)?.[1]).toContain('rebase')
@@ -108,12 +108,12 @@ describe('orbiters.html', () => {
     expect(html).toMatch(/href="\/privacy"/)
     const privacy = readFileSync(join(__dirname, 'privacy.html'), 'utf-8')
     expect(privacy).toContain('rebase')
-    // Since ORB-145 the community page lives at "/orbiters" and "/" is the landing
+    // Since REB-212 the community page lives at "/community" and "/" is the landing
     // (path-map-plugin.ts); either is a way back. Pinned on the link's own text ("letsrebase.com", the
     // paragraph explaining where the signup's data goes) rather than a bare `"/"`,
     // which the header brand and the footer's "Home" link also match and would pass
     // even if this specific back-link were ever removed.
-    expect(privacy).toMatch(/href="\/(?:orbiters)?">letsrebase\.com</)
+    expect(privacy).toMatch(/href="\/(?:community)?">letsrebase\.com</)
   })
 
   it('no longer signs itself as a PigroCRM project, and offers no login', () => {
@@ -127,7 +127,7 @@ describe('orbiters.html', () => {
   })
 })
 
-describe('orbiters.css', () => {
+describe('community.css', () => {
   it('restates no colour: every hex but white is a token', () => {
     const hexes = [...css.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0].toLowerCase())
     expect(new Set(hexes)).toEqual(new Set(['#ffffff']))
@@ -238,7 +238,7 @@ describe('orbiters.css', () => {
   })
 })
 
-describe('orbiters.js', () => {
+describe('community.js', () => {
   it('stays small', () => {
     // Commented source, so most of these bytes never ship. The ceiling moved from 7 KB
     // to 9 KB on 2026-09-09, when the file gained the conversion event: the oppref, the
@@ -255,7 +255,7 @@ describe('orbiters.js', () => {
   })
 
   it('posts to the one endpoint, as JSON', () => {
-    expect(js).toContain("fetch('/api/orbiters/signups'")
+    expect(js).toContain("fetch('/api/community/signups'")
     expect(js).toMatch(/'Content-Type':\s*'application\/json'/)
   })
 
@@ -266,9 +266,9 @@ describe('orbiters.js', () => {
   describe('the attribution', () => {
     function load() {
       new Function(js)()
-      const api = (window as unknown as { __orbiters?: { utmFrom: (s: string) => unknown } })
-        .__orbiters
-      if (!api) throw new Error('orbiters.js did not expose window.__orbiters')
+      const api = (window as unknown as { __community?: { utmFrom: (s: string) => unknown } })
+        .__community
+      if (!api) throw new Error('community.js did not expose window.__community')
       return api.utmFrom
     }
 
@@ -291,8 +291,8 @@ describe('orbiters.js', () => {
   describe('the oppref of an ad click', () => {
     function load(): (search: string) => string | null {
       new Function(js)()
-      return (window as unknown as { __orbiters: { opprefFrom: (s: string) => string | null } })
-        .__orbiters.opprefFrom
+      return (window as unknown as { __community: { opprefFrom: (s: string) => string | null } })
+        .__community.opprefFrom
     }
 
     it('is passed on unchanged, only bounded in length', () => {
@@ -315,7 +315,7 @@ describe('orbiters.js', () => {
     expect(js).toMatch(/window\.__pigroField/)
     expect(js).not.toMatch(/function noise|fillRect/)
     expect(html).toMatch(
-      /<script type="module" src="\.\/field\.js"><\/script>\s*<script type="module" src="\.\/orbiters\.js">/,
+      /<script type="module" src="\.\/field\.js"><\/script>\s*<script type="module" src="\.\/community\.js">/,
     )
   })
 })
@@ -339,7 +339,7 @@ describe('the form, once the script has hold of it', () => {
   function mount(search = '', answer: Answer = { ok: true, status: 201 }): void {
     document.body.innerHTML = formHtml + noteHtml
     bodies = []
-    window.history.replaceState({}, '', '/orbiters' + search)
+    window.history.replaceState({}, '', '/community' + search)
     vi.stubGlobal(
       'fetch',
       vi.fn((_url: string, init: { body: string }) => {

@@ -20,15 +20,16 @@ import type { Plugin } from 'vite'
 export const PAGES: Readonly<Record<string, string>> = {
   '/': '/index.html',
   '/pigrocrm': '/pigrocrm.html',
-  '/orbiters': '/orbiters.html',
+  '/community': '/community.html',
   '/pitch': '/pitch.html',
   '/privacy': '/privacy.html',
   '/termini': '/termini.html',
 }
 
 /** `location = <path> { return 301 <to>; }`. nginx's `return` drops the query string
- *  and so does this. */
-export const REDIRECTS: Readonly<Record<string, string>> = {}
+ *  and so does this. `/orbiters` is the community page's name before REB-212 moved it
+ *  to `/community`; kept so a bookmark or an inbound link still lands. */
+export const REDIRECTS: Readonly<Record<string, string>> = { '/orbiters': '/community' }
 
 /**
  * Paths the host's vhost (`deploy/letsrebase.conf`) hands to other tenants of the

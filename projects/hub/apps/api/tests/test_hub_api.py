@@ -54,6 +54,29 @@ def test_an_application_with_a_cv_is_accepted_and_stored(
     assert row.utm_source == "linkedin"
 
 
+def test_a_linkedin_address_pasted_from_a_phone_is_stored_as_the_profile(
+    client: TestClient, api_session: Session
+) -> None:
+    """ORB-203: no scheme, a trailing slash and LinkedIn's share parameters are what the
+    app's share sheet hands over. The row holds the profile, not the paste; something
+    that is not on LinkedIn is still a 422 naming the field."""
+    _clean(api_session)
+    accepted = client.post(
+        "/api/hub/freelancers",
+        data=_form(linkedin_url="linkedin.com/in/ada-lovelace/?utm_source=share"),
+    )
+    assert accepted.status_code == 201, accepted.text
+    stored = api_session.execute(text("SELECT linkedin_url FROM freelancers")).scalar_one()
+    assert stored == "https://www.linkedin.com/in/ada-lovelace"
+
+    refused = client.post(
+        "/api/hub/freelancers",
+        data=_form(email="bob@studio.it", linkedin_url="evil.com/linkedin.com/in/ada"),
+    )
+    assert refused.status_code == 422
+    assert {error["loc"][-1] for error in refused.json()["detail"]} == {"linkedin_url"}
+
+
 def test_the_page_the_person_started_from_is_stored_beside_the_campaign(
     client: TestClient, api_session: Session
 ) -> None:

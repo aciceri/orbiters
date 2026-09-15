@@ -85,6 +85,14 @@ describe('the freelancer steps', () => {
     expect(validate({ ...base, linkedin_url: 'https://twitter.com/ada' } as never)).not.toBeNull()
   })
 
+  it('take the LinkedIn name alone, or the address in whatever shape it was pasted (ORB-203)', () => {
+    const { validate, summary } = step('linkedin_url')
+    for (const pasted of ['ada', 'linkedin.com/in/ada', 'http://it.linkedin.com/in/ada/?trk=x']) {
+      expect(validate({ ...base, linkedin_url: pasted } as never)).toBeNull()
+      expect(summary!({ ...base, linkedin_url: pasted } as never)).toBe('https://www.linkedin.com/in/ada')
+    }
+  })
+
   it('read the Italian comma in the rate', () => {
     const validate = step('tariffa_giornaliera').validate
     expect(validate({ ...base, tariffa_giornaliera: '450,50' } as never)).toBeNull()
@@ -154,6 +162,42 @@ describe('FreelancerWizard', () => {
     expect(body.get('origine')).toBe('pigrocrm')
     expect(body.getAll('links')).toEqual(['https://github.com/ada'])
     expect((body.get('cv') as File).name).toBe('Ada CV.pdf')
+  })
+
+  /** ORB-203: an address pasted from the phone becomes the name in the field, behind the
+   *  fixed `linkedin.com/in/`, and the body carries the profile in its stored shape. */
+  it('reduces a pasted LinkedIn address to the name and posts the profile', async () => {
+    const user = userEvent.setup({ applyAccept: false })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 201 }),
+    )
+    const router = mount()
+
+    await user.type(await screen.findByLabelText('Nome'), 'Ada')
+    await user.type(screen.getByLabelText('Cognome'), 'Lovelace{Enter}')
+    await user.type(screen.getByLabelText('Email'), 'ada@studio.it{Enter}')
+    const field = screen.getByLabelText('Profilo LinkedIn')
+    expect(screen.getByRole('link', { name: 'Apri il tuo profilo LinkedIn' })).toHaveAttribute(
+      'href',
+      'https://www.linkedin.com/in/me/',
+    )
+    await user.click(field)
+    await user.paste('https://it.linkedin.com/in/ada-lovelace/?utm_source=share')
+    expect(field).toHaveValue('ada-lovelace')
+    expect(screen.getByText('linkedin.com/in/')).toBeInTheDocument()
+    await user.keyboard('{Enter}')
+    await user.click(screen.getByRole('button', { name: /Avanti/ })) // the CV, skipped
+    await user.type(screen.getByLabelText('Tariffa a giornata'), '450{Enter}')
+    await user.type(screen.getByLabelText('Posizione'), 'Backend developer{Enter}')
+    await user.click(screen.getByRole('radio', { name: /Da remoto/ }))
+    await user.click(screen.getByRole('button', { name: /Rivedi|Avanti/ }))
+    await user.click(screen.getByRole('button', { name: /Rivedi/ }))
+    expect(screen.getByText('https://www.linkedin.com/in/ada-lovelace')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Invia/ }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/grazie'))
+    const body = fetchSpy.mock.calls[0]![1]?.body as FormData
+    expect(body.get('linkedin_url')).toBe('https://www.linkedin.com/in/ada-lovelace')
   })
 
   /** The CV is optional: somebody with no PDF to hand finishes the form, the body

@@ -115,13 +115,36 @@ def test_a_name_longer_than_the_column_is_refused() -> None:
         "https://www.linkedin.com/in/ada",
         "https://linkedin.com/in/ada",
         "https://it.linkedin.com/in/ada",
+        # What people paste (ORB-203): no scheme, from a phone's address bar or share
+        # sheet, with LinkedIn's own tracking on the end, or `http`.
+        "linkedin.com/in/ada",
+        "www.linkedin.com/in/ada/",
+        "  it.linkedin.com/in/ada  ",
+        "https://www.linkedin.com/in/ada?utm_source=share&utm_medium=member_ios",
+        "https://www.linkedin.com/in/ada/details/experience/#top",
+        "http://www.linkedin.com/in/ada",
+        "HTTPS://WWW.LINKEDIN.COM/in/ada",
     ],
 )
-def test_the_linkedin_profile_is_optional_and_kept_as_given(
+def test_a_personal_profile_is_stored_in_one_shape_however_it_was_pasted(
     hub_session: Session, value: str
 ) -> None:
     SignupService(hub_session).subscribe(_create("ada@studio.it", linkedin_url=value))
-    assert _stored(hub_session, "ada@studio.it").linkedin_url == value
+    assert _stored(hub_session, "ada@studio.it").linkedin_url == "https://www.linkedin.com/in/ada"
+
+
+@pytest.mark.parametrize(
+    ("value", "stored"),
+    [
+        ("https://www.linkedin.com/company/rebase", "https://www.linkedin.com/company/rebase"),
+        ("linkedin.com/pub/ada-lovelace/1/2/3", "https://linkedin.com/pub/ada-lovelace/1/2/3"),
+    ],
+)
+def test_another_page_on_linkedin_is_kept_as_given_over_https(
+    hub_session: Session, value: str, stored: str
+) -> None:
+    SignupService(hub_session).subscribe(_create("ada@studio.it", linkedin_url=value))
+    assert _stored(hub_session, "ada@studio.it").linkedin_url == stored
 
 
 @pytest.mark.parametrize(
@@ -131,14 +154,17 @@ def test_the_linkedin_profile_is_optional_and_kept_as_given(
         "https://notlinkedin.com/in/ada",
         "https://linkedin.com.evil.com/in/ada",
         "https://evil.com/linkedin.com/ada",
-        "linkedin.com/in/ada",
+        "linkedin.com.evil.com/in/ada",
+        "evil.com/linkedin.com/in/ada",
         "javascript:alert(1)//linkedin.com/",
-        # Nobody's profile is http-only, and the landing refuses it too: the two agree.
-        "http://www.linkedin.com/in/ada",
+        "ftp://www.linkedin.com/in/ada",
+        # A bare name is the web form's job to complete; the API does not guess.
+        "ada",
         # `urllib.parse` strips tab, CR and LF *before* parsing, so this once validated
         # as a URL and was then stored whole, newline and tail included.
         "https://www.linkedin.com/in/ada\nBcc: qualcuno@altrove.it",
         "https://www.linkedin.com/in/ada\tx",
+        "linkedin.com/in/ada\nBcc: qualcuno@altrove.it",
     ],
 )
 def test_a_profile_somewhere_that_is_not_linkedin_is_refused(value: str) -> None:

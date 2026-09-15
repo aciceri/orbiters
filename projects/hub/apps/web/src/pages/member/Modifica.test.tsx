@@ -121,6 +121,21 @@ describe('/io/modifica', () => {
     expect(fetchSpy.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
   })
 
+  it('shows a stored profile as its name and saves it back as the profile (ORB-203)', async () => {
+    const WITH_LINKEDIN = { ...PROFILE, linkedin_url: 'https://www.linkedin.com/in/ada' }
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => answer(200, WITH_LINKEDIN))
+    mount()
+    const user = userEvent.setup()
+    const linkedin = await screen.findByLabelText('Profilo LinkedIn')
+    expect(linkedin).toHaveValue('ada')
+    await user.click(screen.getByRole('button', { name: 'Salva' }))
+    await screen.findByRole('heading', { name: 'La tua area' })
+    const patch = fetchSpy.mock.calls.find(([, init]) => init?.method === 'PATCH')!
+    expect(JSON.parse(patch[1]!.body as string).linkedin_url).toBe('https://www.linkedin.com/in/ada')
+  })
+
   it('saves a card that has no CV, and says the CV can still arrive', async () => {
     // A fresh Response per call, never `mockResolvedValue(answer(...))`: a body is read
     // once, so the second request of this test (the PATCH) would find it consumed and

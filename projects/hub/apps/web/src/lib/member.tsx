@@ -7,6 +7,7 @@ import {
   type MemberProfile,
   type MemberUpdate,
 } from './api'
+import { linkedinFieldValue, linkedinProfile } from './linkedin'
 
 export const MEMBER_KEY = ['member', 'me'] as const
 
@@ -76,7 +77,7 @@ export function toApplication(profile: MemberProfile): FreelancerApplication {
     nome: profile.nome,
     cognome: profile.cognome,
     email: profile.email,
-    linkedin_url: profile.linkedin_url ?? '',
+    linkedin_url: linkedinFieldValue(profile.linkedin_url ?? ''),
     tariffa_giornaliera: profile.tariffa_giornaliera ?? '',
     posizione: profile.posizione ?? '',
     remoto: profile.remoto ?? '',
@@ -90,7 +91,7 @@ export function toUpdate(value: FreelancerApplication): MemberUpdate {
   return {
     nome: value.nome.trim(),
     cognome: value.cognome.trim(),
-    linkedin_url: value.linkedin_url.trim() || null,
+    linkedin_url: linkedinProfile(value.linkedin_url) || null,
     tariffa_giornaliera: value.tariffa_giornaliera.replace(',', '.').trim(),
     posizione: value.posizione.trim(),
     remoto: value.remoto as MemberUpdate['remoto'],

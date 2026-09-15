@@ -8,6 +8,7 @@
  * right question rather than blame the whole form.
  */
 
+import { linkedinProfile } from './linkedin'
 import type { Utm } from './utm'
 
 export class ApiError extends Error {
@@ -86,7 +87,8 @@ export function applyAsFreelancer(data: FreelancerApplication, utm: Utm): Promis
   form.set('tariffa_giornaliera', data.tariffa_giornaliera)
   form.set('posizione', data.posizione)
   form.set('remoto', data.remoto)
-  if (data.linkedin_url.trim()) form.set('linkedin_url', data.linkedin_url.trim())
+  const linkedin = linkedinProfile(data.linkedin_url)
+  if (linkedin) form.set('linkedin_url', linkedin)
   for (const link of data.links) if (link.trim()) form.append('links', link.trim())
   for (const [key, value] of Object.entries(utm)) if (value) form.set(key, value)
   if (data.cv) form.set('cv', data.cv, data.cv.name)

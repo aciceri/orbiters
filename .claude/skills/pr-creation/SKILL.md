@@ -85,9 +85,9 @@ what you did to the files.
 ## Body
 
 The template's sections, in the first person and in its order: the three that always
-appear, then «Screenshots and video», which closes every body. Conditional sections go after «How
-I verified it» and before «Anything a reviewer should look at twice». The Linear line
-comes last. `gh pr create --body-file -` with a heredoc.
+appear, then «Screenshots and video», which closes every body. Conditional sections go
+after «How I verified it» and before «Anything a reviewer should look at twice». The
+Linear line comes last. `gh pr create --body-file -` with a heredoc.
 
 ```markdown
 ## What this changes
@@ -147,20 +147,24 @@ around what moved, taken on the same data at the same viewport, the before from 
 worktree on `origin/main` and never by swapping files in place.
 
 Then, for anything a person could **do**, a **video of the feature in use**: the clicks,
-the typing and what the page does in return, recorded from your worktree on the same
-data and viewport as the after frame, with `docs/pr-screenshots/record.mjs` (Playwright's
-own recorder plus ffmpeg, a `.mp4` the PR body plays inline). One video per PR, of the
-whole flow the PR adds or changes, ten to forty seconds; a second one only when the PR
-carries two flows a reader would not follow in one take. A change nobody interacts with
-(one label, a colour, a reordered column) gets its pairs and a line saying why there is
-no video; a change a person drives (a button that does something, a wizard step, a
-dialog, a state that follows an action) is not shown until the video is there.
+the typing and what the page does in return. The video is of the **after** only, your
+worktree, on the same data and viewport as the after frame, with
+`docs/pr-screenshots/record.mjs` (Playwright's own recorder plus ffmpeg, a `.mp4` the PR
+body plays inline); there is no before video, the pairs already say what moved. One
+video per PR, of the whole flow the PR adds or changes, ten to forty seconds; a second
+one only when the PR carries two flows a reader would not follow in one take. A change
+nobody interacts with (one label, a colour, a reordered column) gets its pairs and a
+line saying why there is no video; a change a person drives (a button that does
+something, a wizard step, a dialog, a state that follows an action) is not shown until
+the video is there.
 
 Never committed: attach both with `gh pr edit <n> --attach ./pair-1.png --attach
-./demo-1.mp4` (the flag exists from `gh` 2.99.0; check `gh --version`) and verify the
-body holds as many `user-attachments` as pairs plus videos. The procedure, per app and
-port, is `docs/pr-screenshots/README.md`. When nothing visible changed, or a pair or the
-video cannot be captured, the section says so and why. Deleting it reads as forgetting.
+./demo-1.mp4` (the flag exists from `gh` 2.99.0; check `gh --version`), then the second
+edit that turns the video's link into the bare URL GitHub plays (the README has the
+`sed`; a video that shows as a link skipped it), and verify the body holds as many
+`user-attachments` as pairs plus videos. The procedure, per app and port, is
+`docs/pr-screenshots/README.md`. When nothing visible changed, or a pair or the video
+cannot be captured, the section says so and why. Deleting it reads as forgetting.
 
 The last line of the body: `Linear: REB-N.`
 

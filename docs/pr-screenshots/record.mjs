@@ -17,7 +17,7 @@
 // is the one already on the machine.
 
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -52,7 +52,7 @@ function parseArgs(argv) {
   if (positional.length !== 2) usage('expected <steps.mjs> <out.mp4>')
   if (!args.url) usage('--url is required')
   if (!positional[1].endsWith('.mp4')) usage('the output file must end in .mp4')
-  const match = /^(\d+)x(\d+)$/.exec(args.viewport)
+  const match = /^([1-9]\d*)x([1-9]\d*)$/.exec(args.viewport)
   if (!match) usage(`--viewport wants WxH, got ${args.viewport}`)
   if (!Number.isFinite(args.pause) || args.pause < 0) usage('--pause wants a number of milliseconds')
   return {
@@ -82,21 +82,36 @@ function loadPlaywright() {
 
 // A cursor Playwright does not draw: a dot that follows the mouse and swells on a
 // click, so a reviewer sees where each action landed. Injected before any script of
-// the page runs, in a layer of its own, and never part of the product.
+// the page runs, in a layer of its own, and never part of the product. The last
+// position survives a navigation through sessionStorage, so the dot is still there
+// on the next page before the mouse moves again; a page that rewrites its root
+// loses the node, and the next move puts it back.
 const CURSOR_SCRIPT = `(() => {
+  const KEY = '__pr_video_cursor'
   const dot = document.createElement('div')
   dot.setAttribute('aria-hidden', 'true')
   dot.style.cssText = 'position:fixed;left:0;top:0;width:18px;height:18px;margin:-9px 0 0 -9px;' +
     'border-radius:50%;background:rgba(255,122,0,.85);border:2px solid #fff;' +
     'box-shadow:0 0 0 2px rgba(255,122,0,.35);pointer-events:none;z-index:2147483647;' +
     'transition:transform .12s ease;transform:scale(1);opacity:0'
-  const attach = () => document.documentElement.appendChild(dot)
-  if (document.documentElement) attach()
-  else document.addEventListener('DOMContentLoaded', attach)
-  document.addEventListener('mousemove', (e) => {
+  const place = (x, y) => {
     dot.style.opacity = '1'
-    dot.style.left = e.clientX + 'px'
-    dot.style.top = e.clientY + 'px'
+    dot.style.left = x + 'px'
+    dot.style.top = y + 'px'
+  }
+  const attach = () => {
+    if (!dot.isConnected && document.documentElement) document.documentElement.appendChild(dot)
+  }
+  attach()
+  document.addEventListener('DOMContentLoaded', attach)
+  try {
+    const last = sessionStorage.getItem(KEY)
+    if (last) { const [x, y] = last.split(','); place(Number(x), Number(y)) }
+  } catch {}
+  document.addEventListener('mousemove', (e) => {
+    attach()
+    place(e.clientX, e.clientY)
+    try { sessionStorage.setItem(KEY, e.clientX + ',' + e.clientY) } catch {}
   }, true)
   document.addEventListener('mousedown', () => { dot.style.transform = 'scale(1.6)' }, true)
   document.addEventListener('mouseup', () => { dot.style.transform = 'scale(1)' }, true)
@@ -112,35 +127,53 @@ async function record(args) {
   }
 
   const videoDir = mkdtempSync(join(tmpdir(), 'pr-video-'))
-  const browser = await chromium.launch()
-  const context = await browser.newContext({
-    viewport: { width: args.width, height: args.height },
-    deviceScaleFactor: 1,
-    locale: 'it-IT',
-    storageState: args.storageState,
-    recordVideo: { dir: videoDir, size: { width: args.width, height: args.height } },
-  })
-  await context.addInitScript(CURSOR_SCRIPT)
-  const page = await context.newPage()
-  const pause = (ms = args.pause) => page.waitForTimeout(ms)
-
-  try {
-    await page.goto(args.url, { waitUntil: 'networkidle' })
-    await page.mouse.move(args.width / 2, args.height / 2)
-    await pause()
-    await steps(page, { pause })
-    await pause()
-  } finally {
-    await context.close()
-    await browser.close()
+  const partial = () => {
+    const name = readdirSync(videoDir).find((entry) => entry.endsWith('.webm'))
+    return name ? join(videoDir, name) : null
   }
 
-  const webm = readdirSync(videoDir).find((name) => name.endsWith('.webm'))
-  if (!webm) {
-    console.error('record.mjs: Playwright wrote no video')
+  let failure = null
+  let browser = null
+  try {
+    browser = await chromium.launch()
+    const context = await browser.newContext({
+      viewport: { width: args.width, height: args.height },
+      deviceScaleFactor: 1,
+      storageState: args.storageState,
+      recordVideo: { dir: videoDir, size: { width: args.width, height: args.height } },
+    })
+    await context.addInitScript(CURSOR_SCRIPT)
+    const page = await context.newPage()
+    const pause = (ms = args.pause) => page.waitForTimeout(ms)
+    try {
+      await page.goto(args.url, { waitUntil: 'networkidle' })
+      await page.mouse.move(args.width / 2, args.height / 2)
+      await pause()
+      await steps(page, { pause })
+      await pause()
+    } finally {
+      // Closing the context is what flushes the video to disk, on success and on failure.
+      await context.close()
+    }
+  } catch (error) {
+    failure = error
+  } finally {
+    await browser?.close()
+  }
+
+  const webm = partial()
+  if (failure) {
+    const where = webm ? `The partial recording is at ${webm}` : 'Nothing was recorded'
+    console.error(`record.mjs: the flow failed: ${failure.message}. ${where}`)
+    if (!webm) rmSync(videoDir, { recursive: true, force: true })
     process.exit(1)
   }
-  return join(videoDir, webm)
+  if (!webm) {
+    console.error('record.mjs: Playwright wrote no video')
+    rmSync(videoDir, { recursive: true, force: true })
+    process.exit(1)
+  }
+  return webm
 }
 
 function toMp4(webm, out) {
@@ -183,7 +216,7 @@ const webm = await record(args)
 toMp4(webm, args.out)
 if (args.keepWebm) {
   const kept = args.out.replace(/\.mp4$/, '.webm')
-  renameSync(webm, kept)
+  copyFileSync(webm, kept)
   console.log(`${kept}: the raw recording, kept`)
 }
 rmSync(dirname(webm), { recursive: true, force: true })

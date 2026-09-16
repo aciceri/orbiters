@@ -135,6 +135,8 @@ def _common(mail: Mail) -> None:
     # would date itself on every later send; `welcome_mail` has no argument for one.
     assert "Oggi pomeriggio" not in mail.text
     assert mail.html is not None
+    assert "https://www.linkedin.com/company/letsrebase" in mail.html
+    assert "joinorbiters" not in mail.html
     assert "Oggi pomeriggio" not in mail.html
     assert "Privacy" in mail.html and "border-radius" not in mail.html
     for colour in ("#f1f2f3", "#011936", "#ed254e", "#e5133e"):

@@ -473,8 +473,9 @@ def test_a_failed_drop_keeps_the_registry_row_and_the_exception_propagates(
     database that survived that failure, already migrated, already holding whatever
     the failed attempt wrote. The row must stay, and the failure must not be
     swallowed."""
-    import pigrocrm.core.tenants.service as tenants_service
     from psycopg.errors import ObjectInUse
+
+    import pigrocrm.core.tenants.service as tenants_service
 
     def fake_drop(settings: Settings, url: object) -> None:
         raise ObjectInUse('database "pigro_t_prova_undo_fail" is being accessed by other users')

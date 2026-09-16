@@ -208,6 +208,26 @@ describe('ConnectAgentDialog', () => {
     expect(screen.getByDisplayValue('pgc_x')).toBeInTheDocument()
   })
 
+  it('asks only once when the answer is yes, not twice through a second, stale blocker check', async () => {
+    vi.mocked(api.POST).mockReturnValueOnce(
+      Promise.resolve(ok({ id: 't2', nome: 'Claude Code', prefix: 'pgc_zzzz9999', last_used_at: null, revoked_at: null, created_at: '2026-09-12T10:00:00Z', token: 'pgc_x' })),
+    )
+    const onOpenChange = renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: 'Crea il token' }))
+    await screen.findByDisplayValue('pgc_x')
+    const confirmSpy = vi.mocked(window.confirm)
+    confirmSpy.mockClear()
+    confirmSpy.mockReturnValue(true)
+    // Without `ignoreBlocker` this reaches the mock's own blocker check after
+    // `close(false)` already answered yes and discarded the token, which is exactly
+    // the case the decline-path test above cannot see (it returns before the blocker
+    // is ever consulted): a second, stale `shouldBlockFn` call for a token that no
+    // longer exists.
+    await userEvent.click(screen.getByRole('link', { name: 'Gestisci i token' }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+  })
+
   it('says so when the clipboard refuses', async () => {
     Object.assign(navigator, {
       clipboard: { writeText: vi.fn().mockRejectedValue(new Error('negato')) },

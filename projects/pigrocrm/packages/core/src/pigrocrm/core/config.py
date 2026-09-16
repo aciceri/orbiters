@@ -189,7 +189,8 @@ class Settings(BaseSettings):
     # --- Product analytics (docs/design/2026-09-12-posthog-analytics-design.md). The
     # MCP server reports every tool call to PostHog when this holds the project key,
     # the same public `phc_` key the browsers carry in `shared/analytics`. Empty: the
-    # installation measures nothing. Read by `pigrocrm_mcp.analytics`, never by core.
+    # installation measures nothing. Read by `pigrocrm_mcp.analytics` and by
+    # `core/telemetry.py` (the weekly digest's own event, REB-221).
     posthog_key: str = ""
     posthog_host: str = "https://eu.i.posthog.com"
 

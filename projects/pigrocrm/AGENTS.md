@@ -94,16 +94,19 @@ it starts. On this shared box that is a real collision with other projects, and 
 why `pigrocrm-e2e` is `serial: true` in `.github/preflight.json`. Editing those three
 values into `${VAR:-default}` form is a genuine improvement and has not been done.
 
-**Two concurrent `pigrocrm-e2e` runs corrupt each other through the pidfile, not just
-the ports.** `e2e/resilience.spec.ts` kills the API mid-suite and relaunches it,
+**Two concurrent `pigrocrm-e2e` runs still corrupt each other through the pidfile, not
+just the ports.** `e2e/resilience.spec.ts` kills the API mid-suite and relaunches it,
 tracking the pid through the fixed path `PIGROCRM_E2E_API_PIDFILE`
-(`/tmp/pigrocrm-e2e-api.pid` by default) rather than through a per-checkout handle.
-With a second run alive on the same box, `helpers.ts`'s `killApi()` can read a pid
-that run already replaced or reaped and die on `kill ESRCH` at `helpers.ts:209`
-instead of the test it was meant to run — observed live on 2026-09-10 with several
-other agents' containers and dev servers on the same devbox, filed as ORB-91. Run
-`pigrocrm-e2e` one checkout at a time; the pidfile trap does not show up any other
-way.
+(`/tmp/pigrocrm-e2e-api.pid` by default) rather than through a per-checkout handle. A
+second run alive on the same box reaping this pid before `killApi()` gets to it, or
+removing the pidfile in its own teardown, no longer kills the run: `helpers.ts`'s
+`killApi()` treats `ESRCH` and a missing pidfile as "already gone" and waits for the
+port to actually close either way (REB-91, fixing the `kill ESRCH` observed live on
+2026-09-10 with several other agents' containers and dev servers on the same devbox,
+filed as ORB-91). What the fix does not remove: a second run that *replaces* the pid
+with its own, live API before this one gets to it, which this process has no way to
+tell from its own API still running. Run `pigrocrm-e2e` one checkout at a time; the
+pidfile trap does not show up any other way.
 
 **Migrations live in `packages/core/migrations` with `alembic.ini` beside them**, and
 `tenants/service.py` finds that file from `pigrocrm.core.__file__` rather than from

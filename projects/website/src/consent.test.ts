@@ -14,7 +14,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const js = readFileSync(join(__dirname, 'consent.js'), 'utf-8')
 const SDK_URL = 'https://bzrcdn.openai.com/sdk/oaiq.min.js'
@@ -24,6 +24,7 @@ const KEY = 'orbiters.consent'
 type Consent = {
   start: () => void
   decide: (decision: string, box?: Element | null) => void
+  withdraw: () => void
   measured: (hostname: string) => boolean
   internal: (hostname: string) => boolean
   STORAGE_KEY: string
@@ -179,6 +180,64 @@ describe('once somebody accepts', () => {
     // And both trackers are there without being asked for a second time.
     expect(sdkScripts()).toHaveLength(1)
     expect(posthogScripts()).toHaveLength(1)
+  })
+})
+
+describe('withdrawing consent', () => {
+  it('clears the stored decision, reloads, and the next run shows the notice again', () => {
+    // GDPR art. 7(3): withdrawing has to cost the same one click as consenting.
+    // `decide('granted')` already puts the visitor where a stored yes would; this is
+    // the transition back out of it.
+    const consent = run()
+    press('Va bene')
+    expect(window.localStorage.getItem(KEY)).toBe('granted')
+
+    const reload = vi.fn()
+    const original = window.location
+    Object.defineProperty(window, 'location', {
+      value: { ...original, reload },
+      writable: true,
+      configurable: true,
+    })
+
+    consent.withdraw()
+
+    expect(window.localStorage.getItem(KEY)).toBeNull()
+    expect(reload).toHaveBeenCalledTimes(1)
+    Object.defineProperty(window, 'location', { value: original, writable: true, configurable: true })
+
+    // The reload itself: a fresh run(), the same way `once somebody accepts` simulates
+    // the next page load above.
+    document.body.innerHTML = ''
+    document.head.innerHTML = ''
+    forget()
+    run()
+    expect(notice()).toBeTruthy()
+    expect(sdkScripts()).toHaveLength(0)
+    expect(posthogScripts()).toHaveLength(0)
+  })
+
+  it('leaves a stored refusal alone: a no stays final', () => {
+    // The property `start`'s DENIED branch and the `once somebody refuses` describe
+    // below both hold: a refusal is not asked again. Clearing it on a withdraw click
+    // would put the notice back in front of somebody who already said no.
+    const consent = run()
+    press('No')
+    expect(window.localStorage.getItem(KEY)).toBe('denied')
+
+    const reload = vi.fn()
+    const original = window.location
+    Object.defineProperty(window, 'location', {
+      value: { ...original, reload },
+      writable: true,
+      configurable: true,
+    })
+
+    consent.withdraw()
+
+    expect(window.localStorage.getItem(KEY)).toBe('denied')
+    expect(reload).toHaveBeenCalledTimes(1)
+    Object.defineProperty(window, 'location', { value: original, writable: true, configurable: true })
   })
 })
 

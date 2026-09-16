@@ -110,6 +110,16 @@ describe('consent.js', () => {
     expect(community).not.toContain(POSTHOG_KEY)
   })
 
+  it('privacy.html withdraws the same key it names, held in lockstep here', () => {
+    // privacy.html carries no reference to this script (the test above), so it
+    // reimplements decide's two steps against the same key by hand rather than
+    // calling window.__consent.withdraw; a rename here has to fail loudly there.
+    const key = consent.match(/var STORAGE_KEY = '([^']+)'/)?.[1]
+    expect(key).toBeTruthy()
+    expect(page['privacy.html']).toContain(`getItem('${key}') === 'granted'`)
+    expect(page['privacy.html']).toContain(`removeItem('${key}')`)
+  })
+
   it('carries the same PostHog project as every other surface', () => {
     // `shared/analytics/posthog.ts` is the source; this file cannot import it because
     // it runs without a bundler, so it repeats the three values and this test is what

@@ -284,6 +284,15 @@
       ],
       "serial": true,
       "why": "The one project whose images were verified on no tier before the trunk: ci.yml builds them on push only, so a broken Dockerfile here reached main before anything said so. `-p rebase` because that is the project name the deploy passes (docs/adding-a-project.md section 7) and the name decides the image tags. Serial for the same reason as the other two: a docker build saturates the box."
+    },
+    {
+      "id": "check-unindexable",
+      "run": "sh projects/website/deploy/check-unindexable.sh",
+      "when": [
+        "projects/website/deploy/*.conf",
+        "projects/pigrocrm/deploy/nginx/*.conf"
+      ],
+      "why": "The four vhosts that decide whether a preview or the CRM's production host tells a crawler to stay out (letsrebase.conf, preview.letsrebase.conf, pigro.letsrebase.conf, preview.pigro.letsrebase.conf) are edited by hand and rewritten in place by certbot, and nothing else ever asks the live host what it actually answers. Reaches preview.letsrebase.com, preview.pigro.letsrebase.com and pigro.letsrebase.com over HTTPS for the X-Robots-Tag and robots.txt REB-108 checks; a GitHub-hosted runner has nothing of its own to prove here, which is why this runs only from the devbox. Fails on pigro.letsrebase.com on purpose until REB-107's vhost is installed there."
     }
   ]
 }

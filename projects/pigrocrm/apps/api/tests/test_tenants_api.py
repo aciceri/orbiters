@@ -113,6 +113,19 @@ def test_availability_says_why(spaces_client: TestClient) -> None:
     assert spaces_client.get(f"/api/tenants/{SLUG}/disponibile").json()["disponibile"] is True
 
 
+def test_disponibile_is_throttled_per_client(spaces_client: TestClient) -> None:
+    """Unauthenticated by design, like `membro` (REB-228): the request past the budget
+    is a 429 with a `Retry-After`."""
+    for _ in range(REQUESTS_PER_MINUTE):
+        assert spaces_client.get(f"/api/tenants/{SLUG}/disponibile").status_code == 200
+    refused = spaces_client.get(f"/api/tenants/{SLUG}/disponibile")
+    assert refused.status_code == 429, refused.text
+    assert refused.headers["Retry-After"] == "60"
+    # Another client has its own bucket.
+    other = spaces_client.get(f"/api/tenants/{SLUG}/disponibile", headers={"X-Real-IP": "10.0.0.7"})
+    assert other.status_code == 200, other.text
+
+
 def test_signing_up_creates_a_space_that_serves_its_own_data(
     spaces_client: TestClient, container_settings: Settings
 ) -> None:

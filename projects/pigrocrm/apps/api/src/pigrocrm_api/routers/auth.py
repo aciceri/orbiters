@@ -24,6 +24,7 @@ from pigrocrm.core.tenants.database import (
 from pigrocrm.core.validation import SafeStr
 from pigrocrm_api.deps import ACCESS_COOKIE, REFRESH_COOKIE, ActorDep, SessionDep, SettingsDep
 from pigrocrm_api.errors import PROBLEM_RESPONSES
+from pigrocrm_api.ratelimit import spend_one
 from pigrocrm_api.sessions import (  # noqa: F401 - get_sender is the override seam
     SenderDep,
     get_sender,
@@ -258,7 +259,10 @@ def request_link(
     user. At the root, every space the registry says this address owns gets a link in
     one mail, and the root itself is tried when none does. 202 whether the address is
     known or not, and the mail leaves after the response, so neither the status nor the
-    timing says which; 503 while no sender is configured."""
+    timing says which; 503 while no sender is configured. Unauthenticated by design, like
+    `member` and `signup`, so the bucket is what stops a script from mail-bombing a known
+    address (ORB-173's limiter; REB-228)."""
+    spend_one(request)
     if sender is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, NO_SENDER)
     origin = _origin(settings)

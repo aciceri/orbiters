@@ -118,10 +118,13 @@ def member(
 
 @router.get("/{slug}/disponibile", response_model=TenantAvailability)
 def availability(
-    slug: str, registry: TenantsRegistryDep, settings: SettingsDep
+    slug: str, request: Request, registry: TenantsRegistryDep, settings: SettingsDep
 ) -> TenantAvailability:
     """Whether a name can still be taken, and if not why -- reserved, malformed or in
-    use -- in the words the page shows while the person is still typing."""
+    use -- in the words the page shows while the person is still typing. Unauthenticated
+    by design, like `member` and `signup`, so the bucket throttles it the same way
+    (REB-228)."""
+    spend_one(request)
     return TenantService(registry, settings).availability(slug.strip().lower())
 
 

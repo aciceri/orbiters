@@ -11,6 +11,7 @@ from pigrocrm.core.auth.service import UserService
 from pigrocrm.core.config import Settings, get_settings
 from pigrocrm_api.deps import ACCESS_COOKIE, REFRESH_COOKIE, get_session
 from pigrocrm_api.main import create_app
+from pigrocrm_api.ratelimit import REQUESTS_PER_MINUTE
 
 CREDENTIALS = {"email": "admin@pigro.it", "password": "supersegreta1"}
 
@@ -447,6 +448,25 @@ def test_link_is_503_without_a_sender(client: TestClient, admin_user) -> None:
     response = client.post("/api/auth/link", json={"email": ADMIN_EMAIL})
     assert response.status_code == 503
     assert "non è ancora attivo" in response.json()["detail"]
+
+
+def test_the_link_request_is_throttled_per_client(
+    client: TestClient, admin_user, sender: RecordingSender
+) -> None:
+    """Unauthenticated by design, so the bucket is what stops a script mail-bombing a
+    known address (REB-228): the request past the budget is a 429 with a
+    `Retry-After`, spent before the sender check ever runs (the 503 case above already
+    proves the route reaches the limiter first)."""
+    for _ in range(REQUESTS_PER_MINUTE):
+        assert client.post("/api/auth/link", json={"email": ADMIN_EMAIL}).status_code == 202
+    refused = client.post("/api/auth/link", json={"email": ADMIN_EMAIL})
+    assert refused.status_code == 429, refused.text
+    assert refused.headers["Retry-After"] == "60"
+    # Another client has its own bucket.
+    other = client.post(
+        "/api/auth/link", json={"email": ADMIN_EMAIL}, headers={"X-Real-IP": "10.0.0.7"}
+    )
+    assert other.status_code == 202, other.text
 
 
 def test_entra_sets_the_cookies_and_me_answers(

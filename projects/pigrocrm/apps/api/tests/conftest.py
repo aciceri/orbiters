@@ -15,6 +15,7 @@ from pigrocrm.core.db import Base, create_engine_from_settings, session_factory
 from pigrocrm.core.storage import LocalFileStorage
 from pigrocrm_api.deps import get_session, get_storage
 from pigrocrm_api.main import create_app
+from pigrocrm_api.ratelimit import reset_rate_limit
 
 ADMIN_EMAIL = "admin@pigro.it"
 ADMIN_PASSWORD = "supersegreta1"
@@ -67,6 +68,11 @@ def api_session(api_engine: Engine) -> Iterator[Session]:
 
 @pytest.fixture
 def client(api_session: Session, tmp_path: Path) -> Iterator[TestClient]:
+    # The limiter's bucket is a module-level dict, so it outlives any one test's own
+    # fixtures: without this, `/api/auth/link` and `/api/tenants/{slug}/disponibile`
+    # (REB-228) would share one budget across every test in this file that hits them,
+    # the same reason `test_tenants_api.py`'s own `_serving` resets it per test.
+    reset_rate_limit()
     app = create_app()
     app.dependency_overrides[get_session] = lambda: api_session
     # Documents/templates tests upload and download real bytes; without this override

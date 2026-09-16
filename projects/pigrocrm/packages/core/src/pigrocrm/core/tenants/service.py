@@ -124,7 +124,8 @@ class TenantService:
 
     def provision(self, data: TenantSignup) -> TenantRead:
         """The registry row first, so the unique index decides who gets the name; then
-        the database, its schema, its admin. Any failure after the row undoes the row."""
+        the database, its schema, its admin. Any failure after the row undoes the row,
+        once the database it created is actually gone (see `_undo`)."""
         reason = self._reason(data.slug)
         if reason is not None:
             raise ValidationFailed("tenant", "slug", reason)
@@ -185,14 +186,14 @@ class TenantService:
         the name onto a database that survived, already migrated, already holding
         whatever the failed attempt wrote. The next signup for that slug would find
         `create_database_if_missing` answer `False` and inherit the previous attempt's
-        admin along with it (REB-230). A failed drop is logged for an operator to
-        clear by hand and re-raised instead: the row stays, so the slug stays taken
-        and the space unreachable rather than handed to somebody else.
+        admin along with it (REB-230). A failed drop is logged, with its cause, for an
+        operator to clear by hand, and re-raised instead: the row stays, so the slug
+        stays taken until an operator clears it, rather than handed to somebody else.
         """
         try:
             drop_database(self.settings, url)
         except Exception:
-            logger.error(
+            logger.exception(
                 "failed to drop database %r while undoing provisioning for tenant "
                 "%r; keeping the registry row so the slug stays taken until an "
                 "operator clears the database by hand",

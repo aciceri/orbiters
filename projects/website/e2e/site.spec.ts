@@ -115,6 +115,28 @@ test.describe('every page of the site', () => {
     })
   }
 
+  test('/privacy withdraws consent, so a page that showed the notice shows it again', async ({
+    page,
+  }) => {
+    // Refusing costs one click already (the test above); withdrawing a stored yes has
+    // to as well (GDPR art. 7(3)). /privacy carries no tracker of its own and does not
+    // load consent.js, so this drives the link privacy.html wires by hand against the
+    // same storage key.
+    await page.goto('/')
+    await page.locator('.consent').getByRole('button', { name: 'Va bene' }).click()
+    await expect
+      .poll(() => page.evaluate((key) => localStorage.getItem(key), CONSENT_KEY))
+      .toBe('granted')
+
+    await page.goto('/privacy')
+    await page.getByRole('link', { name: 'Ritira il consenso' }).first().click()
+    await page.waitForLoadState('networkidle')
+    expect(await page.evaluate((key) => localStorage.getItem(key), CONSENT_KEY)).toBeNull()
+
+    await page.goto('/')
+    await expect(page.locator('.consent')).toBeVisible()
+  })
+
   test('shares exactly one font file with the app, from its own origin', async ({ page }) => {
     const fonts: string[] = []
     page.on('request', (request) => {

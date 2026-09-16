@@ -214,6 +214,23 @@
     if (box && box.parentNode) box.parentNode.removeChild(box)
   }
 
+  /* Refusing costs one click; withdrawing used to cost a trip into the browser's own
+     site-data settings, which is not equally easy (GDPR art. 7(3) asks for it to be).
+     Clears the same key `decide` writes and reloads, so `start` reads no decision and
+     the notice comes back on whichever page shows it next. Called from the page itself
+     through `window.__consent.withdraw` -- privacy.html is not one of the three pages
+     that load this script (it carries no tracker to gate), so it reimplements the same
+     two steps against the same key rather than calling this directly; renaming
+     STORAGE_KEY here has to carry over there too. */
+  function withdraw() {
+    try {
+      window.localStorage.removeItem(STORAGE_KEY)
+    } catch {
+      /* Niente da fare: la scelta resta finché dura la sessione. */
+    }
+    window.location.reload()
+  }
+
   function start() {
     var decision = remembered()
     if (decision === GRANTED) return accept()
@@ -235,6 +252,7 @@
   window.__consent = {
     start: start,
     decide: decide,
+    withdraw: withdraw,
     measured: measured,
     internal: internal,
     STORAGE_KEY: STORAGE_KEY,

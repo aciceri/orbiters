@@ -127,13 +127,16 @@ describe.each(PAGES)('%s', (name) => {
 describe('index.html', () => {
   const page = html['index.html']
 
-  it('opens with the community and its claim, then presents the CRM as the perk', () => {
+  it('opens with the community and its claim, then presents the perks as a set, the CRM the largest', () => {
     // Since 2026-09-08 PigroCRM is what a member of Orbiters gets: the page says what
-    // Orbiters is first, in its own words, and only then what the CRM does.
+    // Orbiters is first, in its own words, and only then what the perks are. Since
+    // REB-68 the CRM is named as one of a set, not the whole answer: its own kicker
+    // is just "PigroCRM", never "il perk".
     const claim = page.indexOf('ma non da soli.')
-    const perk = page.indexOf('PigroCRM, il perk')
+    const perks = page.indexOf('aria-labelledby="perks"')
     expect(claim).toBeGreaterThan(0)
-    expect(perk).toBeGreaterThan(claim)
+    expect(perks).toBeGreaterThan(claim)
+    expect(page).not.toContain('PigroCRM, il perk')
     // The hero lead is the one line the pitch deck's cover uses (Ivan, ORB-150); the
     // roles by name moved to the description and the steps, checked further down.
     expect(page.replace(/\s+/g, ' ')).toContain(

@@ -70,28 +70,23 @@ describe('the funnel table', () => {
 
   it('leaves out everything the table does not name', async () => {
     // A read, an update, a nested write, a sibling route and a wrong method on a
-    // listed path: none of them is an activation step. The two invoice siblings
-    // (`/artifacts`, `/confirm`) pin that only `/issue` matches: a lax trailing
-    // segment would double-count `fattura_emessa` on every emission.
+    // listed path: none of them is an activation step. The invoice siblings
+    // (`/artifacts`, `/confirm`) and the document siblings (`/restore`,
+    // `/versions`) pin that only the listed routes match: a lax trailing segment
+    // would double-count their event on every action a document or invoice takes
+    // after it already exists.
     await answered('GET', '/api/customers', 200)
     await answered('PUT', '/api/customers/c1', 200)
     await answered('POST', '/api/deals/d1/stage', 200)
     await answered('POST', '/api/invoices/import', 201)
     await answered('POST', '/api/invoices/inv-1/artifacts', 201)
     await answered('POST', '/api/invoices/inv-1/confirm', 200)
+    await answered('POST', '/api/documents/doc-1/restore', 200)
+    await answered('POST', '/api/documents/doc-1/versions', 201)
     await answered('POST', '/api/emitter', 200)
     await answered('POST', '/api/auth/login', 200)
     await answered('POST', '/api/auth/logout', 200)
     expect(capture).not.toHaveBeenCalled()
-  })
-
-  it('counts a document made from a template the same as one from the upload flow', async () => {
-    await answered('POST', '/api/documents', 201)
-    expect(capture).toHaveBeenCalledTimes(1)
-    expect(capture).toHaveBeenCalledWith('documento_creato')
-    await answered('POST', '/api/documents/from-template', 201)
-    expect(capture).toHaveBeenCalledTimes(2)
-    expect(capture).toHaveBeenLastCalledWith('documento_creato')
   })
 
   it('reads the path under a space with the prefix removed', async () => {

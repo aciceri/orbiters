@@ -105,7 +105,8 @@ never mentions analytics and an action counts only when the API said yes.
 | `POST /api/auth/entra` | `entrato_con_link` |
 | `POST /api/customers` | `cliente_creato` |
 | `POST /api/deals` | `deal_creato` |
-| `POST /api/documents` or `POST /api/documents/from-template` | `documento_creato` |
+| `POST /api/documents` | `documento_creato` |
+| `POST /api/documents/from-template` | `documento_creato` |
 | `POST /api/time-entries` | `ore_registrate` |
 | `POST /api/invoices/{invoice_id}/issue` | `fattura_emessa` |
 | `POST /api/tokens` | `assistente_collegato` |

@@ -24,8 +24,10 @@ import { tenantPrefix } from './tenant'
  * (`api-types.ts`'s own shape for a resource id) matches any one path segment: the
  * invoice's own id is not something PostHog groups the funnel by. The upload flow
  * (`POST /api/documents`) and «Nuovo da template» (`POST /api/documents/from-template`)
- * both earn `documento_creato`: the funnel's meaning is «a document exists now», which
- * is true of either, not which button was pressed.
+ * both earn `documento_creato`: the funnel's meaning is «a new document was created»,
+ * which is true of either, not which button was pressed. Restoring a version or
+ * regenerating one is deliberately left out: neither makes a document that did not
+ * already exist.
  */
 const EVENTS: ReadonlyArray<readonly [string, string]> = [
   ['POST /api/tenants', 'spazio_creato'],

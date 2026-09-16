@@ -450,7 +450,7 @@ jobs:
   # `_node-gate.yml` caller with `filter: web`/`website`/`hub` installs the
   # dependency closure but never runs a dependency's own scripts (REB-253).
   # `build: false` because the package ships as source, with no build script.
-  analytics:
+  shared-analytics:
     name: shared/analytics · web
     needs: changes
     if: ${{ !cancelled() && (needs.changes.outputs.all == 'true' || needs.changes.outputs.shared_analytics == 'true') }}
@@ -522,7 +522,7 @@ jobs:
     # arrives. This is the only status check the repository should ever be asked to
     # require: every job name above can change forever without touching a ruleset.
     if: always()
-    needs: [changes, pigrocrm-py, pigrocrm-py-corpus, pigrocrm-web, website, hub-py, hub-web, analytics, pigrocrm-images, website-image, hub-images]
+    needs: [changes, pigrocrm-py, pigrocrm-py-corpus, pigrocrm-web, website, hub-py, hub-web, shared-analytics, pigrocrm-images, website-image, hub-images]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -231,7 +231,7 @@ Una riga per spazio, contatori soltanto: mai un indirizzo, mai una cifra del res
 | `studio-rossi: inviato a 3 (prova)` | `--dry-run`: sarebbe partito a tre persone | Niente: nessuna mail, nessuna riga scritta |
 | `studio-rossi: vuoto` | Lo spazio non ha ancora né clienti, né deal, né fatture, né ore | Niente: chi non ha ancora cominciato non riceve una mail piena di zeri |
 | `studio-rossi: già inviato per 2026-W37` | Quella settimana era già partita (un secondo cron, o una riga eseguita a mano) | Niente. Se va rimandata davvero, vedi «Rimandare una settimana» |
-| `studio-rossi: nessun destinatario` | Nessun utente attivo di quello spazio ha il resoconto acceso | Niente: è una scelta loro (Impostazioni → Utenti) |
+| `studio-rossi: nessun destinatario` | Nessun utente attivo di quello spazio ha il resoconto acceso | Niente: è una scelta loro (Impostazioni → Profilo) |
 | `studio-rossi: saltato (…)` su `stderr` | Quello spazio non è stato mandato; fra parentesi c'è il **tipo** dell'errore, mai il testo (che può contenere l'URL del database, password compresa) | Vedi qui sotto |
 | `registro degli spazi non raggiungibile (…)` su `stderr` | Il registro dei tenant non risponde: nessuno spazio è stato visitato | Controllare il database e i `PIGROCRM_*` del `.env`; poi rieseguire la riga a mano |
 
@@ -242,6 +242,11 @@ Gli `saltato` che si incontrano davvero:
 - `invio_rifiutato`: Resend ha rifiutato **tutti** gli indirizzi. Non viene registrato
   niente, quindi la prossima esecuzione ci riprova: una settimana che non è arrivata a
   nessuno non è una settimana inviata.
+- `invio_non_configurato`: manca `PIGROCRM_RESEND_API_KEY`, quindi non c'è nessun modo di
+  mandare la mail e non è stato tentato niente. Come sopra, non viene registrato niente:
+  la prima esecuzione dopo che la chiave è a posto manda la settimana invece di trovarla
+  già segnata come inviata. Rimedio: mettere la chiave nel `.env`, riavviare l'API e
+  rieseguire la riga a mano.
 - `ProgrammingError`, `UndefinedTable`: lo schema di quello spazio è indietro rispetto
   all'immagine. **Questo comando non migra niente**, di proposito: l'unico che migra è
   `pigrocrm ensure-space-defaults`, che gira nel CMD dell'immagine API a ogni deploy

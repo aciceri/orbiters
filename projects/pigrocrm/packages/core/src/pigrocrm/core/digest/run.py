@@ -20,6 +20,13 @@ read transaction too (`_senza_scrivere`): the cron holds one session per space f
 long as that space takes, and a connection left idle-in-transaction is how a vacuum stops
 working.
 
+**Nothing is recorded that did not happen.** A week is written down only once mails have
+actually left: a provider that refused every address (`invio_rifiutato`) and an
+installation with no Resend key at all (`invio_non_configurato`) both answer `saltato` and
+leave no row, no timeline entry and no PostHog event, so the next run sends the week
+instead of finding it already handled. `--dry-run` is the third answer that writes
+nothing, and the only one that reports `inviato`: it says what *would* go out.
+
 **What is written, and when.** The mails go out first, then one `digests` row per ISO week
 (the column is unique, which is what makes a cron that fires twice send once), one
 timeline entry whose payload is three counts, one commit, and only then the PostHog
@@ -65,12 +72,16 @@ KIND = "digest.inviato"
 
 Esito = Literal["inviato", "vuoto", "gia_inviato", "nessun_destinatario", "saltato"]
 
-# The three `saltato` motives that are not an exception's name. Short machine words, like
+# The four `saltato` motives that are not an exception's name. Short machine words, like
 # the `esito` literals themselves, and deliberately not a sentence containing the address:
 # `motivo` is printed in a cron's log.
 TITOLARE_MANCANTE = "titolare_mancante"
 TITOLARE_DISATTIVATO = "titolare_disattivato"
 INVIO_RIFIUTATO = "invio_rifiutato"
+# No Resend key: there is no transport at all, so nothing was sent. The twin of
+# `INVIO_RIFIUTATO` -- a week nobody received -- and it leaves the same nothing behind, so
+# that the run after the key is configured sends the week instead of finding it recorded.
+INVIO_NON_CONFIGURATO = "invio_non_configurato"
 
 
 @dataclass(frozen=True)
@@ -147,9 +158,12 @@ class DigestRun:
     ) -> None:
         self.session = session
         self.settings = settings
-        # `None` for both is the ordinary state of an installation that has configured
-        # neither Resend nor PostHog, not an error: the report is still built, still
-        # recorded, and simply has nowhere to go.
+        # `None` for either is the ordinary state of an installation that has configured
+        # neither Resend nor PostHog, and neither is an error -- but they are not the same
+        # thing. Without a tracker the week still goes out and is still recorded, and only
+        # PostHog hears nothing. Without a sender there is no transport: a real run answers
+        # `saltato` (`INVIO_NON_CONFIGURATO`) and writes nothing, exactly as it does when
+        # the provider refuses every address.
         self.sender = sender
         self.tracker = tracker
         self.public_url = public_url
@@ -260,10 +274,9 @@ class DigestRun:
 
         if dry_run:
             # A rehearsal: the report is built so the operator can be told what would go
-            # out and to how many people, and then nothing at all happens. Note the
-            # asymmetry with a `sender` of `None` below -- that is a real run on an
-            # installation with no Resend key, and a real run has to record its week or
-            # the next one would send it again.
+            # out and to how many people, and then nothing at all happens. It needs no
+            # sender, which is the whole of its difference from the answer just below:
+            # `--dry-run` chose not to send, an installation with no key cannot.
             return (
                 self._senza_scrivere(
                     DigestOutcome(slug, "inviato", iso, destinatari=len(destinatari))
@@ -271,7 +284,21 @@ class DigestRun:
                 None,
             )
 
-        accettati = self._spedisci(digest, destinatari)
+        sender = self.sender
+        if sender is None:
+            # No Resend key, so nothing left and nobody was written to. Recording the week
+            # here -- which is what this did until the branch review -- made it
+            # `gia_inviato` for ever, wrote a timeline entry saying it had reached N
+            # people and told PostHog the same, all about a mail that was never attempted.
+            # Nothing is written, so the first run after the key is configured sends it.
+            return (
+                self._senza_scrivere(
+                    DigestOutcome(slug, "saltato", iso, motivo=INVIO_NON_CONFIGURATO)
+                ),
+                None,
+            )
+
+        accettati = self._spedisci(sender, digest, destinatari)
         if not accettati:
             # Every address was refused. `EmailSender.send` never raises, so without this
             # the week would be recorded, tracked and `gia_inviato` forever on the
@@ -302,7 +329,10 @@ class DigestRun:
         )
 
     def _spedisci(
-        self, digest: WeeklyDigest, destinatari: list[tuple[UUID, str]]
+        self,
+        sender: EmailSender,
+        digest: WeeklyDigest,
+        destinatari: list[tuple[UUID, str]],
     ) -> list[tuple[UUID, str]]:
         """The recipients the provider took, in the order it was given them.
 
@@ -311,16 +341,14 @@ class DigestRun:
         boolean would record, count and report addresses that were refused. Only what came
         back `True` goes into `inviato_a`, into `destinatari` and to PostHog.
 
-        An installation with no Resend key has no `sender` at all, and that is not a
-        refusal: nothing is attempted, everybody counts, and the week is recorded as
-        handled. The `--dry-run` rehearsal never reaches here.
+        The sender is a parameter and not `self.sender`, so this method cannot be reached
+        without one: «no Resend key» is `_invia`'s answer, decided once and above, and not
+        a branch inside the loop that sends.
         """
-        if self.sender is None:
-            return list(destinatari)
         return [
             (user_id, indirizzo)
             for user_id, indirizzo in destinatari
-            if self.sender.send(digest_mail(indirizzo, digest, public_url=self.public_url))
+            if sender.send(digest_mail(indirizzo, digest, public_url=self.public_url))
         ]
 
     # -- the reads, and the row -------------------------------------------------------

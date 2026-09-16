@@ -521,10 +521,15 @@ def test_a_tracker_that_refuses_changes_nothing(corpus: Corpus) -> None:
     assert _riga(corpus.engine, corpus.iso) is not None
 
 
-def test_without_a_resend_key_the_week_is_still_recorded(corpus: Corpus) -> None:
-    """`sender_from_settings` answers `None` on an installation with no key. Nothing goes
-    out, but the week is recorded as handled -- the asymmetry with `--dry-run`, which is a
-    rehearsal and must leave nothing behind."""
+def test_without_a_resend_key_nothing_is_sent_and_nothing_is_recorded(corpus: Corpus) -> None:
+    """`sender_from_settings` answers `None` on an installation with no key: there is no
+    transport, so no mail was attempted and no week happened.
+
+    This used to record the row, the timeline entry and the PostHog events as though the
+    report had been delivered -- which made the week `gia_inviato` for ever and reported N
+    deliveries of a mail nobody was ever sent. It is the same nothing `invio_rifiutato`
+    leaves, and for the same reason: the run after the key is configured has to send it.
+    """
     cattura = CapturaRegistrata()
     esito = _esegui(
         corpus.engine,
@@ -533,13 +538,20 @@ def test_without_a_resend_key_the_week_is_still_recorded(corpus: Corpus) -> None
         sender=None,
         tracker=Tracker(cattura),
     )
-    assert esito.esito == "inviato"
-    assert esito.destinatari == 2
-    riga = _riga(corpus.engine, corpus.iso)
-    assert riga is not None
-    assert riga.inviato_a == [corpus.titolare, corpus.collega]
-    assert len(_attivita(corpus.engine)) == 1
-    assert len(cattura.chiamate) == 2
+    assert esito == DigestOutcome(
+        slug=SLUG, esito="saltato", settimana=corpus.iso, motivo="invio_non_configurato"
+    )
+    assert _riga(corpus.engine, corpus.iso) is None
+    assert _attivita(corpus.engine) == []
+    assert cattura.chiamate == []
+
+    # And the run after the key is configured sends the week, to everybody.
+    configurato = RecordingSender()
+    ritentato = _esegui(
+        corpus.engine, settimana=corpus.settimana, titolare=corpus.titolare, sender=configurato
+    )
+    assert ritentato.esito == "inviato"
+    assert [mail.to for mail in configurato.sent] == [corpus.titolare, corpus.collega]
 
 
 # --- what the provider refused --------------------------------------------------------
@@ -773,7 +785,10 @@ def test_a_space_emptied_by_soft_deletion_hears_nothing(db_engine: Engine) -> No
 
 def test_a_rehearsal_builds_the_report_and_leaves_nothing_behind(corpus: Corpus) -> None:
     """`--dry-run` answers what *would* go out, with the count, so the operator can read
-    it before letting it go. Nothing is sent, written, recorded or tracked."""
+    it before letting it go. Nothing is sent, written, recorded or tracked.
+
+    `inviato` with the count, and not the `saltato` an installation with no key gets: a
+    rehearsal *chose* not to send, and the operator asking for one is reading the answer."""
     sender = RecordingSender()
     cattura = CapturaRegistrata()
     esito = _esegui(

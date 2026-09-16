@@ -5,7 +5,7 @@ community page with its signup form at `/community`, and the two policy pages
 (`/privacy`, `/termini`); it is called `website` rather than `landing` because it is
 expected to grow past those.
 
-Six HTML pages, five scripts, five stylesheets. No React, no Tailwind, no router.
+Six HTML pages, six scripts, five stylesheets. No React, no Tailwind, no router.
 That absence is the requirement rather than an omission: this is the first page a
 visitor loads, and it does not drag an application bundle behind it. The build takes
 about 300 milliseconds. Anything added here should keep that true.

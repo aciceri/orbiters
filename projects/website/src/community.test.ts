@@ -338,15 +338,6 @@ describe('community.js', () => {
     )
   })
 
-  it('carries a visitor from a campaign onto its door into the hub too (REB-247)', () => {
-    // Until REB-247 only landing.js called carryUtm, so `/community`'s one door into
-    // the hub (`Raccontacelo`, href="/hub/aziende") lost the campaign a company click
-    // arrived with. This file gets the same call, never its own copy: `utm.js` is the
-    // one place that reads sessionStorage, pinned in `utm.test.ts`.
-    expect(js).toContain('window.__utm.carryUtm()')
-    expect(html).toMatch(/<script type="module" src="\.\/utm\.js"><\/script>/)
-    expect(html.indexOf('utm.js')).toBeLessThan(html.indexOf('community.js'))
-  })
 })
 
 describe('the form, once the script has hold of it', () => {

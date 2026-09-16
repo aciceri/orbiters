@@ -14,7 +14,7 @@
  * `/`, `da=pigrocrm` from `/pigrocrm`, `da=community` from `/community`, so the hub can
  * tell who came through which page. Remembered for the tab as `orbiters.da`.
  *
- * An IIFE publishing `window.__utm`, like `field.js` and `typewriter.js`: the three page
+ * An IIFE publishing `window.__utm`, like `field.js` and `typewriter.js`: the two page
  * scripts that call it (`landing.js`, `community.js`) stay self-contained and their
  * tests can load them with `new Function`, and this one only has to run first --
  * module scripts execute in document order, which is enough. Until REB-247 this lived

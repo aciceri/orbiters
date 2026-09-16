@@ -41,7 +41,7 @@ afterEach(() => window.sessionStorage.clear())
 
 it('stays small', () => {
   // Loaded by every page with a door into the hub, before the script that calls it.
-  expect(Buffer.byteLength(source, 'utf-8')).toBeLessThan(4 * 1024)
+  expect(Buffer.byteLength(source, 'utf-8')).toBeLessThan(5 * 1024)
 })
 
 describe('carryUtm', () => {

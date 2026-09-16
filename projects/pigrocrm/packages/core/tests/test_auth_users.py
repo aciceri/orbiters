@@ -434,3 +434,26 @@ def test_an_unverified_passwordless_admin_cannot_create_users_until_the_first_li
         service.create(UserCreate(email="c@x.it", password="lunghissima1", nome="C"), actor).email
         == "c@x.it"
     )
+
+
+def test_update_own_digest_needs_no_admin(db_session: Session) -> None:
+    """Spec 2026-09-16 §3.6: the weekly digest's own opt-out link must work for
+    whoever received the mail, not only for an administrator of the space -- unlike
+    `update`, which raises `PermissionDenied` for a non-admin actor via
+    `actor.require_admin`, `update_own_digest` takes no such check."""
+    from pigrocrm.core.auth.repository import UserRepository
+
+    service = UserService(db_session)
+    collab = service.create(
+        UserCreate(
+            email="collab@x.it", password="lunghissima1", nome="Collab", ruolo="collaboratore"
+        ),
+        Actor.system(),
+    )
+    actor = Actor(id=collab.id, type="user", role="collaboratore")
+
+    updated = service.update_own_digest(actor, False)
+
+    assert updated.digest_settimanale is False
+    row = UserRepository(db_session).get(collab.id)
+    assert row is not None and row.digest_settimanale is False

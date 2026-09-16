@@ -76,7 +76,14 @@ beforeEach(() => {
   vi.mocked(api.POST).mockReset()
   mockTenant.prefix = ''
   vi.mocked(useAuth).mockReturnValue({
-    user: { id: 'u1', email: 'admin@pigro.it', nome: 'Admin', ruolo: 'admin', attivo: true },
+    user: {
+      id: 'u1',
+      email: 'admin@pigro.it',
+      nome: 'Admin',
+      ruolo: 'admin',
+      attivo: true,
+      digest_settimanale: true,
+    },
     isLoading: false,
     login: vi.fn(),
     logout: vi.fn(),

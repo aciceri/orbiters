@@ -11,6 +11,7 @@ export interface SessionUser {
   nome: string
   ruolo: 'admin' | 'collaboratore' | 'readonly'
   attivo: boolean
+  digest_settimanale: boolean
 }
 
 interface AuthValue {

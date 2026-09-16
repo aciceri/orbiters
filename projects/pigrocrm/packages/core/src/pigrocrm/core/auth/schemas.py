@@ -63,6 +63,15 @@ class UserUpdate(BaseModel):
     )
 
 
+class MeUpdate(BaseModel):
+    """The one field a person may change about their own account with no admin role
+    required -- see `UserService.update_own_digest`. Deliberately its own schema
+    rather than a reuse of `UserUpdate`: `PATCH /api/auth/me` must never grow a
+    second field that only `update`'s `actor.require_admin` was meant to gate."""
+
+    digest_settimanale: bool
+
+
 class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

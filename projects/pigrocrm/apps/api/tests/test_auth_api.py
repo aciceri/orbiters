@@ -150,6 +150,25 @@ def test_me_returns_the_current_user(logged_in: TestClient) -> None:
     assert body["ruolo"] == "admin"
 
 
+def test_update_me_requires_authentication(client: TestClient) -> None:
+    response = client.patch("/api/auth/me", json={"digest_settimanale": False})
+    assert response.status_code == 401
+
+
+def test_a_non_admin_can_switch_off_their_own_weekly_report(
+    collaborator_client: TestClient,
+) -> None:
+    """Spec 2026-09-16 §3.6: the mail's own opt-out link must work for whoever
+    received it -- `PATCH /api/auth/me` (`UserService.update_own_digest`) takes no
+    `actor.require_admin`, unlike `PATCH /api/users/{id}`, which a `collaboratore`
+    cannot call at all."""
+    response = collaborator_client.patch("/api/auth/me", json={"digest_settimanale": False})
+    assert response.status_code == 200
+    assert response.json()["digest_settimanale"] is False
+
+    assert collaborator_client.get("/api/auth/me").json()["digest_settimanale"] is False
+
+
 def test_logout_clears_the_cookies(logged_in: TestClient) -> None:
     assert logged_in.post("/api/auth/logout").status_code == 204
     assert logged_in.get("/api/auth/me").status_code == 401

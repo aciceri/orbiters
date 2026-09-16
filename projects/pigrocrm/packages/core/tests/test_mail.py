@@ -263,6 +263,10 @@ def test_only_sections_with_rows_appear_and_every_link_says_da_digest() -> None:
     )
     assert "Emesse questa settimana" in mail.html and "Da incassare" not in mail.html
     assert "da=digest" in mail.html and "Non inviarmi più il resoconto" in mail.html
+    # The switch lives in the profile tab every user can reach (spec §3.6), not the
+    # admin-only users panel -- the opt-out link must land somewhere a non-admin
+    # recipient can actually open.
+    assert "https://pigro.letsrebase.com/ada/app/impostazioni/profilo?da=digest" in mail.html
     assert "Emesse questa settimana" in mail.text
     # §3.1 item 3: «Numero, cliente, importo, stato» -- the number is part of the row.
     assert "2026/1" in mail.text and "2026/1" in mail.html

@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from pigrocrm.core.auth.magic_link import MagicLinkService
 from pigrocrm.core.auth.refresh_service import RefreshTokenService
 from pigrocrm.core.auth.repository import UserRepository
-from pigrocrm.core.auth.schemas import UserRead
+from pigrocrm.core.auth.schemas import MeUpdate, UserRead
 from pigrocrm.core.auth.service import UserService
 from pigrocrm.core.auth.tokens import decode_token, issue_access_token
 from pigrocrm.core.config import Settings
@@ -446,3 +446,20 @@ def me(actor: ActorDep, session: SessionDep) -> UserRead:
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Utente non trovato")
     return UserRead.model_validate(user)
+
+
+@router.patch("/me", response_model=UserRead, responses={401: _UNAUTHENTICATED_RESPONSE})
+def update_me(data: MeUpdate, actor: ActorDep, session: SessionDep) -> UserRead:
+    """The one write on this router with no `actor.require_admin` behind it,
+    deliberately: `PATCH /api/users/{id}` (`UserService.update`) is for an
+    administrator changing someone else's account, but this is a person changing
+    their own weekly-digest preference, and the mail's own opt-out link (spec
+    2026-09-16 §3.6) must work whatever role received it. Same existence check as
+    `me` just above, and the same 401 rather than `UserService.update_own_digest`'s
+    own `NotFound` -- a session whose user row is gone is "not authenticated," not
+    "not found," here as everywhere else on this router.
+    """
+    user = UserRepository(session).get(actor.id) if actor.id else None
+    if user is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Utente non trovato")
+    return UserService(session).update_own_digest(actor, data.digest_settimanale)

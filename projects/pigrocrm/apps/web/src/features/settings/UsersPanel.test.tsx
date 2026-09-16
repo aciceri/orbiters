@@ -290,40 +290,5 @@ describe('UsersPanel', () => {
 
       expect(await screen.findByRole('combobox', { name: /ruolo di ada admin/i })).toBeDisabled()
     })
-
-    /**
-     * REB-221: the weekly digest's opt-out link (`{public_url}/app/impostazioni/utenti?da=digest`)
-     * lands here, so the switch itself lives on this screen -- but only on the row that is
-     * "you". `findByRole('switch', { name: ... })` doubles as proof that `OTHER_ACTIVE_USER`'s
-     * row renders none: a second match with the same accessible name would make this throw.
-     */
-    it('shows the weekly-report switch only on your own row, and toggling it sends the PATCH', async () => {
-      vi.mocked(useAuth).mockReturnValue(sessionAs({ id: ADMIN.id, ruolo: 'admin' }))
-      vi.mocked(api.GET).mockReturnValue(
-        Promise.resolve(ok([{ ...ADMIN, digest_settimanale: true }, OTHER_ACTIVE_USER])),
-      )
-      vi.mocked(api.PATCH).mockReturnValueOnce(
-        Promise.resolve(ok({ ...ADMIN, digest_settimanale: false })),
-      )
-      renderPanel()
-
-      const toggle = await screen.findByRole('switch', { name: 'Resoconto settimanale' })
-      expect(toggle).toHaveAttribute('aria-checked', 'true')
-
-      await userEvent.click(toggle)
-
-      await waitFor(() =>
-        expect(api.PATCH).toHaveBeenCalledWith(
-          '/api/users/{user_id}',
-          expect.objectContaining({
-            params: { path: { user_id: ADMIN.id } },
-            body: { digest_settimanale: false },
-          }),
-        ),
-      )
-      await waitFor(() =>
-        expect(toast.success).toHaveBeenCalledWith('Resoconto settimanale aggiornato'),
-      )
-    })
   })
 })

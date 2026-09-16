@@ -150,6 +150,30 @@ class UserService:
         self.session.commit()
         return UserRead.model_validate(user)
 
+    def update_own_digest(self, actor: Actor, value: bool) -> UserRead:
+        """No `actor.require_admin` here, deliberately -- `update` above gates every
+        write on it, but whether the weekly digest reaches a person is not an
+        administrator's decision about them, it is theirs. Spec 2026-09-16 §3.6: the
+        mail's own opt-out link must work for whoever received the mail, not only for
+        an admin of the space, which is also why this takes `actor` rather than a
+        `user_id` -- there is no parameter through which it could touch anyone else's
+        row.
+
+        Recorded on the same timeline `update` writes to, with the same "updated"
+        kind, but a payload of the flag alone -- unlike `update`'s own entry, this
+        carries no email: nothing else about whose row this is needs repeating on a
+        timeline the owner already knows is theirs.
+        """
+        if actor.id is None:
+            raise NotFound("user", "anonimo")
+        user = self.repo.get(actor.id)
+        if user is None:
+            raise NotFound("user", actor.id)
+        user.digest_settimanale = value
+        self.activities.record(ENTITY, user.id, "updated", actor, {"digest_settimanale": value})
+        self.session.commit()
+        return UserRead.model_validate(user)
+
     def reset_password(self, email: str, password: str, actor: Actor) -> UserRead:
         """A new password for an existing account, set by an admin -- in practice by the
         operator at the server's terminal (`pigrocrm resetpassword`), since the product has

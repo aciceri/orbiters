@@ -193,6 +193,25 @@ export function useUpdateUser() {
   })
 }
 
+// -- Me (own profile) ---------------------------------------------------------
+
+type MeUpdateBody = components['schemas']['MeUpdate']
+
+/**
+ * `PATCH /api/auth/me`, not `/api/users/{id}`: the one write on this file that needs
+ * no admin role, since `UserService.update_own_digest` reads the caller's own id off
+ * the session rather than a path parameter -- see `ProfilePanel`. Invalidates
+ * `queryKeys.me`, the same key `AuthProvider`'s own `useQuery` populates, so
+ * `useAuth().user` -- and this switch -- reflect the server on the next render.
+ */
+export function useUpdateMe() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: MeUpdateBody) => unwrap(api.PATCH('/api/auth/me', { body })),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.me }),
+  })
+}
+
 // -- Templates (admin writes) -------------------------------------------------
 
 // `Template`/`useTemplates` already live in features/documents/queries.ts: the

@@ -594,7 +594,7 @@ def digest_mail(to: str, digest: WeeklyDigest, *, public_url: str) -> Mail:
     text_parts.append(f"Apri PigroCRM: {cta_url}")
     html_parts.append(f"<p {paragraph}>{_button(e(cta_url, quote=True), 'Apri PigroCRM')}</p>")
 
-    opt_out_url = link("/app/impostazioni/utenti")
+    opt_out_url = link("/app/impostazioni/profilo")
     text_parts.append("")
     text_parts.append(f"Non inviarmi più il resoconto: {opt_out_url}")
     html_parts.append(

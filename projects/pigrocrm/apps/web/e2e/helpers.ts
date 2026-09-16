@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
@@ -206,10 +206,24 @@ async function waitUntil(condition: () => Promise<boolean>, timeoutMs: number, l
 
 /** Reads apps/web/scripts/e2e-setup.sh's own pidfile and sends SIGTERM, then
  *  waits until the API genuinely stops answering -- not a fixed sleep, since
- *  how long a graceful uvicorn shutdown takes is not this suite's to guess. */
+ *  how long a graceful uvicorn shutdown takes is not this suite's to guess.
+ *
+ *  `PIGROCRM_E2E_API_PIDFILE` is one fixed path, not a per-checkout handle
+ *  (projects/pigrocrm/AGENTS.md), so a second `pigrocrm-e2e` run alive on the
+ *  same box can replace or reap this pid before this call gets to it: `kill`
+ *  then answers `ESRCH`, "no such process". That is not a reason to fail the
+ *  test that called us -- the API this pid named is exactly as dead either
+ *  way -- so `ESRCH` is treated as "already gone" and every other kill error
+ *  still throws. Falling through to the same wait either way is what makes
+ *  the API's absence, not merely the signal's delivery, what the test that
+ *  follows can rely on (REB-91). */
 export async function killApi(): Promise<void> {
   const pid = Number(readFileSync(API_PIDFILE, 'utf-8').trim())
-  process.kill(pid, 'SIGTERM')
+  try {
+    process.kill(pid, 'SIGTERM')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
+  }
   await waitUntil(async () => !(await pingApi()), 10_000, 'API to stop answering')
 }
 
@@ -218,7 +232,13 @@ export async function killApi(): Promise<void> {
  *  and overwrites the pidfile so apps/web/scripts/e2e-teardown.sh -- which runs
  *  after the whole suite, from a completely different process tree -- kills the
  *  right one at the end. Waits until the API genuinely answers again before
- *  returning, for the identical reason `killApi` waits on the way down. */
+ *  returning, for the identical reason `killApi` waits on the way down.
+ *
+ *  The pidfile is written to a process-unique temporary path first and moved
+ *  into place with `renameSync`, which POSIX guarantees is atomic within one
+ *  filesystem: a concurrent `killApi`, in this suite or another `pigrocrm-e2e`
+ *  run sharing the same fixed path, always reads either the previous pid whole
+ *  or this one whole, never a half-written file (REB-91). */
 export async function relaunchApi(): Promise<void> {
   const child = spawn('uv', ['run', 'uvicorn', 'pigrocrm_api.main:app', '--port', API_PORT], {
     cwd: REPO_ROOT,
@@ -227,7 +247,11 @@ export async function relaunchApi(): Promise<void> {
     env: process.env,
   })
   child.unref()
-  if (child.pid) writeFileSync(API_PIDFILE, String(child.pid))
+  if (child.pid) {
+    const tmpPath = `${API_PIDFILE}.${process.pid}.tmp`
+    writeFileSync(tmpPath, String(child.pid))
+    renameSync(tmpPath, API_PIDFILE)
+  }
   await waitUntil(pingApi, 30_000, 'API to answer again')
 }
 

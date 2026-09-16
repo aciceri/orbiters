@@ -143,7 +143,7 @@ from the network inside a production container already running, on every single 
 
 `https://tuodominio.it/`, with the credentials just created.
 
-### 7. The Gmail sync cron (only if you connect Gmail)
+### 7. The cron jobs
 
 There is no daemon and no queue: the Gmail sync is a loop that starts, does its work and
 ends. The fifteen minutes are cron's, one line in the `crontab` of the user that owns the
@@ -160,6 +160,17 @@ address): it exits `0` when the loop went through — or when another one was al
 running, which is not an error — and `1`, with a sentence on `stderr`, when the mailbox is
 missing, is ambiguous, belongs to a deactivated user or the consent has been revoked.
 `--env-file ../../.env` and `--no-sync` are here for exactly the reasons of §1 and §5.
+
+Same shape for the weekly report, one line for `pigrocrm digest` at eight on Monday:
+
+```
+0 8 * * 1 cd $DEPLOY_PATH/projects/pigrocrm && docker compose --env-file ../../.env exec -T api uv run --no-sync pigrocrm digest >> /var/log/pigrocrm-digest.log 2>&1
+```
+
+Every run prints one line per space: `inviato a N`, `vuoto`, `già inviato`, `nessun
+destinatario`, or `saltato (Type)` on `stderr`. `0 8` assumes the host's clock is already
+on Europe/Rome — check with `timedatectl` before pasting the line, or the report lands at
+the wrong hour. The runbook below now covers both jobs.
 
 The runbook — the table of error sentences, what to do about each one and how they relate
 to the expiry of the Google consent — is

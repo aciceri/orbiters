@@ -24,7 +24,7 @@ from pigrocrm.core.tenants.database import (
 from pigrocrm.core.validation import SafeStr
 from pigrocrm_api.deps import ACCESS_COOKIE, REFRESH_COOKIE, ActorDep, SessionDep, SettingsDep
 from pigrocrm_api.errors import PROBLEM_RESPONSES
-from pigrocrm_api.ratelimit import spend_one
+from pigrocrm_api.ratelimit import TOO_MANY_REQUESTS_RESPONSE, spend_one
 from pigrocrm_api.sessions import (  # noqa: F401 - get_sender is the override seam
     SenderDep,
     get_sender,
@@ -246,7 +246,12 @@ def _space_link(settings: Settings, slug: str, email: str) -> str | None:
         engine.dispose()
 
 
-@router.post("/link", response_model=Ack, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/link",
+    response_model=Ack,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={429: TOO_MANY_REQUESTS_RESPONSE},
+)
 def request_link(
     payload: LinkRequest,
     request: Request,

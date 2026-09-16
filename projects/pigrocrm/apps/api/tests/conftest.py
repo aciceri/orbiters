@@ -66,13 +66,21 @@ def api_session(api_engine: Engine) -> Iterator[Session]:
         connection.close()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_rate_limit() -> None:
+    # The limiter's bucket is a module-level dict, so it outlives any one test's own
+    # fixtures: without this, a test that spends its budget on `/api/auth/link` or
+    # `/api/tenants/{slug}/disponibile` (REB-228) hands the next one an already-spent
+    # bucket -- including a test that builds its own `TestClient` by hand instead of
+    # going through `client` or `test_tenants_api.py`'s own `spaces_client`
+    # (`test_the_root_slug_is_the_root_itself_and_nobody_elses_name` reaches
+    # `disponibile` that way). Autouse, not tucked inside one fixture, so no test in
+    # this directory can be the one left uncovered.
+    reset_rate_limit()
+
+
 @pytest.fixture
 def client(api_session: Session, tmp_path: Path) -> Iterator[TestClient]:
-    # The limiter's bucket is a module-level dict, so it outlives any one test's own
-    # fixtures: without this, `/api/auth/link` and `/api/tenants/{slug}/disponibile`
-    # (REB-228) would share one budget across every test in this file that hits them,
-    # the same reason `test_tenants_api.py`'s own `_serving` resets it per test.
-    reset_rate_limit()
     app = create_app()
     app.dependency_overrides[get_session] = lambda: api_session
     # Documents/templates tests upload and download real bytes; without this override

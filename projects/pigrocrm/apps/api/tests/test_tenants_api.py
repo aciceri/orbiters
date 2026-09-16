@@ -20,7 +20,11 @@ from pigrocrm.core.tenants import MemberLookup, ensure_tenants_database
 from pigrocrm.core.tenants.database import tenant_database_name, tenant_database_url
 from pigrocrm_api.deps import get_session, reset_session_factories
 from pigrocrm_api.main import create_app
-from pigrocrm_api.ratelimit import REQUESTS_PER_MINUTE, reset_rate_limit
+from pigrocrm_api.ratelimit import (
+    DISPONIBILE_REQUESTS_PER_MINUTE,
+    REQUESTS_PER_MINUTE,
+    reset_rate_limit,
+)
 from pigrocrm_api.tenancy import split_tenant_prefix
 
 SLUG = "studio-prova"
@@ -115,8 +119,12 @@ def test_availability_says_why(spaces_client: TestClient) -> None:
 
 def test_disponibile_is_throttled_per_client(spaces_client: TestClient) -> None:
     """Unauthenticated by design, like `membro` (REB-228): the request past the budget
-    is a 429 with a `Retry-After`."""
-    for _ in range(REQUESTS_PER_MINUTE):
+    is a 429 with a `Retry-After`. Its own, larger budget (`DISPONIBILE_REQUESTS_PER_MINUTE`),
+    separate from `membro`'s and `signup`'s `REQUESTS_PER_MINUTE`: this is the one route
+    of the three a person's own typing calls repeatedly, and sharing the signup's tighter
+    bucket would let a few hesitations while naming a business starve the tokens the
+    actual `POST /` still needs to create the space."""
+    for _ in range(DISPONIBILE_REQUESTS_PER_MINUTE):
         assert spaces_client.get(f"/api/tenants/{SLUG}/disponibile").status_code == 200
     refused = spaces_client.get(f"/api/tenants/{SLUG}/disponibile")
     assert refused.status_code == 429, refused.text

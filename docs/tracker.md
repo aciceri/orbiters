@@ -35,23 +35,24 @@ made better with no new capability; `chore` is maintenance with no change in beh
 `docs` is documentation that stands on its own. `test`, `ci`, `design`, `security` and
 `spike` mean what their names say.
 
-The projects on the board, read with `list_projects` on 2026-09-10. This table is a
+The projects on the board, read with `list_projects` on 2026-09-16. This table is a
 snapshot and the board is the authority: `list_projects` with `team: "rebase"`, which
 answers completed projects too, is what to trust when the two disagree. Opening or closing
 a project is a board action with no PR of its own, so whoever does it adds or updates the
 row here, in the PR that ships the release or in one of its own.
 
-| Initiative | Project | Lead | State on 2026-09-10 |
+| Initiative | Project | Lead | State on 2026-09-16 |
 |---|---|---|---|
 | `PigroCRM` | `PigroCRM v1 - first deploy from CI, with green gates` | Ivan | In Progress |
 | `PigroCRM` | `PigroCRM v2 - a space is born ready, and you enter with your email` | Ivan | In Progress, opened 2026-09-12 |
 | `Hub` | `Hub v0 - signups and the company flow, deployed` | Ivan | In Progress |
 | `Hub` | `Hub v1 - the wizards look like the site` | Lorenzo | In Progress |
-| `Website` | `Website v1 - the public site, live and correct on a phone` | Lorenzo | In Progress |
+| `Website` | `Website v1 - the public site, live and correct on a phone` | Lorenzo | Completed, 2026-09-16 |
 | `Website` | `Website v2 - the new landing takes the front door` | Lorenzo | In Progress |
 | `Monorepo` | `Deploy and access hygiene v1` | Lorenzo | In Progress |
 | `Monorepo` | `Indexing and SEO v1 - what a crawler sees` | Lorenzo | In Progress |
 | `Monorepo` | `Monorepo hygiene v1 - CI cost, licence and the English rule` | Lorenzo | Completed, 2026-09-10 |
+| `Monorepo` | `Rebrand v2 - orbiters leaves the code` | Lorenzo | Completed, 2026-09-16 (opened 2026-09-15) |
 
 `Monorepo hygiene v1` was where repository-wide work that belongs to no product went
 (CI cost, the licence, this page). It is closed, and nothing has replaced it: a

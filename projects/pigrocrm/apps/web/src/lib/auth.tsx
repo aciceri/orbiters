@@ -2,17 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, use, useEffect, useRef, type ReactNode } from 'react'
 import { forgetSession, identifySession } from './analytics'
 import { api, unwrap } from './api'
+import type { components } from './api-types'
 import { queryKeys } from './query'
 import { tenantPrefix } from './tenant'
 
-export interface SessionUser {
-  id: string
-  email: string
-  nome: string
-  ruolo: 'admin' | 'collaboratore' | 'readonly'
-  attivo: boolean
-  digest_settimanale: boolean
-}
+export type SessionUser = components['schemas']['UserRead']
 
 interface AuthValue {
   user: SessionUser | null
@@ -64,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     mutationFn: () => unwrap(api.POST('/api/auth/logout')),
   })
 
-  const user = (data as SessionUser | null) ?? null
+  const user = data ?? null
 
   // The effect keys are the properties PostHog receives: a role change re-identifies,
   // a new object from the thirty-second poll does not. `identified` remembers who, so a

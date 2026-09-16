@@ -162,6 +162,22 @@ the login page and logs in as its first step, which is the honest video of a fea
 new user meets after logging in. `--keep-webm` keeps the raw recording beside the
 `.mp4` when ffmpeg's result needs checking.
 
+**The run is confined.** On macOS the script re-executes itself under Seatbelt
+(`sandbox-exec`, the mechanism Claude Code's own command sandbox uses on a Mac) with a
+profile written for the run: Chromium, the steps module and ffmpeg may write only to the
+output file's directory, the user's temp and cache directories and `/dev`, and may open
+network connections only to `localhost`, where the app under test runs. So a steps
+module cannot write a file elsewhere, and a page under test cannot call home while it is
+recorded (measured: a write to `$HOME` fails with `EPERM`, a `fetch` to example.com
+fails from the page and from node, `localhost:4173` answers). Reads are not confined:
+the browser and the module still read whatever the user can read. The first line of the
+run says what the profile allows; `--no-sandbox` opts out and says so, which is what to
+try when a recording fails for a reason that smells of permission (a store the browser
+wants to write outside its temp directory, a proxy on another host). Linux has no
+`sandbox-exec`, the run says so and records unconfined; a bubblewrap profile is not
+written yet, and Chromium inside `bwrap` needs its own sandbox off, so it is not a
+one-liner.
+
 The script prints the length and the size at the end. A step that fails (a selector
 that never resolves, a page that never goes idle) stops the run with the error and the
 path of the partial `.webm`, which is where you see how far the flow got. **Open the

@@ -3,7 +3,7 @@
 //
 //     node docs/pr-screenshots/record.mjs steps.mjs demo-1-invoice-issue.mp4 \
 //         --url http://localhost:5173/app/fatture [--viewport 1440x900] \
-//         [--storage-state state.json] [--pause 800] [--keep-webm]
+//         [--storage-state state.json] [--pause 800] [--keep-webm] [--no-sandbox]
 //
 // `steps.mjs` exports a default async function that receives the Playwright page and a
 // `pause(ms)` helper, and does what a person would do: click, type, wait for the result.
@@ -12,12 +12,21 @@
 // Playwright writes into an H.264 `.mp4`, the one container a PR body plays inline in
 // every browser. Read the file before uploading it: `open demo-1.mp4`.
 //
+// On macOS the recording runs under Seatbelt (`sandbox-exec`): the browser, the steps
+// module and ffmpeg may write only to the output directory, the user's temp and cache
+// directories and /dev, and may open network connections only to localhost, where the
+// app under test runs. Reads are not confined. `--no-sandbox` opts out, and a platform
+// without `sandbox-exec` says so and records unconfined.
+//
 // Playwright is not a dependency of this folder: it is resolved from a workspace package
 // that declares `@playwright/test`, the same install the e2e tests use, so the browser
 // is the one already on the machine.
 
 import { spawnSync } from 'node:child_process'
-import { copyFileSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
+import {
+  copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync,
+  statSync, writeFileSync,
+} from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -31,13 +40,13 @@ function usage(message) {
   if (message) console.error(`record.mjs: ${message}`)
   console.error(
     'usage: node docs/pr-screenshots/record.mjs <steps.mjs> <out.mp4> --url <url>' +
-      ' [--viewport WxH] [--storage-state <file>] [--pause <ms>] [--keep-webm]',
+      ' [--viewport WxH] [--storage-state <file>] [--pause <ms>] [--keep-webm] [--no-sandbox]',
   )
   process.exit(2)
 }
 
 function parseArgs(argv) {
-  const args = { viewport: '1440x900', pause: 800, keepWebm: false }
+  const args = { viewport: '1440x900', pause: 800, keepWebm: false, noSandbox: false }
   const positional = []
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
@@ -46,6 +55,7 @@ function parseArgs(argv) {
     else if (arg === '--storage-state') args.storageState = argv[++i]
     else if (arg === '--pause') args.pause = Number(argv[++i])
     else if (arg === '--keep-webm') args.keepWebm = true
+    else if (arg === '--no-sandbox') args.noSandbox = true
     else if (arg.startsWith('--')) usage(`unknown option ${arg}`)
     else positional.push(arg)
   }
@@ -211,7 +221,84 @@ function describe(out) {
   console.log(`${out}: ${duration}, ${kb} kB`)
 }
 
+// Seatbelt. The outer process writes a profile for this run and re-executes itself
+// under `sandbox-exec -f`; the inner one, marked by the environment, records. Rules are
+// last-match-wins: everything is allowed, then writes are denied except where the run
+// needs them, then the network is denied except loopback and unix sockets (Playwright
+// talks to Chromium over pipes; the app under test answers on localhost). `network*`
+// with a `local ip` filter is not enough: an outbound socket to example.com matched it
+// (measured 2026-09-16), so outbound is allowed on `remote ip` only.
+const SANDBOXED = 'PR_VIDEO_SANDBOXED'
+
+function sbPath(path) {
+  return `"${path.replace(/["\\]/g, '\\$&')}"`
+}
+
+function darwinDir(name, fallback) {
+  const result = spawnSync('getconf', [name], { encoding: 'utf8' })
+  const value = result.status === 0 ? result.stdout.trim() : ''
+  return value || fallback
+}
+
+function seatbeltProfile(args) {
+  mkdirSync(dirname(args.out), { recursive: true })
+  const writable = [
+    dirname(args.out),
+    darwinDir('DARWIN_USER_TEMP_DIR', tmpdir()),
+    darwinDir('DARWIN_USER_CACHE_DIR', join(tmpdir(), '..', 'C')),
+    '/dev',
+  ].map((dir) => realpathSync(dir))
+  return [
+    '(version 1)',
+    '(allow default)',
+    '(deny file-write*)',
+    ...writable.map((dir) => `(allow file-write* (subpath ${sbPath(dir)}))`),
+    '(deny network*)',
+    '(allow network-outbound (remote ip "localhost:*"))',
+    '(allow network-inbound (local ip "localhost:*"))',
+    '(allow network-bind (local ip "localhost:*"))',
+    '(allow network* (remote unix-socket))',
+    '(allow network* (local unix-socket))',
+    '',
+  ].join('\n')
+}
+
+function runInSandbox(args) {
+  if (process.platform !== 'darwin' || !existsSync('/usr/bin/sandbox-exec')) {
+    console.error('record.mjs: no Seatbelt on this platform, recording unconfined')
+    return null
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'pr-video-profile-'))
+  const profile = join(dir, 'record.sb')
+  writeFileSync(profile, seatbeltProfile(args))
+  console.error(
+    `record.mjs: under Seatbelt: writes only to ${dirname(args.out)}, the temp and cache` +
+      ' directories and /dev; network only to localhost (--no-sandbox opts out)',
+  )
+  try {
+    const result = spawnSync(
+      '/usr/bin/sandbox-exec',
+      ['-f', profile, process.execPath, ...process.argv.slice(1)],
+      { stdio: 'inherit', env: { ...process.env, [SANDBOXED]: '1' } },
+    )
+    if (result.error) {
+      console.error(`record.mjs: sandbox-exec failed to start: ${result.error.message}`)
+      return 1
+    }
+    return result.status ?? 1
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 const args = parseArgs(process.argv.slice(2))
+if (!process.env[SANDBOXED]) {
+  if (args.noSandbox) console.error('record.mjs: --no-sandbox, recording unconfined')
+  else {
+    const status = runInSandbox(args)
+    if (status !== null) process.exit(status)
+  }
+}
 const webm = await record(args)
 toMp4(webm, args.out)
 if (args.keepWebm) {

@@ -375,3 +375,13 @@ def test_da_emettere_only_appears_with_something_to_bill() -> None:
     assert "8 ore fatturabili non fatturate" in ore.text
     assert "https://x/app/ore?da=digest" in ore.text
     assert "fatturato=false" not in ore.text
+
+
+def test_a_debt_due_today_says_so_instead_of_counting_zero_days() -> None:
+    digest = digest_with(scaduto=Decimal("100")).model_copy(
+        update={"scadute": [_invoice(importo=Decimal("100"), giorni_di_ritardo=0)]}
+    )
+    mail = digest_mail("a@b.it", digest, public_url="https://x")
+    assert "scade oggi" in mail.text
+    assert "0 giorni di ritardo" not in mail.text
+    assert mail.html is not None and "scade oggi" in mail.html

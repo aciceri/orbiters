@@ -264,6 +264,22 @@ class DigestRun:
         Everything here runs inside the caller's `try`, and the caller does the tracking
         afterwards, so the capture cannot be the reason a committed week reports `saltato`.
         """
+        if not dry_run and self.sender is None:
+            # No Resend key, so nothing can leave and nobody is written to. Recording the
+            # week here -- which is what this did until the branch review -- made it
+            # `gia_inviato` for ever, wrote a timeline entry saying it had reached N
+            # people and told PostHog the same, all about a mail that was never attempted.
+            # Nothing is written, so the first run after the key is configured sends it;
+            # and it is answered before the report is built, which a mail nobody can send
+            # does not need. A rehearsal goes on: `--dry-run` chose not to send, and it
+            # wants the report to say what would have gone out.
+            return (
+                self._senza_scrivere(
+                    DigestOutcome(slug, "saltato", iso, motivo=INVIO_NON_CONFIGURATO)
+                ),
+                None,
+            )
+
         # Nothing has been written yet: this closes the *read* transaction the checks
         # above autobegan, so that the dashboard's snapshot is the first statement of the
         # next one. `DashboardService._open_snapshot` refuses a session in a transaction.
@@ -285,18 +301,7 @@ class DigestRun:
             )
 
         sender = self.sender
-        if sender is None:
-            # No Resend key, so nothing left and nobody was written to. Recording the week
-            # here -- which is what this did until the branch review -- made it
-            # `gia_inviato` for ever, wrote a timeline entry saying it had reached N
-            # people and told PostHog the same, all about a mail that was never attempted.
-            # Nothing is written, so the first run after the key is configured sends it.
-            return (
-                self._senza_scrivere(
-                    DigestOutcome(slug, "saltato", iso, motivo=INVIO_NON_CONFIGURATO)
-                ),
-                None,
-            )
+        assert sender is not None  # answered above, before the report was built
 
         accettati = self._spedisci(sender, digest, destinatari)
         if not accettati:

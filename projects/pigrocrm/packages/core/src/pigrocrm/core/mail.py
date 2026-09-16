@@ -372,6 +372,17 @@ def _conta(n: int, singolare: str, plurale: str) -> str:
     return f"1 {singolare}" if n == 1 else f"{n} {plurale}"
 
 
+def _ritardo(giorni: int | None) -> str:
+    """The lateness word of a «scadute» row: «scade oggi» for a debt due today (zero days
+    late is a fact, not a delay to count), «N giorni di ritardo» after that, nothing for
+    the rows of the other sections, which carry no lateness at all."""
+    if giorni is None:
+        return ""
+    if giorni == 0:
+        return "scade oggi"
+    return f"{giorni} giorni di ritardo"
+
+
 def _scadute_totale(digest: WeeklyDigest) -> Decimal:
     """The one sum this module does: `scadute[].importo`. Used by the subject and by
     «Da incassare»'s own heading, so the figure in one cannot disagree with the other."""
@@ -493,9 +504,7 @@ def digest_mail(to: str, digest: WeeklyDigest, *, public_url: str) -> Mail:
         _row(
             _invoice_line(
                 inv,
-                f"{inv.giorni_di_ritardo} giorni di ritardo"
-                if inv.giorni_di_ritardo is not None
-                else "",
+                _ritardo(inv.giorni_di_ritardo),
             ),
             url=link(f"/app/fatture/{inv.invoice_id}"),
             label="Prepara il sollecito",

@@ -376,9 +376,11 @@ class InvoiceRepository:
         answer a different day for exactly the installation whose zone differs.
 
         `<=` and not `_overdue_predicate()`'s `<`, which is the second reason this is its
-        own predicate: an invoice due today is money the report names -- it prints «0
-        giorni di ritardo» -- while «scaduto» on the dashboard means strictly past its
-        date, and a shared helper would have to pick one of the two meanings for both.
+        own predicate: an invoice due today is money the report names -- it prints «scade
+        oggi» -- while «scaduto» on the dashboard means strictly past its date, so on a
+        Monday with a debt due that day the list holds one row more than the «scaduto e
+        non incassato» signal counts, and a shared helper would have to pick one of the
+        two meanings for both.
 
         Ascending `data_scadenza`: the oldest debt first, which is the order somebody works
         the list in and the order `list_in_scadenza` beside it already answers in.

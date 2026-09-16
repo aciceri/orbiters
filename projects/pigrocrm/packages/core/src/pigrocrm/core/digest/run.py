@@ -15,14 +15,22 @@ and only then does the build run with the snapshot as its first statement. Nothi
 been written at that point, so the rollback discards nothing: it is a release of a read
 transaction, not an undo. What the reads produced is kept as plain values -- an `Actor`,
 a list of `(id, indirizzo)` pairs, a row id -- precisely so that the `User` objects going
-stale across that rollback costs nothing.
+stale across that rollback costs nothing. Every answer that writes nothing releases that
+read transaction too (`_senza_scrivere`): the cron holds one session per space for as
+long as that space takes, and a connection left idle-in-transaction is how a vacuum stops
+working.
 
-**What is written, and when.** One `digests` row per ISO week (the column is unique, which
-is what makes a cron that fires twice send once), one timeline entry whose payload is
-three counts, one commit, and only then the PostHog events. The tracker is last and
-outside the transaction on purpose: a capture that fails must not be able to roll back a
-mail that has already left, and it cannot, because there is no longer a transaction for it
-to fail inside of.
+**What is written, and when.** The mails go out first, then one `digests` row per ISO week
+(the column is unique, which is what makes a cron that fires twice send once), one
+timeline entry whose payload is three counts, one commit, and only then the PostHog
+events. Only the addresses the sender actually accepted reach any of the three.
+
+**The concurrency window this leaves open.** Sending before writing means two crons awake
+at the same instant both build, both send, and then the loser's `INSERT` fails on
+`uq digests.settimana` -- so a space is mailed twice and one run answers `saltato` with
+`IntegrityError`. That is the brief's order and the right way round: the alternative
+writes the row first and loses the week silently when the send then fails, and a duplicate
+mail is a nuisance where a missing one is the whole feature not happening.
 """
 
 from __future__ import annotations
@@ -57,16 +65,21 @@ KIND = "digest.inviato"
 
 Esito = Literal["inviato", "vuoto", "gia_inviato", "nessun_destinatario", "saltato"]
 
-# The two `saltato` motives that are not an exception's name. Short machine words, like
+# The three `saltato` motives that are not an exception's name. Short machine words, like
 # the `esito` literals themselves, and deliberately not a sentence containing the address:
 # `motivo` is printed in a cron's log.
 TITOLARE_MANCANTE = "titolare_mancante"
 TITOLARE_DISATTIVATO = "titolare_disattivato"
+INVIO_RIFIUTATO = "invio_rifiutato"
 
 
 @dataclass(frozen=True)
 class DigestOutcome:
     """What happened to one space in one week, in the terms §3.4's command prints.
+
+    `destinatari` counts the people the report actually reached -- for a rehearsal, the
+    people it would have reached. Not the people who were eligible: a provider that
+    refuses two addresses out of three has not sent three reports.
 
     `motivo` is filled only for `saltato`, and never with an exception's *message*: a
     provider's error text routinely quotes the address it failed on, and this value is
@@ -80,21 +93,39 @@ class DigestOutcome:
     motivo: str = ""
 
 
+@dataclass(frozen=True)
+class _DaRiferire:
+    """What `_invia` leaves for `send_for_space` to report to PostHog once the commit has
+    made it true. Internal: the caller of `send_for_space` never sees it."""
+
+    destinatari: tuple[tuple[UUID, str], ...]
+    sezioni: int
+
+
 def sezioni_con_righe(digest: WeeklyDigest) -> int:
     """How many of §3.1's seven sections have something in them.
 
-    A *section* count, not a list count: «Da incassare» is two lists and one heading, and
-    so is «In pipeline» with three. It is what `digest_inviato` carries as `sezioni`, so
-    PostHog can tell the week that was worth reading from the one that said «settimana
-    ferma», and the timeline entry carries the same number for the same reason.
+    A *section* count, not a list count: «Da incassare» is two lists and one heading,
+    «Da emettere» is three figures on two lines, and «In pipeline» is three lists. It is
+    what `digest_inviato` carries as `sezioni`, so PostHog can tell the week that was
+    worth reading from the one that said «settimana ferma», and the timeline entry carries
+    the same number for the same reason.
 
-    `ore` is the one section tested for presence rather than for content: `None` and a
-    week of zeros are different statements, and §3.1 drops the section only for the first.
+    Each predicate below is the one `mail.digest_mail` uses to decide whether to print
+    that heading, which is what makes this a count of the sections the recipient saw
+    rather than a second opinion about them. «Da emettere» is the one worth spelling out:
+    the mail prints a line for `vinti_da_fatturare` and a second for `ore_non_fatturate or
+    valore_maturato`, so the section exists when any of the three is set.
+
+    `ore` is the one section tested for presence rather than for content, because
+    `DigestService.build` has already collapsed a week of zero hours to `None` -- so
+    `is not None` is the whole question, and `ore.ore_totali` would be a second, weaker
+    way of asking it.
     """
     return sum(
         [
             bool(digest.scadute or digest.in_scadenza),
-            bool(digest.vinti_da_fatturare or digest.ore_non_fatturate),
+            bool(digest.vinti_da_fatturare or digest.ore_non_fatturate or digest.valore_maturato),
             bool(digest.emesse),
             bool(digest.incassate),
             digest.ore is not None,
@@ -144,20 +175,24 @@ class DigestRun:
 
         titolare = utenti.get_by_email(owner_email)
         if titolare is None:
-            return DigestOutcome(slug, "saltato", iso, motivo=TITOLARE_MANCANTE)
+            return self._senza_scrivere(
+                DigestOutcome(slug, "saltato", iso, motivo=TITOLARE_MANCANTE)
+            )
         if not titolare.attivo:
-            return DigestOutcome(slug, "saltato", iso, motivo=TITOLARE_DISATTIVATO)
+            return self._senza_scrivere(
+                DigestOutcome(slug, "saltato", iso, motivo=TITOLARE_DISATTIVATO)
+            )
         # `cast` and not a runtime check, exactly as `cli.py`'s `_cron_actor` does it:
         # `Actor` validates `role` against its own literal on construction, so a column
         # holding something else raises there rather than travelling on unnoticed.
         attore = Actor(id=titolare.id, type="system", role=cast(Role, titolare.ruolo))
 
         if self._spazio_vuoto():
-            return DigestOutcome(slug, "vuoto", iso)
+            return self._senza_scrivere(DigestOutcome(slug, "vuoto", iso))
 
         riga_id = self._riga_della_settimana(iso)
         if riga_id is not None and not forza:
-            return DigestOutcome(slug, "gia_inviato", iso)
+            return self._senza_scrivere(DigestOutcome(slug, "gia_inviato", iso))
 
         # Plain values, taken now: the `User` objects behind them expire on the rollback
         # the build needs, and reloading them would reopen the very transaction that
@@ -168,10 +203,10 @@ class DigestRun:
             if utente.attivo and utente.digest_settimanale
         ]
         if not destinatari:
-            return DigestOutcome(slug, "nessun_destinatario", iso)
+            return self._senza_scrivere(DigestOutcome(slug, "nessun_destinatario", iso))
 
         try:
-            esito, sezioni = self._invia(
+            esito, da_riferire = self._invia(
                 slug,
                 iso,
                 attore,
@@ -188,12 +223,12 @@ class DigestRun:
             return DigestOutcome(slug, "saltato", iso, motivo=type(exc).__name__)
 
         # Outside the `try` deliberately, and not only after the commit: by this point the
-        # mail has gone and the week is recorded, so nothing PostHog can do may turn this
+        # mails have gone and the week is recorded, so nothing PostHog does may turn this
         # answer into `saltato` or roll back a transaction that no longer exists.
-        # `sezioni` is `None` for a rehearsal, which reports nothing to anybody.
-        if sezioni is not None and self.tracker is not None:
-            for user_id, _ in destinatari:
-                self.tracker.digest_sent(user_id, settimana=iso, sezioni=sezioni)
+        # `da_riferire` is `None` for a rehearsal, which reports nothing to anybody.
+        if da_riferire is not None and self.tracker is not None:
+            for user_id, _ in da_riferire.destinatari:
+                self.tracker.digest_sent(user_id, settimana=iso, sezioni=da_riferire.sezioni)
         return esito
 
     # -- the path that sends ----------------------------------------------------------
@@ -208,9 +243,9 @@ class DigestRun:
         settimana: tuple[date, date],
         *,
         dry_run: bool,
-    ) -> tuple[DigestOutcome, int | None]:
-        """The outcome, and the section count PostHog is to be told -- `None` when it is
-        not to be told anything, which is a rehearsal and only a rehearsal.
+    ) -> tuple[DigestOutcome, _DaRiferire | None]:
+        """The outcome, and whom PostHog is to be told about -- `None` when it is to be
+        told nothing, which is a rehearsal and only a rehearsal.
 
         Everything here runs inside the caller's `try`, and the caller does the tracking
         afterwards, so the capture cannot be the reason a committed week reports `saltato`.
@@ -222,7 +257,6 @@ class DigestRun:
 
         digest = DigestService(self.session, self.settings).build(attore, settimana)
         sezioni = sezioni_con_righe(digest)
-        indirizzi = [indirizzo for _, indirizzo in destinatari]
 
         if dry_run:
             # A rehearsal: the report is built so the operator can be told what would go
@@ -230,17 +264,25 @@ class DigestRun:
             # asymmetry with a `sender` of `None` below -- that is a real run on an
             # installation with no Resend key, and a real run has to record its week or
             # the next one would send it again.
-            #
-            # The rollback writes nothing and undoes nothing -- the build only read. It
-            # releases the snapshot, which a `REPEATABLE READ` transaction left open would
-            # hold for as long as the caller kept the session.
-            self.session.rollback()
-            return DigestOutcome(slug, "inviato", iso, destinatari=len(destinatari)), None
+            return (
+                self._senza_scrivere(
+                    DigestOutcome(slug, "inviato", iso, destinatari=len(destinatari))
+                ),
+                None,
+            )
 
-        if self.sender is not None:
-            for indirizzo in indirizzi:
-                self.sender.send(digest_mail(indirizzo, digest, public_url=self.public_url))
+        accettati = self._spedisci(digest, destinatari)
+        if not accettati:
+            # Every address was refused. `EmailSender.send` never raises, so without this
+            # the week would be recorded, tracked and `gia_inviato` forever on the
+            # strength of mails that never arrived. Nothing is written, so next Monday --
+            # or a rerun ten minutes later -- tries again.
+            return (
+                self._senza_scrivere(DigestOutcome(slug, "saltato", iso, motivo=INVIO_RIFIUTATO)),
+                None,
+            )
 
+        indirizzi = [indirizzo for _, indirizzo in accettati]
         riga = self._registra(iso, indirizzi, riga_id)
         # Last touch on the session before the commit, as `ActivityService.record`'s own
         # contract requires: it flushes into this transaction and never commits.
@@ -249,14 +291,50 @@ class DigestRun:
             riga.id,
             KIND,
             attore,
-            {"settimana": iso, "destinatari": len(destinatari), "sezioni": sezioni},
+            {"settimana": iso, "destinatari": len(accettati), "sezioni": sezioni},
         )
         self.session.commit()
 
         # The week is out and recorded. The caller reports it to PostHog from here.
-        return DigestOutcome(slug, "inviato", iso, destinatari=len(destinatari)), sezioni
+        return (
+            DigestOutcome(slug, "inviato", iso, destinatari=len(accettati)),
+            _DaRiferire(tuple(accettati), sezioni),
+        )
+
+    def _spedisci(
+        self, digest: WeeklyDigest, destinatari: list[tuple[UUID, str]]
+    ) -> list[tuple[UUID, str]]:
+        """The recipients the provider took, in the order it was given them.
+
+        `EmailSender.send` answers `False` rather than raising -- `ResendSender` returns it
+        for any non-2xx and for a connection that never opened -- so a run that ignored the
+        boolean would record, count and report addresses that were refused. Only what came
+        back `True` goes into `inviato_a`, into `destinatari` and to PostHog.
+
+        An installation with no Resend key has no `sender` at all, and that is not a
+        refusal: nothing is attempted, everybody counts, and the week is recorded as
+        handled. The `--dry-run` rehearsal never reaches here.
+        """
+        if self.sender is None:
+            return list(destinatari)
+        return [
+            (user_id, indirizzo)
+            for user_id, indirizzo in destinatari
+            if self.sender.send(digest_mail(indirizzo, digest, public_url=self.public_url))
+        ]
 
     # -- the reads, and the row -------------------------------------------------------
+
+    def _senza_scrivere(self, esito: DigestOutcome) -> DigestOutcome:
+        """An answer that wrote nothing, with the read transaction released.
+
+        Every check above autobegins one, and the cron keeps this session for as long as
+        the space takes. Rolling back here discards nothing -- nothing was written on any
+        path that comes through this method -- and leaves the session where the caller
+        handed it over.
+        """
+        self.session.rollback()
+        return esito
 
     def _spazio_vuoto(self) -> bool:
         """§2: silence for a space with nothing in it.
@@ -266,9 +344,19 @@ class DigestRun:
         cost one bounded query per table on a Monday morning, not seven sections and a
         snapshot. `LIMIT 1` on the primary key: the answer is whether there is a row, not
         how many.
+
+        `deleted_at IS NULL` on every one of them. All four carry `SoftDeleteMixin` and
+        core applies no global filter, so without it a space whose customer and deal were
+        deleted last year is not empty and is mailed a report in which every section is
+        empty -- which is the one mail §2 exists to prevent. It is also the condition the
+        registers themselves read under, so the probe and the report agree about what
+        exists.
         """
         return all(
-            self.session.execute(select(model.id).limit(1)).first() is None
+            self.session.execute(
+                select(model.id).where(model.deleted_at.is_(None)).limit(1)
+            ).first()
+            is None
             for model in (Customer, Deal, Invoice, TimeEntry)
         )
 

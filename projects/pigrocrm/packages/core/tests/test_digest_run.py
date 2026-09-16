@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, NamedTuple
 from uuid import UUID
@@ -99,6 +99,21 @@ class MittenteCheEsplode:
 
     def send(self, mail: Mail) -> bool:
         raise RuntimeError("il provider ha chiuso la connessione")
+
+
+class MittenteSelettivo:
+    """What `ResendSender` actually does on a non-2xx: it answers `False` and does not
+    raise. Keeps the mails it accepted, so the assertions are about real sends."""
+
+    def __init__(self, *rifiutati: str) -> None:
+        self.rifiutati = set(rifiutati)
+        self.sent: list[Mail] = []
+
+    def send(self, mail: Mail) -> bool:
+        if mail.to in self.rifiutati:
+            return False
+        self.sent.append(mail)
+        return True
 
 
 def _settimana_scorsa() -> tuple[date, date]:
@@ -214,17 +229,28 @@ def corpus(db_engine: Engine) -> Iterator[Corpus]:
     try:
         yield Corpus(db_engine, (da, a), iso_week(da), indirizzi[0], indirizzi[1], ids)
     finally:
-        _pulisci(factory)
+        _pulisci(factory, iso_week(da))
 
 
-def _pulisci(factory: Any) -> None:
-    """The fixture's own rows *and* whatever the run committed on top of them."""
+def _pulisci(factory: Any, iso: str) -> None:
+    """The fixture's own rows *and* whatever the run committed on top of them.
+
+    Scoped to what this file can have written: the prefix for the corpus, and the one ISO
+    week the runs are given for the `digests` row and the timeline entries hanging off it.
+    A blanket `delete(Digest)` would take another file's row with it, and the whole point
+    of `_require_empty` is that nobody's leftovers are anybody else's business.
+    """
     with factory() as session:
         corpus_customers = select(Customer.id).where(Customer.ragione_sociale.like(f"{_PREFIX} %"))
         corpus_deals = select(Deal.id).where(Deal.nome.like(f"{_PREFIX} %"))
-        session.execute(delete(Activity).where(Activity.entity_type == _ENTITA))
+        settimane = select(Digest.id).where(Digest.settimana == iso)
+        session.execute(
+            delete(Activity).where(
+                Activity.entity_type == _ENTITA, Activity.entity_id.in_(settimane)
+            )
+        )
         session.execute(delete(Activity).where(Activity.entity_id.in_(corpus_deals)))
-        session.execute(delete(Digest))
+        session.execute(delete(Digest).where(Digest.settimana == iso))
         session.execute(delete(TimeEntry).where(TimeEntry.deal_id.in_(corpus_deals)))
         session.execute(delete(Invoice).where(Invoice.customer_id.in_(corpus_customers)))
         session.execute(delete(Deal).where(Deal.nome.like(f"{_PREFIX} %")))
@@ -244,10 +270,21 @@ def _esegui(
     forza: bool = False,
     dry_run: bool = False,
 ) -> DigestOutcome:
-    """One run, in a session of its own -- which is what a second cron invocation is."""
+    """One run, in a session of its own -- which is what a second cron invocation is.
+
+    The session is checked here, on every run this file makes, rather than in one test of
+    its own: whichever of the five answers comes back, `DigestRun` must hand the session
+    over with no transaction left open. The cron holds one session per space, and a
+    connection sitting idle-in-transaction across a whole run is how autovacuum stops
+    working -- a defect no assertion about the outcome would ever notice.
+    """
     with session_factory(engine)() as session:
         run = DigestRun(session, SETTINGS, sender=sender, tracker=tracker, public_url=PUBLIC_URL)
-        return run.send_for_space(SLUG, titolare, settimana, forza=forza, dry_run=dry_run)
+        esito = run.send_for_space(SLUG, titolare, settimana, forza=forza, dry_run=dry_run)
+        assert not session.in_transaction(), (
+            f"«{esito.esito}» left a transaction open on the session it was handed"
+        )
+        return esito
 
 
 class Riga(NamedTuple):
@@ -329,6 +366,10 @@ def test_no_section_has_rows_in_an_empty_week() -> None:
         {"in_scadenza": [_fattura()]},
         {"vinti_da_fatturare": 1},
         {"ore_non_fatturate": Decimal("0.25")},
+        # The third of «Da emettere»'s figures. `digest_mail` prints that section's second
+        # line on `ore_non_fatturate or valore_maturato`, so accrued value with no unbilled
+        # hours behind it is still a section the recipient saw.
+        {"valore_maturato": Decimal("1.00")},
         {"emesse": [_fattura()]},
         {"incassate": [_fattura()]},
         {"pipeline": [{"stage_nome": "Aperto", "numero": 1, "valore_totale": Decimal("1.00")}]},
@@ -347,9 +388,26 @@ def test_no_section_has_rows_in_an_empty_week() -> None:
     ],
 )
 def test_one_filled_list_lights_exactly_one_section(sovrascrittura: dict[str, Any]) -> None:
-    """Ten ways to fill one of the seven sections. Each lights one and only one, which is
-    what makes the count a count of *sections* rather than of lists."""
+    """Eleven ways to fill one of the seven sections. Each lights one and only one, which
+    is what makes the count a count of *sections* rather than of lists."""
     assert sezioni_con_righe(_digest_vuoto(**sovrascrittura)) == 1
+
+
+def test_the_three_figures_of_da_emettere_are_one_section() -> None:
+    """«Da emettere» is one heading over two lines and three figures. `digest_mail` prints
+    it when any of the three is set, and this count has to agree or PostHog is told about
+    a section the recipient never saw -- or not told about one they did."""
+    for campi in (
+        {"vinti_da_fatturare": 2},
+        {"ore_non_fatturate": Decimal("3.00")},
+        {"valore_maturato": Decimal("150.00")},
+        {
+            "vinti_da_fatturare": 2,
+            "ore_non_fatturate": Decimal("3.00"),
+            "valore_maturato": Decimal("150.00"),
+        },
+    ):
+        assert sezioni_con_righe(_digest_vuoto(**campi)) == 1, campi
 
 
 def test_the_two_halves_of_a_section_still_count_once() -> None:
@@ -484,6 +542,63 @@ def test_without_a_resend_key_the_week_is_still_recorded(corpus: Corpus) -> None
     assert len(cattura.chiamate) == 2
 
 
+# --- what the provider refused --------------------------------------------------------
+
+
+def test_only_the_addresses_the_provider_took_are_recorded(corpus: Corpus) -> None:
+    """`EmailSender.send` answers `False` and does not raise, so a refusal is silent
+    unless it is read. A report that never left must not appear in `inviato_a`, must not
+    be counted, and must not be reported to PostHog as delivered."""
+    sender = MittenteSelettivo(corpus.collega)
+    cattura = CapturaRegistrata()
+    esito = _esegui(
+        corpus.engine,
+        settimana=corpus.settimana,
+        titolare=corpus.titolare,
+        sender=sender,
+        tracker=Tracker(cattura),
+    )
+
+    assert esito == DigestOutcome(slug=SLUG, esito="inviato", settimana=corpus.iso, destinatari=1)
+    assert [mail.to for mail in sender.sent] == [corpus.titolare]
+    riga = _riga(corpus.engine, corpus.iso)
+    assert riga is not None
+    assert riga.inviato_a == [corpus.titolare]
+    assert [traccia.payload["destinatari"] for traccia in _attivita(corpus.engine)] == [1]
+    assert [ident for _, ident, _ in cattura.chiamate] == [str(corpus.destinatari[0])]
+
+
+def test_a_week_nobody_received_is_left_to_be_retried(corpus: Corpus) -> None:
+    """Every address refused. Writing the row anyway would make the week `gia_inviato`
+    for ever on the strength of mails that never arrived, and Monday's outage would cost
+    the space its report permanently. Nothing is written, so a rerun tries again."""
+    sender = MittenteSelettivo(corpus.titolare, corpus.collega)
+    cattura = CapturaRegistrata()
+    esito = _esegui(
+        corpus.engine,
+        settimana=corpus.settimana,
+        titolare=corpus.titolare,
+        sender=sender,
+        tracker=Tracker(cattura),
+    )
+
+    assert esito == DigestOutcome(
+        slug=SLUG, esito="saltato", settimana=corpus.iso, motivo="invio_rifiutato"
+    )
+    assert sender.sent == []
+    assert cattura.chiamate == []
+    assert _riga(corpus.engine, corpus.iso) is None
+    assert _attivita(corpus.engine) == []
+
+    # And the retry, against a provider that has come back, sends the whole week.
+    di_nuovo = RecordingSender()
+    ritentato = _esegui(
+        corpus.engine, settimana=corpus.settimana, titolare=corpus.titolare, sender=di_nuovo
+    )
+    assert ritentato.esito == "inviato"
+    assert [mail.to for mail in di_nuovo.sent] == [corpus.titolare, corpus.collega]
+
+
 # --- once per week --------------------------------------------------------------------
 
 
@@ -578,7 +693,82 @@ def test_an_empty_space_hears_nothing(db_engine: Engine) -> None:
         assert _riga(db_engine, iso_week(settimana[0])) is None
         assert _attivita(db_engine) == []
     finally:
-        _pulisci(factory)
+        _pulisci(factory, iso_week(settimana[0]))
+
+
+def test_a_space_emptied_by_soft_deletion_hears_nothing(db_engine: Engine) -> None:
+    """Deleting in this product sets `deleted_at`; core applies no global filter over it.
+
+    A probe that counted rows would find a space whose customer, deal and hours were all
+    deleted last year, decide it was not empty, and mail it a report with every section
+    blank -- the mail §2's «silenzio per gli spazi vuoti» exists to prevent.
+
+    A customer, a deal and a time entry, and deliberately no invoice:
+    `ck_invoices_no_delete_once_consumed` forbids soft-deleting an invoice that has taken
+    a number, so a space that has ever issued one is never empty again by this test's
+    definition -- which is the register being right, not this probe being wrong.
+    """
+    factory = session_factory(db_engine)
+    settimana = _settimana_scorsa()
+    with factory() as session:
+        _require_empty(session)
+        quando = datetime.now(UTC)
+        stage = PipelineStage(
+            nome=f"{_PREFIX} Fase", posizione=0, probabilita_default=10, tipo="open"
+        )
+        customer = Customer(
+            ragione_sociale=f"{_PREFIX} Cancellato",
+            nazione="IT",
+            custom_fields={},
+            deleted_at=quando,
+        )
+        titolare = User(
+            email=f"{_PREFIX.lower()}-resto-{uuid7()}@example.test",
+            password_hash="x",
+            nome=f"{_PREFIX} Resto",
+            ruolo="admin",
+        )
+        session.add_all([stage, customer, titolare])
+        session.flush()
+        deal = Deal(
+            nome=f"{_PREFIX} Deal cancellato",
+            customer_id=customer.id,
+            pipeline_stage_id=stage.id,
+            probabilita=stage.probabilita_default,
+            valore_previsto=Decimal("100.00"),
+            custom_fields={},
+            deleted_at=quando,
+        )
+        session.add(deal)
+        session.flush()
+        session.add(
+            TimeEntry(
+                deal_id=deal.id,
+                user_id=titolare.id,
+                data=settimana[0],
+                ore=Decimal("2.00"),
+                descrizione=f"{_PREFIX} ore cancellate",
+                fatturabile=True,
+                tariffa_applicata=Decimal("50.000000"),
+                tariffa_origine="manuale",
+                costo_applicato=None,
+                costo_origine="assente",
+                invoice_line_id=None,
+                custom_fields={},
+                deleted_at=quando,
+            )
+        )
+        indirizzo = titolare.email
+        session.commit()
+
+    sender = RecordingSender()
+    try:
+        esito = _esegui(db_engine, settimana=settimana, titolare=indirizzo, sender=sender)
+        assert esito == DigestOutcome(slug=SLUG, esito="vuoto", settimana=iso_week(settimana[0]))
+        assert sender.sent == []
+        assert _riga(db_engine, iso_week(settimana[0])) is None
+    finally:
+        _pulisci(factory, iso_week(settimana[0]))
 
 
 def test_a_rehearsal_builds_the_report_and_leaves_nothing_behind(corpus: Corpus) -> None:

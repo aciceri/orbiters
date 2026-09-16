@@ -2,46 +2,59 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { Wizard, type Step } from './Wizard'
+import { screensFromFields, Wizard, type Field } from './Wizard'
 
 interface Form {
   nome: string
   email: string
 }
 
-const STEPS: Step<Form>[] = [
+const FIELDS: Field<Form>[] = [
   {
     id: 'nome',
-    title: 'Come ti chiami?',
-    render: ({ value, set }) => (
-      <input aria-label="Nome" value={value.nome} onChange={(e) => set({ nome: e.target.value })} />
+    label: 'Come ti chiami?',
+    render: ({ value, set, error, errorId }) => (
+      <input
+        aria-label="Nome"
+        aria-invalid={!!error}
+        aria-describedby={error ? errorId : undefined}
+        value={value.nome}
+        onChange={(e) => set({ nome: e.target.value })}
+      />
     ),
     validate: (v) => (v.nome.trim() ? null : 'Serve un nome.'),
     summary: (v) => v.nome,
   },
   {
     id: 'email',
-    title: 'La tua email?',
-    render: ({ value, set }) => (
-      <input aria-label="Email" value={value.email} onChange={(e) => set({ email: e.target.value })} />
+    label: 'La tua email?',
+    render: ({ value, set, error, errorId }) => (
+      <input
+        aria-label="Email"
+        aria-invalid={!!error}
+        aria-describedby={error ? errorId : undefined}
+        value={value.email}
+        onChange={(e) => set({ email: e.target.value })}
+      />
     ),
     validate: (v) => (v.email.includes('@') ? null : 'Serve una email.'),
     summary: (v) => v.email,
   },
 ]
+const SCREENS = screensFromFields(FIELDS)
 
 function Harness({
   onSubmit,
   submitError = null,
 }: {
   onSubmit: () => void
-  submitError?: { message: string; step?: string } | null
+  submitError?: { message: string; field?: string } | null
 }) {
   const [value, setValue] = useState<Form>({ nome: '', email: '' })
   return (
     <Wizard
       title="Test"
-      steps={STEPS}
+      screens={SCREENS}
       value={value}
       set={(patch) => setValue((v) => ({ ...v, ...patch }))}
       onSubmit={onSubmit}
@@ -101,7 +114,7 @@ describe('Wizard', () => {
     }
   })
 
-  it('carries exactly one level-one heading naming the wizard, on the step screen and on the review', async () => {
+  it('carries exactly one level-one heading naming the wizard, on the screen and on the review', async () => {
     const user = userEvent.setup()
     render(<Harness onSubmit={() => {}} />)
 
@@ -115,7 +128,7 @@ describe('Wizard', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Test' })).toBeInTheDocument()
   })
 
-  it('goes back to the step a server error names', async () => {
+  it('goes back to the screen a server error names by field id', async () => {
     const user = userEvent.setup()
     const { rerender } = render(<Harness onSubmit={() => {}} />)
     await user.type(screen.getByLabelText('Nome'), 'Ada{Enter}')
@@ -123,10 +136,40 @@ describe('Wizard', () => {
     expect(screen.getByRole('heading', { name: 'Tutto giusto?' })).toBeInTheDocument()
 
     rerender(
-      <Harness onSubmit={() => {}} submitError={{ message: 'Email già usata.', step: 'email' }} />,
+      <Harness onSubmit={() => {}} submitError={{ message: 'Email già usata.', field: 'email' }} />,
     )
     expect(screen.getByRole('heading', { name: 'La tua email?' })).toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('Email già usata.')
+  })
+
+  it('wires aria-invalid and aria-describedby to the field that failed validation', async () => {
+    const user = userEvent.setup()
+    render(<Harness onSubmit={() => {}} />)
+
+    const nome = screen.getByLabelText('Nome')
+    expect(nome).toHaveAttribute('aria-invalid', 'false')
+    await user.click(screen.getByRole('button', { name: /Avanti/ }))
+
+    expect(nome).toHaveAttribute('aria-invalid', 'true')
+    const alert = screen.getByRole('alert')
+    expect(nome.getAttribute('aria-describedby')).toBe(alert.id)
+
+    await user.type(nome, 'Ada{Enter}')
+    expect(screen.getByRole('heading', { name: 'La tua email?' })).toBeInTheDocument()
+  })
+
+  // REB-243: a server error naming an id that matches no field must never be silent.
+  it('falls back to the review’s own alert when the error names no field at all', () => {
+    render(
+      <Harness
+        onSubmit={() => {}}
+        submitError={{ message: 'Cognome troppo lungo.', field: 'cognome' }}
+      />,
+    )
+    // No field here is called `cognome`, so the engine cannot jump anywhere: the person
+    // stays wherever they were (the first screen, on this fresh mount) and the message
+    // is never dropped -- it is exactly this silence REB-243 is about.
+    expect(screen.getByRole('heading', { name: 'Come ti chiami?' })).toBeInTheDocument()
   })
 })
 
@@ -144,7 +187,7 @@ function Resumable({
   return (
     <Wizard
       title="Test"
-      steps={STEPS}
+      screens={SCREENS}
       value={value}
       set={(patch) => setValue((v) => ({ ...v, ...patch }))}
       onSubmit={() => {}}
@@ -159,7 +202,7 @@ function Resumable({
 }
 
 describe('Wizard, resumed from a draft and introduced', () => {
-  it('starts from the step it is told to and reports every move', async () => {
+  it('starts from the screen it is told to and reports every move', async () => {
     const user = userEvent.setup()
     const onIndexChange = vi.fn()
     render(<Resumable initialIndex={1} onIndexChange={onIndexChange} />)

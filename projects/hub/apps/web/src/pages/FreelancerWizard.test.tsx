@@ -12,7 +12,7 @@ import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FreelancerApplication } from '@/lib/api'
 import { loadDraft } from '@/wizard/draft'
-import { FREELANCER_DRAFT_KEY, FREELANCER_STEPS, FreelancerWizard, readPerk } from './FreelancerWizard'
+import { FREELANCER_DRAFT_KEY, FREELANCER_FIELDS, FreelancerWizard, readPerk } from './FreelancerWizard'
 
 vi.mock('@rebase/analytics/browser', () => ({
   capture: vi.fn(),
@@ -78,22 +78,22 @@ function captured(event: string) {
     .map(([, properties]) => properties)
 }
 
-describe('the freelancer steps', () => {
-  const base = FREELANCER_STEPS.reduce(
-    (form, step) => ({ ...form, [step.id]: '' }),
+describe('the freelancer fields', () => {
+  const base = FREELANCER_FIELDS.reduce(
+    (form, field) => ({ ...form, [field.id]: '' }),
     {} as Record<string, unknown>,
   )
-  const step = (id: string) => FREELANCER_STEPS.find((s) => s.id === id)!
+  const field = (id: string) => FREELANCER_FIELDS.find((f) => f.id === id)!
 
   it('accept an empty LinkedIn and refuse one that is not on linkedin.com', () => {
-    const validate = step('linkedin_url').validate
+    const validate = field('linkedin_url').validate
     expect(validate({ ...base, linkedin_url: '' } as never)).toBeNull()
     expect(validate({ ...base, linkedin_url: 'https://www.linkedin.com/in/ada' } as never)).toBeNull()
     expect(validate({ ...base, linkedin_url: 'https://twitter.com/ada' } as never)).not.toBeNull()
   })
 
   it('take the LinkedIn name alone, or the address in whatever shape it was pasted (ORB-203)', () => {
-    const { validate, summary } = step('linkedin_url')
+    const { validate, summary } = field('linkedin_url')
     for (const pasted of ['ada', 'linkedin.com/in/ada', 'http://it.linkedin.com/in/ada/?trk=x']) {
       expect(validate({ ...base, linkedin_url: pasted } as never)).toBeNull()
       expect(summary!({ ...base, linkedin_url: pasted } as never)).toBe('https://www.linkedin.com/in/ada')
@@ -101,13 +101,13 @@ describe('the freelancer steps', () => {
   })
 
   it('read the Italian comma in the rate', () => {
-    const validate = step('tariffa_giornaliera').validate
+    const validate = field('tariffa_giornaliera').validate
     expect(validate({ ...base, tariffa_giornaliera: '450,50' } as never)).toBeNull()
     expect(validate({ ...base, tariffa_giornaliera: 'tanto' } as never)).not.toBeNull()
   })
 
   it('want a PDF under five megabytes, or no CV at all', () => {
-    const validate = step('cv').validate
+    const validate = field('cv').validate
     const pdf = new File(['%PDF'], 'cv.pdf', { type: 'application/pdf' })
     const png = new File(['x'], 'cv.png', { type: 'image/png' })
     expect(validate({ ...base, cv: pdf } as never)).toBeNull()
@@ -116,7 +116,7 @@ describe('the freelancer steps', () => {
     // marked optional, so the wizard shows «(facoltativo)» and lets it through, and
     // the person adds the CV from their area.
     expect(validate({ ...base, cv: null } as never)).toBeNull()
-    expect(step('cv').optional).toBe(true)
+    expect(field('cv').optional).toBe(true)
   })
 })
 

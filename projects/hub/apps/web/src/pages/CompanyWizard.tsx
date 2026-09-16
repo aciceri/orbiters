@@ -6,7 +6,7 @@ import { ApiError, requestPeople, type CompanyRequest } from '@/lib/api'
 import { resolveAttribution } from '@/lib/utm'
 import { clearDraft, loadDraft, saveDraft } from '@/wizard/draft'
 import { LongTextField, TextField } from '@/wizard/fields'
-import { Wizard, type Step } from '@/wizard/Wizard'
+import { screensFromFields, Wizard, type Field } from '@/wizard/Wizard'
 
 const EMPTY: CompanyRequest = {
   nome_azienda: '',
@@ -20,13 +20,15 @@ const EMPTY: CompanyRequest = {
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-export const COMPANY_STEPS: Step<CompanyRequest>[] = [
+export const COMPANY_FIELDS: Field<CompanyRequest>[] = [
   {
     id: 'nome_azienda',
-    title: 'Come si chiama la tua azienda?',
-    render: ({ value, set, autoFocus }) => (
+    label: 'Come si chiama la tua azienda?',
+    render: ({ value, set, autoFocus, error, errorId }) => (
       <TextField
         aria-label="Azienda"
+        aria-invalid={!!error}
+        aria-describedby={error ? errorId : undefined}
         placeholder="ACME Srl"
         value={value.nome_azienda}
         onChange={(nome_azienda) => set({ nome_azienda })}
@@ -38,11 +40,13 @@ export const COMPANY_STEPS: Step<CompanyRequest>[] = [
   },
   {
     id: 'referente',
-    title: 'Chi sei, e dove ti scriviamo?',
-    render: ({ value, set, autoFocus }) => (
+    label: 'Chi sei, e dove ti scriviamo?',
+    render: ({ value, set, autoFocus, error, errorId }) => (
       <div className="grid gap-3">
         <TextField
           aria-label="Referente"
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
           placeholder="Nome e cognome"
           value={value.referente}
           onChange={(referente) => set({ referente })}
@@ -50,6 +54,8 @@ export const COMPANY_STEPS: Step<CompanyRequest>[] = [
         />
         <TextField
           aria-label="Email"
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
           type="email"
           inputMode="email"
           placeholder="nome@azienda.it"
@@ -66,11 +72,13 @@ export const COMPANY_STEPS: Step<CompanyRequest>[] = [
   },
   {
     id: 'progetto',
-    title: 'Raccontaci il progetto in due righe',
+    label: 'Raccontaci il progetto in due righe',
     hint: 'Cosa serve fare, con che stack o competenze, e cosa deve uscirne. Shift+Invio per andare a capo.',
-    render: ({ value, set, autoFocus }) => (
+    render: ({ value, set, autoFocus, error, errorId }) => (
       <LongTextField
         aria-label="Progetto"
+        aria-invalid={!!error}
+        aria-describedby={error ? errorId : undefined}
         placeholder="Dobbiamo rifare il backend del portale clienti…"
         value={value.progetto}
         onChange={(progetto) => set({ progetto })}
@@ -83,12 +91,14 @@ export const COMPANY_STEPS: Step<CompanyRequest>[] = [
   },
   {
     id: 'periodo_da',
-    title: 'Da quando, e per quanto?',
+    label: 'Da quando, e per quanto?',
     hint: 'Anche approssimativo: «da ottobre, per tre mesi».',
-    render: ({ value, set, autoFocus }) => (
+    render: ({ value, set, autoFocus, error, errorId }) => (
       <div className="grid gap-3 sm:grid-cols-2">
         <TextField
           aria-label="Da quando"
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
           type="date"
           value={value.periodo_da}
           onChange={(periodo_da) => set({ periodo_da })}
@@ -96,6 +106,8 @@ export const COMPANY_STEPS: Step<CompanyRequest>[] = [
         />
         <TextField
           aria-label="Per quanto"
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
           placeholder="3 mesi"
           value={value.durata}
           onChange={(durata) => set({ durata })}
@@ -110,12 +122,14 @@ export const COMPANY_STEPS: Step<CompanyRequest>[] = [
   },
   {
     id: 'budget_giornaliero',
-    title: 'Che budget hai per una giornata?',
+    label: 'Che budget hai per una giornata?',
     hint: 'In euro, IVA esclusa. Serve a proporti le persone giuste, non a trattare.',
-    render: ({ value, set, autoFocus }) => (
+    render: ({ value, set, autoFocus, error, errorId }) => (
       <div className="flex items-center gap-3">
         <TextField
           aria-label="Budget a giornata"
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
           inputMode="decimal"
           placeholder="500"
           value={value.budget_giornaliero}
@@ -133,6 +147,7 @@ export const COMPANY_STEPS: Step<CompanyRequest>[] = [
   },
 ]
 
+export const COMPANY_SCREENS = screensFromFields(COMPANY_FIELDS)
 export const COMPANY_DRAFT_KEY = 'rebase.wizard.azienda'
 
 /** Above the first question, as on the freelance side (REB-215): what this is and how
@@ -145,7 +160,7 @@ function Intro() {
     >
       <p className="font-medium">rebase è la community di chi fa software in proprio in Italia.</p>
       <p className="mt-1 text-sm text-muted-foreground">
-        {COMPANY_STEPS.length} domande, un paio di minuti: chi siete, cosa cercate e con che
+        {COMPANY_FIELDS.length} domande, un paio di minuti: chi siete, cosa cercate e con che
         budget, così vi proponiamo le persone giuste.
       </p>
     </aside>
@@ -179,7 +194,7 @@ export function CompanyWizard() {
   const [resumed, setResumed] = useState(draft !== null)
   const [attempt, setAttempt] = useState(0)
   const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<{ message: string; step?: string } | null>(null)
+  const [submitError, setSubmitError] = useState<{ message: string; field?: string } | null>(null)
 
   // Once the application is in, nothing is saved again, whatever React still has to
   // flush: the next visit must open a blank form, not the one just sent.
@@ -211,11 +226,11 @@ export function CompanyWizard() {
       void navigate({ to: '/grazie', search: { chi: 'azienda' } })
     } catch (error) {
       const failure = error instanceof ApiError ? error : null
-      // `durata` shares the step with `periodo_da`; anything else names its own step.
+      // `durata` shares the field with `periodo_da`; anything else names its own field.
       const field = failure?.fields[0]
       setSubmitError({
         message: failure?.message ?? 'Non siamo riusciti a inviare la richiesta. Riprova.',
-        step: field === 'durata' ? 'periodo_da' : field,
+        field: field === 'durata' ? 'periodo_da' : field,
       })
     } finally {
       setSubmitting(false)
@@ -228,7 +243,7 @@ export function CompanyWizard() {
       <Wizard
         key={attempt}
         title="Cerchi persone"
-        steps={COMPANY_STEPS}
+        screens={COMPANY_SCREENS}
         value={value}
         set={(patch) => setValue((current) => ({ ...current, ...patch }))}
         onSubmit={() => void submit()}

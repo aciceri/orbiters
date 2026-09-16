@@ -3,11 +3,11 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ApiError, type FreelancerApplication } from '@/lib/api'
 import { toApplication, toUpdate, useMember, useReplaceCv, useUpdateProfile } from '@/lib/member'
-import { FREELANCER_STEPS } from '@/pages/FreelancerWizard'
-import type { Step } from '@/wizard/Wizard'
+import { FREELANCER_FIELDS } from '@/pages/FreelancerWizard'
+import type { Field } from '@/wizard/Wizard'
 
 /**
- * The wizard's steps, as a form: every question at once, because the person is
+ * The wizard's fields, as a form: every question at once, because the person is
  * correcting and not answering for the first time. The email is not among them (it is
  * the identity the link proved). Everything else, control and rule alike, is the
  * wizard's own.
@@ -19,17 +19,17 @@ import type { Step } from '@/wizard/Wizard'
  * only have moved the same wall one step later: somebody correcting their rate would
  * have been told to produce a CV first, and would have left with neither saved.
  */
-export function editSteps(hasCv: boolean): Step<FreelancerApplication>[] {
-  return FREELANCER_STEPS.filter((step) => step.id !== 'email').map((step) =>
-    step.id === 'cv'
+export function editFields(hasCv: boolean): Field<FreelancerApplication>[] {
+  return FREELANCER_FIELDS.filter((field) => field.id !== 'email').map((field) =>
+    field.id === 'cv'
       ? {
-          ...step,
+          ...field,
           optional: true,
           hint: hasCv
             ? 'Solo se vuoi sostituirlo: un PDF, al massimo 5 MB. Altrimenti teniamo quello che abbiamo.'
             : 'Non ne abbiamo ancora uno. Un PDF, al massimo 5 MB: caricalo adesso o quando vuoi.',
         }
-      : step,
+      : field,
   )
 }
 
@@ -49,7 +49,7 @@ export function Modifica() {
     return <p className="text-sm text-muted-foreground">Caricamento…</p>
   }
   const value = draft
-  const steps = editSteps(me.data.cv_filename !== null)
+  const fields = editFields(me.data.cv_filename !== null)
   const set = (patch: Partial<FreelancerApplication>) =>
     setDraft((current) => (current ? { ...current, ...patch } : current))
   const saving = update.isPending || replaceCv.isPending
@@ -57,9 +57,9 @@ export function Modifica() {
   async function save() {
     setFailure(null)
     const problems: Record<string, string> = {}
-    for (const step of steps) {
-      const problem = step.validate(value)
-      if (problem) problems[step.id] = problem
+    for (const field of fields) {
+      const problem = field.validate(value)
+      if (problem) problems[field.id] = problem
     }
     setErrors(problems)
     if (Object.keys(problems).length) return
@@ -74,7 +74,7 @@ export function Modifica() {
       // The PATCH and the CV replacement are two requests: when the first has already
       // gone through, a refusal on the second must not read as if nothing was saved.
       const suffix = saved ? ' Le altre risposte sono salvate.' : ''
-      const known = refusal?.fields.filter((field) => steps.some((step) => step.id === field)) ?? []
+      const known = refusal?.fields.filter((field) => fields.some((candidate) => candidate.id === field)) ?? []
       if (known.length) {
         setErrors(Object.fromEntries(known.map((field) => [field, refusal!.message + suffix])))
       } else {
@@ -94,31 +94,36 @@ export function Modifica() {
         </p>
       </div>
 
-      {steps.map((step) => (
-        <section key={step.id} className="space-y-3" aria-labelledby={`edit-${step.id}`}>
-          <div>
-            <h2 id={`edit-${step.id}`} className="text-lg font-semibold tracking-tight">
-              {step.title}
-              {step.optional && (
-                <span className="ml-2 text-sm font-normal text-muted-foreground">(facoltativo)</span>
-              )}
-            </h2>
-            {step.hint && <p className="mt-1 text-sm text-muted-foreground">{step.hint}</p>}
-          </div>
-          {step.render({
-            value,
-            set,
-            next: () => void save(),
-            error: errors[step.id] ?? null,
-            autoFocus: false,
-          })}
-          {errors[step.id] && (
-            <p role="alert" className="text-sm text-destructive">
-              {errors[step.id]}
-            </p>
-          )}
-        </section>
-      ))}
+      {fields.map((field) => {
+        const error = errors[field.id] ?? null
+        const errorId = `${field.id}-error`
+        return (
+          <section key={field.id} className="space-y-3" aria-labelledby={`edit-${field.id}`}>
+            <div>
+              <h2 id={`edit-${field.id}`} className="text-lg font-semibold tracking-tight">
+                {field.label}
+                {field.optional && (
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">(facoltativo)</span>
+                )}
+              </h2>
+              {field.hint && <p className="mt-1 text-sm text-muted-foreground">{field.hint}</p>}
+            </div>
+            {field.render({
+              value,
+              set,
+              next: () => void save(),
+              error,
+              autoFocus: false,
+              errorId,
+            })}
+            {error && (
+              <p role="alert" id={errorId} className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+          </section>
+        )
+      })}
 
       {failure && (
         <p role="alert" className="text-sm text-destructive">

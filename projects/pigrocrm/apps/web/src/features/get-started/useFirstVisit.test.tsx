@@ -105,4 +105,13 @@ describe('the first visit', () => {
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(navigate).not.toHaveBeenCalled()
   })
+
+  it('leaves the visit undecided when a read fails, so nothing is marked and nothing navigates', async () => {
+    vi.mocked(api.GET).mockRejectedValue(new Error('network broke'))
+    renderHome()
+    await waitFor(() => expect(api.GET).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(navigate).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem('pigrocrm.get-started.visto:/:u1')).toBeNull()
+  })
 })

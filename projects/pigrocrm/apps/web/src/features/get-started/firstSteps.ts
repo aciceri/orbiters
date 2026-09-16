@@ -35,6 +35,11 @@ export interface FirstStepsState {
   allDone: boolean
   /** Whether this user has a personal access token: their assistant is connected. */
   assistantConnected: boolean
+  /** Whether any of the six reads errored. The panel's own `done` still treats an
+   *  errored read as done (`value` below, for the same reason as ever); this is only
+   *  for a caller, like the Home's redirect, that must not act as if every step had
+   *  actually been read. */
+  failed: boolean
 }
 
 /** Whether this browser has already been taken to «Get started» for this space and
@@ -137,6 +142,7 @@ export function useFirstSteps({ enabled = true }: { enabled?: boolean } = {}): F
 
   const active = [token, fiscali, cliente, deal, ore, documento]
   const loading = enabled && active.some((q) => q.isPending)
+  const failed = active.some((q) => q.isError)
   const value = (q: { data?: boolean; isError: boolean }) => (q.isError ? true : (q.data ?? false))
 
   const list: FirstStep[] = [
@@ -182,5 +188,6 @@ export function useFirstSteps({ enabled = true }: { enabled?: boolean } = {}): F
     doneCount,
     allDone: doneCount === list.length,
     assistantConnected: value(token),
+    failed,
   }
 }

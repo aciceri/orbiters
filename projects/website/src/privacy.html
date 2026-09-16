@@ -240,16 +240,21 @@
     <!-- The cookie-notice script never loads on this page, because it carries no
       tracker to gate (pixel.test.ts holds that, down to the string that names the
       script, so it is spelled out here only in words). Withdrawing is the same two
-      steps that script's own `window.__consent.withdraw` performs -- clear the stored
-      decision, reload -- reimplemented here against the same key rather than the same
-      function, since that function lives in a script this page does not load. The
-      literal below has to stay in lockstep with that script's own storage key. -->
+      steps that script's own `window.__consent.withdraw` performs -- clear a stored
+      yes, reload -- reimplemented here against the same key rather than the same
+      function, since that function lives in a script this page does not load. Only a
+      granted decision, never a denied one: a refusal has to stay final, the same rule
+      that script's own STORAGE_KEY comment states, or this link would put the notice
+      back in front of a visitor who already said no. The literal below has to stay in
+      lockstep with that script's own storage key; pixel.test.ts holds the two equal. -->
     <script type="module">
       document.querySelectorAll('[data-consent-withdraw]').forEach(function (link) {
         link.addEventListener('click', function (event) {
           event.preventDefault()
           try {
-            window.localStorage.removeItem('orbiters.consent')
+            if (window.localStorage.getItem('orbiters.consent') === 'granted') {
+              window.localStorage.removeItem('orbiters.consent')
+            }
           } catch {
             /* Niente da fare: la scelta resta finché dura la sessione. */
           }

@@ -216,15 +216,20 @@
 
   /* Refusing costs one click; withdrawing used to cost a trip into the browser's own
      site-data settings, which is not equally easy (GDPR art. 7(3) asks for it to be).
-     Clears the same key `decide` writes and reloads, so `start` reads no decision and
-     the notice comes back on whichever page shows it next. Called from the page itself
-     through `window.__consent.withdraw` -- privacy.html is not one of the three pages
-     that load this script (it carries no tracker to gate), so it reimplements the same
-     two steps against the same key rather than calling this directly; renaming
-     STORAGE_KEY here has to carry over there too. */
+     Only a stored yes: a refusal stays on record, or withdrawing would put the notice
+     back in front of somebody who already said no, which is the dark pattern `start`'s
+     own DENIED branch exists to rule out. Reloads on either outcome, so a click always
+     does something. No page calls this today -- the three pages that load this script
+     carry no withdraw control, and privacy.html, which does, cannot load this script
+     (it carries no tracker to gate) and reimplements the same steps against the same
+     key instead; renaming STORAGE_KEY here has to carry over there too, and
+     pixel.test.ts holds the two literals equal. This export is for the day one of the
+     three notice pages grows its own control. */
   function withdraw() {
     try {
-      window.localStorage.removeItem(STORAGE_KEY)
+      if (window.localStorage.getItem(STORAGE_KEY) === GRANTED) {
+        window.localStorage.removeItem(STORAGE_KEY)
+      }
     } catch {
       /* Niente da fare: la scelta resta finché dura la sessione. */
     }

@@ -216,6 +216,29 @@ describe('withdrawing consent', () => {
     expect(sdkScripts()).toHaveLength(0)
     expect(posthogScripts()).toHaveLength(0)
   })
+
+  it('leaves a stored refusal alone: a no stays final', () => {
+    // The property `start`'s DENIED branch and the `once somebody refuses` describe
+    // below both hold: a refusal is not asked again. Clearing it on a withdraw click
+    // would put the notice back in front of somebody who already said no.
+    const consent = run()
+    press('No')
+    expect(window.localStorage.getItem(KEY)).toBe('denied')
+
+    const reload = vi.fn()
+    const original = window.location
+    Object.defineProperty(window, 'location', {
+      value: { ...original, reload },
+      writable: true,
+      configurable: true,
+    })
+
+    consent.withdraw()
+
+    expect(window.localStorage.getItem(KEY)).toBe('denied')
+    expect(reload).toHaveBeenCalledTimes(1)
+    Object.defineProperty(window, 'location', { value: original, writable: true, configurable: true })
+  })
 })
 
 describe('where PostHog stays silent even after a yes', () => {

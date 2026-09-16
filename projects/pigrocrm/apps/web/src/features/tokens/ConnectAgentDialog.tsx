@@ -174,10 +174,18 @@ export function ConnectAgentDialog({
 
         <DialogFooter className="sm:justify-between">
           <Button variant="ghost" asChild>
-            {/* Leaving the dialog open behind the Token page would keep the token on
-                screen under it; declining the guard cancels the navigation too. */}
+            {/* `close(false)` already asks the same question this navigation's own
+                blocker would (`useUnsavedTokenGuard`, shared with the Token page): both
+                read `issued` and call `confirmDiscardingToken()`. Without `ignoreBlocker`
+                the router asks a second time for this exact navigation, and the second
+                answer -- "no" -- lands after `close(false)` has already discarded the
+                token, so declining it looks like it keeps the token but does not. This
+                Link is the only navigation this dialog ever performs by hand; every other
+                way to leave with a token on screen (Back, reload, closing the tab) still
+                goes through the blocker alone. */}
             <Link
               to="/app/token"
+              ignoreBlocker
               onClick={(event) => {
                 if (!close(false)) event.preventDefault()
               }}

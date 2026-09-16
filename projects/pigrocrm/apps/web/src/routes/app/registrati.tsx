@@ -20,6 +20,7 @@ type Availability =
   | { state: 'checking'; slug: string }
   | { state: 'free'; slug: string }
   | { state: 'taken'; slug: string; reason: string }
+  | { state: 'failed'; slug: string; reason: string }
 
 /** What the hub and the registry said about the address typed at step 1. */
 interface Member {
@@ -81,10 +82,20 @@ export function SignupPage({ go = (url) => window.location.assign(url) }: { go?:
           // request's: a throttled check must not leave the wizard stuck on
           // "checking" forever with no explanation, so this always drops back to
           // idle, and a 429 specifically says why on the same alert `onCreate` uses.
-          setAvailability({ state: 'idle' })
-          if (response.status === 429) setError(toProblem(apiError, response.status).detail)
+          if (response.status === 429) {
+            setAvailability({ state: 'idle' })
+            setError(toProblem(apiError, response.status).detail)
+            return
+          }
+          // Any other failure (a 5xx, a malformed answer) must not leave the button
+          // disabled with a "still checking" hint that never resolves either
+          // (REB-236): the hint shows the API's own sentence and the person can submit
+          // anyway, since POST /api/tenants/ validates the slug again server-side.
+          setAvailability({ state: 'failed', slug: asked, reason: toProblem(apiError, response.status).detail })
         })
-        .catch(() => setAvailability({ state: 'idle' }))
+        .catch((networkError: unknown) =>
+          setAvailability({ state: 'failed', slug: asked, reason: toProblem(networkError).detail }),
+        )
     }, 350)
     return () => window.clearTimeout(handle)
   }, [screen, slug, localProblem])
@@ -150,9 +161,14 @@ export function SignupPage({ go = (url) => window.location.assign(url) }: { go?:
 
   // Only an answer about *this* slug counts; anything else is still pending.
   const current = availability.state !== 'idle' && availability.slug === slug ? availability : null
+  // A "taken" reason is a real problem with the slug; a "failed" one is not -- the probe
+  // itself could not tell, so it never marks the field invalid, only explains itself.
   const problem = localProblem ?? (current?.state === 'taken' ? current.reason : null)
+  const failed = current?.state === 'failed'
   const isFree = current?.state === 'free'
-  const canCreate = !busy && isFree && nome.trim() !== ''
+  // A failed probe never blocks the button: the server validates the slug again on
+  // POST /api/tenants/, so there is a real answer either way instead of a dead end.
+  const canCreate = !busy && (isFree || failed) && nome.trim() !== ''
 
   const hasSpaces = screen === 'owner'
 
@@ -279,11 +295,13 @@ export function SignupPage({ go = (url) => window.location.assign(url) }: { go?:
                 ) : null}
                 <p id="slug-hint" className="text-muted-foreground text-sm" role="status">
                   {problem ??
-                    (slug === ''
-                      ? 'L’indirizzo lo ricaviamo dal nome.'
-                      : isFree
-                        ? `${spaceHost()}/${slug} è libero.`
-                        : `${spaceHost()}/${slug} …`)}
+                    (current?.state === 'failed'
+                      ? current.reason
+                      : slug === ''
+                        ? 'L’indirizzo lo ricaviamo dal nome.'
+                        : isFree
+                          ? `${spaceHost()}/${slug} è libero.`
+                          : `${spaceHost()}/${slug} …`)}
                   {!editingSlug && slug !== '' && (
                     <>
                       {' '}

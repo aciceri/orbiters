@@ -17,6 +17,10 @@ x-api-environment: &api-environment
   # gets exactly what a bare `Settings()` would. Booleans and the enum default to a
   # literal, never to an empty string, which pydantic would refuse at start-up.
   PIGROCRM_TIMEZONE: ${PIGROCRM_TIMEZONE:-Europe/Rome}
+  # Six months, sliding (spec 9 §5.6): unlike ACCESS_TOKEN_MINUTES this one is a
+  # genuine per-installation choice and `.env.example` already documents it as one,
+  # so it belongs here rather than in NOT_FORWARDED (REB-257).
+  PIGROCRM_REFRESH_TOKEN_DAYS: ${PIGROCRM_REFRESH_TOKEN_DAYS:-180}
   PIGROCRM_MCP_FULL_ACCESS: ${PIGROCRM_MCP_FULL_ACCESS:-false}
   PIGROCRM_STORAGE_BACKEND: ${PIGROCRM_STORAGE_BACKEND:-local}
   PIGROCRM_GDRIVE_SERVICE_ACCOUNT_JSON: ${PIGROCRM_GDRIVE_SERVICE_ACCOUNT_JSON:-}

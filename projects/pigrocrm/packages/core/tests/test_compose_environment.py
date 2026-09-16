@@ -41,7 +41,6 @@ NOT_FORWARDED: dict[str, str] = {
     # answer rather than an accident. Forwarding them costs nothing but a line each, and
     # the day one of them needs moving, this list is where the decision is recorded.
     "access_token_minutes": "durata del token: il default vale per ogni installazione",
-    "refresh_token_days": "durata del refresh: come sopra",
     "magic_link_minutes": "durata del link via mail: come sopra",
     "gmail_backfill_days": "quanto indietro guarda il primo sync: default",
     "gmail_watermark_overlap_hours": "sovrapposizione del watermark: default",
@@ -191,6 +190,17 @@ def test_a_secret_is_required_and_never_defaulted() -> None:
     """`JWT_SECRET` uses compose's `:?` form, so a deploy without one fails to start
     instead of running on a value somebody can guess."""
     assert "?" in str(_shared_environment()[f"{PREFIX}JWT_SECRET"])
+
+
+def test_refresh_token_days_is_forwarded_with_its_documented_default() -> None:
+    """REB-257: `.env.example` already documented this as a per-installation choice
+    (the sliding six-month session), while NOT_FORWARDED exempted it as if it were a
+    ceiling nobody moves, so no `.env` could ever change it. Pinned here, with the
+    same default `Settings` compiles in, so it cannot quietly fall back into
+    NOT_FORWARDED without this failing."""
+    variable = f"{PREFIX}REFRESH_TOKEN_DAYS"
+    default = Settings.model_fields["refresh_token_days"].default
+    assert _shared_environment()[variable] == f"${{{variable}:-{default}}}"
 
 
 def test_both_python_services_share_the_one_environment_block() -> None:

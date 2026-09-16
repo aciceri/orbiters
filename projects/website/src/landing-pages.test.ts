@@ -48,11 +48,14 @@ describe.each(PAGES)('%s', (name) => {
   })
 
   it('requests nothing from another origin, bar the one script it declares', () => {
-    for (const [, url] of page.matchAll(/(?:href|src)="(https?:\/\/[^"]+)"/g) as IterableIterator<[string, string]>) {
-      // REB-111: `<link rel="canonical">` carries this page's own absolute address,
-      // on this origin. It is metadata a crawler reads, never a request anywhere, and
-      // is checked on its own two lines below rather than against the allowlist here.
-      if (url.startsWith(`${SITE_HOST}/`)) continue
+    // REB-111: `<link rel="canonical">` carries this page's own absolute address, on
+    // this origin. It is metadata a crawler reads, never a request anywhere, and is
+    // checked on its own two lines below rather than against the allowlist here; only
+    // that exact value is exempt, not every same-origin absolute URL.
+    const canonical = page.match(/<link\b[^>]*\brel="canonical"[^>]*\bhref="([^"]*)"/)?.[1]
+    for (const match of page.matchAll(/(?:href|src)="(https?:\/\/[^"]+)"/g)) {
+      const url = match[1]!
+      if (url === canonical) continue
       // An href the reader clicks -- the repository, the hosted signup, or OpenAI's
       // own privacy policy, which the cookie section has to point at -- is fine; a
       // subresource is not. `humancraft.tech` is in the list because Italian law

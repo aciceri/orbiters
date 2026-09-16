@@ -149,6 +149,17 @@ const PATH_OF: Record<PageFile, string> = Object.fromEntries(
   Object.entries(PAGES).map(([path, file]) => [file.replace(/^\//, ''), path]),
 ) as Record<PageFile, string>
 
+describe('PAGE_FILES, the set this file checks', () => {
+  it('is exactly the set of files the path map serves', () => {
+    // A page in PAGES but missing here would get no canonical/og:url assertion at
+    // all, the hole REB-111 closes; a page here but missing from PAGES would make
+    // PATH_OF[name] undefined and the expected value a nonsense string. Either drift
+    // fails on its own terms rather than as a confusing string mismatch below.
+    const served = Object.values(PAGES).map((file) => file.replace(/^\//, ''))
+    expect([...PAGE_FILES].sort()).toEqual(served.sort())
+  })
+})
+
 describe.each(PAGE_FILES)('%s', (name) => {
   it('links only to what the site actually serves', () => {
     const hrefs = [...html[name].matchAll(/<a\s[^>]*\bhref="([^"]+)"/g)].map((m) => m[1]!)
@@ -158,8 +169,10 @@ describe.each(PAGE_FILES)('%s', (name) => {
 
   it('declares its own canonical address, and og:url agrees with the path map', () => {
     const expected = `${SITE_HOST}${PATH_OF[name]}`
-    const canonical = html[name].match(/<link rel="canonical" href="([^"]*)"\s*\/>/)?.[1]
-    const ogUrl = html[name].match(/<meta property="og:url" content="([^"]*)"\s*\/>/)?.[1]
+    // A tolerant attribute-order pattern, like the `meta()` helper elsewhere in the
+    // suite, so a reflow or a reordered attribute is not mistaken for a missing tag.
+    const canonical = html[name].match(/<link[^>]*\brel="canonical"[^>]*\bhref="([^"]*)"/)?.[1]
+    const ogUrl = html[name].match(/<meta[^>]*\bproperty="og:url"[^>]*\bcontent="([^"]*)"/)?.[1]
     expect(canonical, `${name} <link rel="canonical">`).toBe(expected)
     expect(ogUrl, `${name} og:url`).toBe(expected)
   })

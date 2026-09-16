@@ -95,6 +95,11 @@ jobs:
       # into production data. It has served this stack's `/hub/` since 2026-09-10,
       # the way letsrebase.com serves production's. Ports: the same section.
       health-url: http://127.0.0.1:8086/health
+      # The mcp service (REB-213) has a /health of its own on REBASE_MCP_PORT
+      # (projects/hub/AGENTS.md), curled here so a crashed mcp container fails the
+      # deploy too (REB-246), rather than only showing up when an agent's client
+      # gets a 502 from /api/hub/mcp.
+      extra-health-url: http://127.0.0.1:8089/health
       url: https://preview.letsrebase.com/hub/
     secrets: inherit
 
@@ -111,5 +116,6 @@ jobs:
       compose-dir: projects/hub
       compose-project: rebase
       health-url: http://127.0.0.1:8084/health
+      extra-health-url: http://127.0.0.1:8088/health
       url: https://letsrebase.com/hub/
     secrets: inherit

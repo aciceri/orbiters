@@ -241,22 +241,26 @@ function darwinDir(name, fallback) {
 }
 
 function seatbeltProfile(args) {
-  mkdirSync(dirname(args.out), { recursive: true })
+  // `tmpdir()` is $TMPDIR, where this script and Playwright put their temp files, and it
+  // is not always the getconf directory (CI runners, direnv, a sandboxed shell set it).
   const writable = [
     dirname(args.out),
+    tmpdir(),
     darwinDir('DARWIN_USER_TEMP_DIR', tmpdir()),
-    darwinDir('DARWIN_USER_CACHE_DIR', join(tmpdir(), '..', 'C')),
+    darwinDir('DARWIN_USER_CACHE_DIR', ''),
     '/dev',
-  ].map((dir) => realpathSync(dir))
+  ]
+  const resolved = [
+    ...new Set(writable.filter((dir) => dir && existsSync(dir)).map((dir) => realpathSync(dir))),
+  ]
   return [
     '(version 1)',
     '(allow default)',
     '(deny file-write*)',
-    ...writable.map((dir) => `(allow file-write* (subpath ${sbPath(dir)}))`),
+    ...resolved.map((dir) => `(allow file-write* (subpath ${sbPath(dir)}))`),
     '(deny network*)',
     '(allow network-outbound (remote ip "localhost:*"))',
     '(allow network-inbound (local ip "localhost:*"))',
-    '(allow network-bind (local ip "localhost:*"))',
     '(allow network* (remote unix-socket))',
     '(allow network* (local unix-socket))',
     '',
@@ -275,24 +279,34 @@ function runInSandbox(args) {
     `record.mjs: under Seatbelt: writes only to ${dirname(args.out)}, the temp and cache` +
       ' directories and /dev; network only to localhost (--no-sandbox opts out)',
   )
+  // Ctrl-C reaches the whole process group: the inner run shuts Chromium down, and the
+  // outer one has to survive long enough to remove the profile, then die the same way.
+  const ignore = () => {}
+  process.on('SIGINT', ignore)
+  process.on('SIGTERM', ignore)
+  let result
   try {
-    const result = spawnSync(
+    result = spawnSync(
       '/usr/bin/sandbox-exec',
-      ['-f', profile, process.execPath, ...process.argv.slice(1)],
+      ['-f', profile, process.execPath, ...process.execArgv, ...process.argv.slice(1)],
       { stdio: 'inherit', env: { ...process.env, [SANDBOXED]: '1' } },
     )
-    if (result.error) {
-      console.error(`record.mjs: sandbox-exec failed to start: ${result.error.message}`)
-      return 1
-    }
-    return result.status ?? 1
   } finally {
     rmSync(dir, { recursive: true, force: true })
+    process.off('SIGINT', ignore)
+    process.off('SIGTERM', ignore)
   }
+  if (result.error) {
+    console.error(`record.mjs: sandbox-exec failed to start: ${result.error.message}`)
+    return 1
+  }
+  if (result.signal) process.kill(process.pid, result.signal)
+  return result.status ?? 1
 }
 
 const args = parseArgs(process.argv.slice(2))
-if (!process.env[SANDBOXED]) {
+mkdirSync(dirname(args.out), { recursive: true })
+if (process.env[SANDBOXED] !== '1') {
   if (args.noSandbox) console.error('record.mjs: --no-sandbox, recording unconfined')
   else {
     const status = runInSandbox(args)

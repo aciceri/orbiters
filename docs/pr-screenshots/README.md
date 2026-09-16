@@ -165,8 +165,9 @@ new user meets after logging in. `--keep-webm` keeps the raw recording beside th
 **The run is confined.** On macOS the script re-executes itself under Seatbelt
 (`sandbox-exec`, the mechanism Claude Code's own command sandbox uses on a Mac) with a
 profile written for the run: Chromium, the steps module and ffmpeg may write only to the
-output file's directory, the user's temp and cache directories and `/dev`, and may open
-network connections only to `localhost`, where the app under test runs. So a steps
+output file's directory, the temp directories (`$TMPDIR` and the user's own under
+`/var/folders`), the user's cache directory and `/dev`, and may open network connections
+only to `localhost`, where the app under test runs. So a steps
 module cannot write a file elsewhere, and a page under test cannot call home while it is
 recorded (measured: a write to `$HOME` fails with `EPERM`, a `fetch` to example.com
 fails from the page and from node, `localhost:4173` answers). Reads are not confined:

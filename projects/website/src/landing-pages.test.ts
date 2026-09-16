@@ -27,7 +27,7 @@ describe.each(PAGES)('%s', (name) => {
     // form that links to them, so they title themselves after the site they are on
     // rather than after the CRM. index.html is the landing (at / since ORB-145;
     // community.html is the community page at /community) and still names the CRM in
-    // its title, the perk, regardless of Ivan's separate «freelance» exception
+    // its title, the largest of the perks, regardless of Ivan's separate «freelance»
     // (ORB-24, positioning.md line 85); see the brand-link assertion below for the
     // same title/brand split.
     expect(title).toContain(name === 'index.html' ? 'PigroCRM' : 'rebase')
@@ -131,11 +131,16 @@ describe('index.html', () => {
     // Since 2026-09-08 PigroCRM is what a member of Orbiters gets: the page says what
     // Orbiters is first, in its own words, and only then what the perks are. Since
     // REB-68 the CRM is named as one of a set, not the whole answer: its own kicker
-    // is just "PigroCRM", never "il perk".
+    // is just "PigroCRM", never "il perk", and the set names both members before the
+    // CRM's own expanded block follows.
     const claim = page.indexOf('ma non da soli.')
-    const perks = page.indexOf('aria-labelledby="perks"')
+    const perks = page.indexOf('>I perk<')
+    const crmDetail = page.indexOf('>PigroCRM</p>')
     expect(claim).toBeGreaterThan(0)
     expect(perks).toBeGreaterThan(claim)
+    expect(page).toContain('<h3>PigroCRM</h3>')
+    expect(page).toContain('<h3>La guida</h3>')
+    expect(crmDetail).toBeGreaterThan(perks)
     expect(page).not.toContain('PigroCRM, il perk')
     // The hero lead is the one line the pitch deck's cover uses (Ivan, ORB-150); the
     // roles by name moved to the description and the steps, checked further down.

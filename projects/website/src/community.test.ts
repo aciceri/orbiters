@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { SITE_HOST } from './path-map-plugin'
 
 const html = readFileSync(join(__dirname, 'community.html'), 'utf-8')
 const css = readFileSync(join(__dirname, 'community.css'), 'utf-8')
@@ -98,7 +99,13 @@ describe('community.html', () => {
     // written into the markup, no second analytics stack, and no state kept on the
     // visitor's machine by our own script. Which pages may carry the pixel, and what
     // it is allowed to do, is `pixel.test.ts`.
-    expect(html).not.toMatch(/(?:href|src)="https?:/)
+    // REB-111: the canonical link is the one absolute href allowed, and only when it
+    // points at this origin, never a third party; `links.test.ts` checks it agrees
+    // with the path map, so here it is stripped before checking the rest of the
+    // markup carries no other one.
+    const canonicalTag = html.match(/<link rel="canonical" href="([^"]*)"\s*\/>\s*/)
+    const withoutCanonical = canonicalTag?.[1]?.startsWith(`${SITE_HOST}/`) ? html.replace(canonicalTag[0], '') : html
+    expect(withoutCanonical).not.toMatch(/(?:href|src)="https?:/)
     expect(html).not.toMatch(/gtag|googletagmanager|plausible|fathom|hotjar/i)
     expect(js).not.toMatch(/https?:\/\//)
     expect(js).not.toMatch(/localStorage|sessionStorage|document\.cookie|navigator\.sendBeacon/)

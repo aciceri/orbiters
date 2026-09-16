@@ -235,11 +235,14 @@ tested on a branch and is proven on the trunk instead.
   every repository, granted by the org owner `slavni96`), and a branch or a PR carrying
   the issue id **does** link itself: PR #33 attached to REB-80 within 25 seconds.
   Moving a state is a separate mechanism, the team's own pull request automation in
-  Linear's workflow settings, and it is not configured here: that same linked PR left
-  REB-80 in `In Progress`. So keep moving states by hand, with the evidence in a
-  comment, and treat an issue reference in a commit body as a pointer rather than a
-  link. Drop the manual step only once a merge is seen closing its own issue, and
-  update this line with the date when it is.
+  Linear's workflow settings, and since 2026-09-16 it is **on**: a PR opening on a
+  branch that carries the id moves the card to `In Progress` (a hand-set `In Review` is
+  overwritten seconds later), and the merge moves it to `Done` (REB-247: `In Review` at
+  17:30:40, `In Progress` at 17:30:43, `Done` at 17:46:42 as PR #161 merged). What stays
+  by hand: the `In Progress` move before the branch exists, with the neighbour scan on
+  the card; every comment, the closing evidence included, written before or right after
+  the merge; `Canceled`; and the `In production` comment when a tag ships. An issue
+  reference in a commit body is a pointer, not a link.
 
 Find the issue before you start, check it is yours, move it as you go, and close it
 only against evidence on the surface it is about. A defect you found and did not fix

@@ -141,14 +141,16 @@ describe('sitemap.xml (REB-110)', () => {
     const decision = route('/sitemap.xml')
     expect(decision.kind).toBe('generated')
     if (decision.kind !== 'generated') throw new Error('unreachable')
-    expect(decision.contentType).toBe('application/xml; charset=utf-8')
+    expect(decision.contentType).toBe('text/xml; charset=utf-8')
     const locs = [...decision.content.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1])
     const expected = Object.keys(PAGES)
       .filter((path) => !(NOINDEX as readonly string[]).includes(path))
       .map((path) => `${SITE_HOST}${path}`)
-    // A page removed from PAGES with nothing else changed shrinks `expected` and this
-    // still catches it: `toEqual` on two sorted arrays fails on either side being
-    // longer, not only on a mismatched element.
+    // Both directions: a `<loc>` the generator emits for a page this set excludes, and
+    // a page in the set the generator leaves out. Sorted `toEqual` fails on either
+    // side being longer, not only on a mismatched element. A page removed from PAGES
+    // legitimately leaves the sitemap; the nginx parity test above is what catches it
+    // being removed from one map and not the other.
     expect([...locs].sort()).toEqual([...expected].sort())
   })
 
@@ -173,8 +175,9 @@ describe('sitemap.xml (REB-110)', () => {
 
 describe('NOINDEX, against every page\'s own head', () => {
   it('matches exactly the pages that declare <meta name="robots" content="noindex">', () => {
+    const noindex = /<meta\s[^>]*name="robots"[^>]*content="[^"]*\bnoindex\b/
     const actuallyNoindex = Object.entries(PAGES)
-      .filter(([, file]) => readFileSync(join(__dirname, file.slice(1)), 'utf-8').includes('<meta name="robots" content="noindex"'))
+      .filter(([, file]) => noindex.test(readFileSync(join(__dirname, file.slice(1)), 'utf-8')))
       .map(([path]) => path)
       .sort()
     expect([...NOINDEX].sort()).toEqual(actuallyNoindex)

@@ -530,13 +530,13 @@ test.describe('the path map, as production serves it', () => {
   test('sitemap.xml is served, lists the indexable pages, and the build actually wrote it', async ({ request }) => {
     const response = await request.get('/sitemap.xml')
     expect(response.status()).toBe(200)
-    expect(response.headers()['content-type']).toBe('application/xml; charset=utf-8')
+    expect(response.headers()['content-type']).toBe('text/xml; charset=utf-8')
     const built = readFileSync(new URL('../dist/sitemap.xml', import.meta.url), 'utf-8')
     for (const path of ['/', '/pigrocrm', '/community', '/privacy', '/termini']) {
       expect(built).toContain(`<loc>https://letsrebase.com${path}</loc>`)
     }
     // /pitch is noindex and stays out of the sitemap, the point of REB-110.
-    expect(built).not.toContain('/pitch')
+    expect(built).not.toContain('<loc>https://letsrebase.com/pitch</loc>')
   })
 })
 

@@ -85,7 +85,10 @@ function generate(pathname: GeneratedPath): { content: string; contentType: stri
     case '/robots.txt':
       return { content: robotsTxt(), contentType: 'text/plain; charset=utf-8' }
     case '/sitemap.xml':
-      return { content: sitemapXml(), contentType: 'application/xml; charset=utf-8' }
+      // text/xml, not application/xml: nginx serves the built file from disk under
+      // its own mime.types, which maps .xml to text/xml, and this module's whole
+      // point is saying the same thing nginx says.
+      return { content: sitemapXml(), contentType: 'text/xml; charset=utf-8' }
   }
 }
 
@@ -199,7 +202,7 @@ export function pathMapPlugin(): Plugin {
     // `bundle.write()`, exactly when there is an output directory to write into.
     writeBundle(options) {
       const dir = options.dir
-      if (!dir) throw new Error('website-path-map: the build has no output directory, so robots.txt cannot be written')
+      if (!dir) throw new Error('website-path-map: the build has no output directory, so GENERATED_PATHS cannot be written')
       for (const pathname of GENERATED_PATHS) {
         writeFileSync(join(dir, pathname.slice(1)), generate(pathname).content)
       }

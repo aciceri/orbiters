@@ -71,18 +71,17 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-pigrocrm}
     # Data on the host, never in a Docker-managed volume: a `docker system prune`,
     # a Docker Desktop reset or a reinstall must not be able to take the register with
-    # them (decision of 2026-09-04, after a daemon reset scared everyone). Set
-    # PIGROCRM_DATA_DIR to a directory outside the repository, e.g. ~/pigrocrm-data/postgres.
+    # them (decision of 2026-09-04, after a daemon reset scared everyone).
     #
-    # The default is written `../../data/postgres` rather than `./data/postgres`
-    # because compose resolves a relative volume against the directory of this file,
-    # and this file moved down two levels when the repository became a monorepo. The
-    # two dots keep the default pointing at exactly the same directory on an existing
-    # server as before the move -- an installation that never set PIGROCRM_DATA_DIR
-    # would otherwise come back up against an empty data directory, with a working
-    # Postgres, no error anywhere, and its register apparently gone.
+    # No default, on purpose (docs/adding-a-project.md §7, the hub's own compose file
+    # does the same): a `.env` that forgets PIGROCRM_DATA_DIR must fail the stack here,
+    # loudly, rather than bring Postgres up on an empty relative directory with the
+    # health check answering 200 and the real register unmounted. Both live `.env`
+    # files already carry the key. A build never mounts it, but compose interpolates
+    # the whole file before building, so `docker compose build` needs a value too: CI
+    # and preflight pass a throwaway one (REB-258).
     volumes:
-      - ${PIGROCRM_DATA_DIR:-../../data/postgres}:/var/lib/postgresql/data
+      - ${PIGROCRM_DATA_DIR:?set it in .env, to this stack's own directory outside the repository}:/var/lib/postgresql/data
     ports:
       - '${PIGROCRM_DB_PORT:-127.0.0.1:55432}:5432'
     healthcheck:

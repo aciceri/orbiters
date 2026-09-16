@@ -523,6 +523,21 @@ test.describe('the path map, as production serves it', () => {
     const built = readFileSync(new URL('../dist/robots.txt', import.meta.url), 'utf-8')
     expect(built).toContain('Sitemap: https://letsrebase.com/sitemap.xml')
   })
+
+  // Same reasoning as robots.txt above: the preview middleware would answer this from
+  // memory even if the build never wrote it, so the file this webServer's own build
+  // produced is what actually proves the writeBundle hook ran (REB-110).
+  test('sitemap.xml is served, lists the indexable pages, and the build actually wrote it', async ({ request }) => {
+    const response = await request.get('/sitemap.xml')
+    expect(response.status()).toBe(200)
+    expect(response.headers()['content-type']).toBe('text/xml; charset=utf-8')
+    const built = readFileSync(new URL('../dist/sitemap.xml', import.meta.url), 'utf-8')
+    for (const path of ['/', '/pigrocrm', '/community', '/privacy', '/termini']) {
+      expect(built).toContain(`<loc>https://letsrebase.com${path}</loc>`)
+    }
+    // /pitch is noindex and stays out of the sitemap, the point of REB-110.
+    expect(built).not.toContain('<loc>https://letsrebase.com/pitch</loc>')
+  })
 })
 
 // The two policy pages are the two whose text column carries long unbreakable strings:

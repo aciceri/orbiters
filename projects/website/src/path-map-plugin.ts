@@ -41,10 +41,19 @@ export const REDIRECTS: Readonly<Record<string, string>> = { '/orbiters': '/comm
 
 /** Paths nginx serves via `try_files`, exactly like `PAGES`, whose file this plugin
  *  writes at build time instead of Vite building it from an HTML input named in
- *  `vite.config.ts`: robots.txt (REB-109), naming the sitemap. A page added to
+ *  `vite.config.ts`: robots.txt (REB-109), naming the sitemap, and sitemap.xml
+ *  (REB-110), listing every entry in `PAGES` that is not in `NOINDEX`. A page added to
  *  `PAGES` needs no edit here. */
-export const GENERATED_PATHS = ['/robots.txt'] as const
+export const GENERATED_PATHS = ['/robots.txt', '/sitemap.xml'] as const
 type GeneratedPath = (typeof GENERATED_PATHS)[number]
+
+/** Pages excluded from the sitemap, in the same list shape as `GENERATED_PATHS` since
+ *  neither is a `PAGES`-style map from a path to a file: today just `/pitch`, which
+ *  carries `<meta name="robots" content="noindex">` (`src/pitch.html:8`) and would
+ *  otherwise be the one page in `PAGES` a sitemap tells a crawler to index anyway.
+ *  `path-map-plugin.test.ts` reads every page's own head and fails if this list ever
+ *  disagrees with it. */
+export const NOINDEX = ['/pitch'] as const
 
 /** No `Disallow` line: `/pitch` is the one page a visitor reaches that this site
  *  would rather a crawler skipped, and it already says so with its own
@@ -58,12 +67,28 @@ function robotsTxt(): string {
   return `User-agent: *\nSitemap: ${SITE_HOST}/sitemap.xml\n`
 }
 
+/** No `lastmod`, `changefreq` or `priority`: none of them would be true. A build
+ *  timestamp on every page every deploy tells a crawler nothing and is worse than
+ *  their absence (REB-110). */
+function sitemapXml(): string {
+  const urls = Object.keys(PAGES)
+    .filter((path) => !(NOINDEX as readonly string[]).includes(path))
+    .map((path) => `  <url><loc>${SITE_HOST}${path}</loc></url>`)
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`
+}
+
 /** The content and `Content-Type` for one of `GENERATED_PATHS`, computed fresh on
  *  every call: cheap, and it keeps a single function honest about what ships. */
 function generate(pathname: GeneratedPath): { content: string; contentType: string } {
   switch (pathname) {
     case '/robots.txt':
       return { content: robotsTxt(), contentType: 'text/plain; charset=utf-8' }
+    case '/sitemap.xml':
+      // text/xml, not application/xml: nginx serves the built file from disk under
+      // its own mime.types, which maps .xml to text/xml, and this module's whole
+      // point is saying the same thing nginx says.
+      return { content: sitemapXml(), contentType: 'text/xml; charset=utf-8' }
   }
 }
 
@@ -177,7 +202,7 @@ export function pathMapPlugin(): Plugin {
     // `bundle.write()`, exactly when there is an output directory to write into.
     writeBundle(options) {
       const dir = options.dir
-      if (!dir) throw new Error('website-path-map: the build has no output directory, so robots.txt cannot be written')
+      if (!dir) throw new Error('website-path-map: the build has no output directory, so GENERATED_PATHS cannot be written')
       for (const pathname of GENERATED_PATHS) {
         writeFileSync(join(dir, pathname.slice(1)), generate(pathname).content)
       }

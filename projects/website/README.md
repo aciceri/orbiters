@@ -76,10 +76,11 @@ thing twice, once for production and once for the dev and preview servers. Chang
 and change the other: `path-map-plugin.test.ts` reads `nginx.conf` and fails until you
 have.
 
-`robots.txt` (REB-109) is a third kind of build output, next to the six pages and the
-hashed assets: `src/path-map-plugin.ts`'s own `writeBundle` hook writes it straight
-into `dist/`, since there is no HTML input in `vite.config.ts` to build it from, and
-`GENERATED_PATHS` in that file is where the next file made this way is listed.
+`robots.txt` (REB-109) and `sitemap.xml` (REB-110) are a third kind of build output,
+next to the six pages and the hashed assets: `src/path-map-plugin.ts`'s own
+`writeBundle` hook writes both straight into `dist/`, since neither has an HTML input
+in `vite.config.ts` to build it from. `GENERATED_PATHS` in that file lists them, and
+is where the next file made this way goes.
 
 `deploy/letsrebase.conf` is the host's vhost: it terminates TLS and sends everything
 here except what belongs to the other tenants of the origin: `/hub/`, `/api/hub/` and

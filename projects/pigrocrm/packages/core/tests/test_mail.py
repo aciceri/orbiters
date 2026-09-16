@@ -128,6 +128,7 @@ _WEEK_START = date(2026, 9, 7)  # a Monday
 
 def _invoice(
     *,
+    numero: str = "2026/1",
     cliente: str = "Cliente Prova",
     importo: Decimal = Decimal("0"),
     data: date = date(2026, 9, 8),
@@ -137,7 +138,7 @@ def _invoice(
 ) -> DigestInvoice:
     return DigestInvoice(
         invoice_id=uuid4(),
-        numero="2026/1",
+        numero=numero,
         cliente=cliente,
         importo=importo,
         data=data,
@@ -152,6 +153,7 @@ def digest_with(
     emesse: int = 0,
     scaduto: Decimal = Decimal("0"),
     cliente: str | None = None,
+    numero: str | None = None,
     incassate: int = 0,
     vinti_da_fatturare: int = 0,
     ore_non_fatturate: Decimal = Decimal("0"),
@@ -164,12 +166,19 @@ def digest_with(
     segnali: int = 0,
 ) -> WeeklyDigest:
     """A `WeeklyDigest` with every list empty and every figure zero -- a still week --
-    save for whichever section a test asks for by count. `cliente` alone (with no
-    `scaduto`) is enough to put one row in «scadute», which is what the escaping test
-    needs without also claiming a debt."""
+    save for whichever section a test asks for by count. `cliente` or `numero` alone
+    (with no `scaduto`) is enough to put one row in «scadute», which is what the
+    escaping tests need without also claiming a debt."""
     scadute = (
-        [_invoice(cliente=cliente or "Cliente Prova", importo=scaduto, giorni_di_ritardo=12)]
-        if scaduto or cliente is not None
+        [
+            _invoice(
+                cliente=cliente or "Cliente Prova",
+                numero=numero or "2026/1",
+                importo=scaduto,
+                giorni_di_ritardo=12,
+            )
+        ]
+        if scaduto or cliente is not None or numero is not None
         else []
     )
     ore = (
@@ -255,12 +264,27 @@ def test_only_sections_with_rows_appear_and_every_link_says_da_digest() -> None:
     assert "Emesse questa settimana" in mail.html and "Da incassare" not in mail.html
     assert "da=digest" in mail.html and "Non inviarmi più il resoconto" in mail.html
     assert "Emesse questa settimana" in mail.text
+    # §3.1 item 3: «Numero, cliente, importo, stato» -- the number is part of the row.
+    assert "2026/1" in mail.text and "2026/1" in mail.html
 
 
 def test_external_values_are_escaped() -> None:
     mail = digest_mail("ada@example.it", digest_with(cliente="<b>ACME</b>"), public_url="https://x")
     assert mail.html is not None
     assert "<b>ACME</b>" not in mail.html and "&lt;b&gt;ACME&lt;/b&gt;" in mail.html
+    hostile = digest_mail(
+        "ada@example.it", digest_with(numero="<img src=x onerror=alert(1)>"), public_url="https://x"
+    )
+    assert hostile.html is not None
+    assert "<img src=x" not in hostile.html and "&lt;img src=x" in hostile.html
+
+
+def test_the_overdue_list_links_to_the_full_list() -> None:
+    mail = digest_mail(
+        "a@b.it", digest_with(scaduto=Decimal("100")), public_url="https://pigro.test/ada"
+    )
+    assert mail.html is not None
+    assert "https://pigro.test/ada/app/fatture?scadute=true&da=digest" in mail.text
 
 
 def test_a_quiet_week_offers_the_assistant() -> None:

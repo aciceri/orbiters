@@ -411,10 +411,11 @@ def _da_digest(url: str) -> str:
 
 
 def _invoice_line(inv: DigestInvoice, extra: str = "") -> str:
-    """The three things every invoice row shows -- cliente, importo, data -- plus
-    whichever one extra fact the section is about. Not yet escaped: the caller decides,
-    once, whether this line is going into the text or the html."""
-    base = f"{inv.cliente} — {euro(inv.importo)} — {giorno_breve(inv.data)}"
+    """The four things every invoice row shows -- numero, cliente, importo, data --
+    plus whichever one extra fact the section is about (§3.1 item 3: «Numero, cliente,
+    importo, stato»). Not yet escaped: the caller decides, once, whether this line is
+    going into the text or the html."""
+    base = f"{inv.numero} — {inv.cliente} — {euro(inv.importo)} — {giorno_breve(inv.data)}"
     return f"{base} — {extra}" if extra else base
 
 
@@ -463,7 +464,7 @@ def digest_mail(to: str, digest: WeeklyDigest, *, public_url: str) -> Mail:
 
     # 1. Da incassare: le scadute, dalla più in ritardo, poi quelle in scadenza.
     scadute_totale = _scadute_totale(digest)
-    righe_incassare = [
+    righe_incassare: list[tuple[str, str]] = [
         _row(
             _invoice_line(
                 inv,
@@ -475,7 +476,16 @@ def digest_mail(to: str, digest: WeeklyDigest, *, public_url: str) -> Mail:
             label="Prepara il sollecito",
         )
         for inv in digest.scadute
-    ] + [_row(_invoice_line(inv, "in scadenza")) for inv in digest.in_scadenza]
+    ]
+    if digest.scadute:
+        righe_incassare.append(
+            _row(
+                "Tutte le fatture scadute",
+                url=link("/app/fatture?scadute=true"),
+                label="Vai alle fatture",
+            )
+        )
+    righe_incassare += [_row(_invoice_line(inv, "in scadenza")) for inv in digest.in_scadenza]
     titolo_incassare = "Da incassare" + (f" — {euro(scadute_totale)}" if scadute_totale else "")
     sezione(titolo_incassare, righe_incassare)
 

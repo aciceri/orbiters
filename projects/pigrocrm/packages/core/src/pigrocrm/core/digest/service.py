@@ -21,7 +21,7 @@ the mail are the same walk.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -46,17 +46,22 @@ from pigrocrm.core.gmail.solleciti import CHASEABLE_STATO, SollecitiService
 from pigrocrm.core.invoices.models import Invoice
 from pigrocrm.core.invoices.naming import numero_completo
 from pigrocrm.core.invoices.repository import InvoiceRepository
+from pigrocrm.core.invoices.schemas import StatoPagamento
 from pigrocrm.core.timetracking.repository import TimeEntryRepository
 
-# §3.1: «quelle in scadenza nei prossimi sette giorni». Counted from the day *after* the
-# closed week, so the two halves of «Da incassare» cannot name the same invoice: an
-# invoice due inside the week just ended is already overdue and belongs to `scadute`.
+# §3.1: «quelle in scadenza nei prossimi sette giorni», counted from the day *after* the
+# closed week. That is enough to keep the two halves of «Da incassare» apart for the week
+# the cron sends -- its window is in the future, where nothing is overdue yet -- and not
+# enough for a week recomputed with `--data`: a window that has since gone by holds
+# invoices that are overdue *today*, which is the day `SollecitiService` reasons about. So
+# `build` also subtracts the `scadute` by id below; this constant is only the width.
 IN_SCADENZA_GIORNI = 7
 
-# How many stage changes are read before the week filter. Two hundred is far more than a
-# freelancer's week and still one bounded query; a space that moved more than that in a
+# How many stage changes are read *inside* the week's window. Two hundred is far more than
+# a freelancer's week and still one bounded query; a space that moved more than that in a
 # week has a report whose «deal mossi» list is truncated, which is better than a mail that
-# takes a table scan to build.
+# takes a table scan to build. Since the window is in the query, the rows dropped by this
+# limit are the week's own oldest ones, never a newer week's.
 _MOVIMENTI_LETTI = 200
 
 # The same ceiling the commercial dashboard puts on the same list.
@@ -66,7 +71,12 @@ _OFFERTE_MOSTRATE = 20
 # because `SollecitoCandidate` does not carry the two columns and the mail prints them.
 # Its query is `tipo = 'fattura' AND stato = 'emessa' AND stato_pagamento <> 'incassato'`,
 # and `StatoPagamento` has exactly two values, so an unpaid one is `da_incassare`.
-_SCADUTA_STATO_PAGAMENTO = "da_incassare"
+#
+# Annotated with the register's own type rather than left a bare `str`: `StatoPagamento`
+# is a `Literal`, not an enum, so there is no member to import -- but with the annotation
+# `mypy` checks this value against the closed set the column is written from, which is the
+# whole of what an enum member would have bought here.
+_SCADUTA_STATO_PAGAMENTO: StatoPagamento = "da_incassare"
 
 # `activities.stage_changed` writes `{"from": <nome>, "to": <nome>}` -- the stage *names*,
 # not their ids (`deals/service.py::move_stage`). So the destination needs no second query
@@ -170,6 +180,12 @@ class DigestService:
         in_scadenza_rows = invoices.list_in_scadenza(
             a + timedelta(days=1), a + timedelta(days=IN_SCADENZA_GIORNI)
         )
+        # One invoice, one line. `scadute` is «overdue today» and `in_scadenza` is «due in
+        # the seven days after the week», and for a week recomputed with `--data` those two
+        # windows overlap: the same invoice would be printed twice in one section, once
+        # with its days of delay and once as though it were still coming.
+        scadute_ids = {riga.invoice_id for riga in scadute}
+        in_scadenza_rows = [row for row in in_scadenza_rows if row.id not in scadute_ids]
         # One lookup for all three lists, after the rows are chosen: a label query per row
         # is the N+1 `customer_names` exists to prevent.
         nomi = invoices.customer_names(
@@ -273,13 +289,22 @@ class DigestService:
         and none of the three predicates above can return such a row. They are here because
         the model's types are not `| None` and a `mypy` cast would hide the same fact
         without stating it.
+
+        A row with no date at all is the one case that gets no fallback. `date.min` would
+        put «lun 1 gen» of the year 1 in a mail and go on being sent every Monday; the
+        three predicates cannot produce it, so if it ever arrives the register holds
+        something this report has no honest line for, and the space is better skipped with
+        the invoice's id in the log (`cli.digest` prints `saltato` and moves on).
         """
+        giorno = data or invoice.data_emissione or invoice.data_scadenza
+        if giorno is None:
+            raise ValueError(f"invoice {invoice.id} has no date to print")
         return DigestInvoice(
             invoice_id=invoice.id,
             numero=numero_completo(invoice.anno or 0, invoice.numero or 0),
             cliente=nomi.get(invoice.customer_id, ""),
             importo=invoice.totale,
-            data=data or invoice.data_emissione or invoice.data_scadenza or date.min,
+            data=giorno,
             stato=invoice.stato,
             stato_pagamento=invoice.stato_pagamento,
         )
@@ -287,27 +312,34 @@ class DigestService:
     def _movimenti(self, deals: DealRepository, da: date, a: date) -> list[DigestDealMove]:
         """The deals that changed stage inside the week (§3.1, section 6).
 
-        Read by kind and filtered in Python rather than by a period query on `activities`:
-        `by_kind` is the method the timeline already owns, the bound is one week of one
-        freelancer, and a second `WHERE occurred_at BETWEEN` variant of it would be a
-        second definition of the same read.
+        Read by kind **and by window**, never by kind alone: `by_kind` answers the newest
+        `limit` rows of the whole table, so filtering them here in Python would hand this
+        week whatever is left after everything written since. The cron never notices --
+        it reports the week that has just closed -- and `pigrocrm digest --data` for an
+        older week silently loses `deal_mossi` as soon as two hundred stage changes have
+        happened since. The period belongs in the query (`by_kind_between`).
 
         `occurred_at` is an *instant*, and the week is seven **days in the emitter's zone**
-        (`db/clock.py`). Converting before taking the day is the whole point: a deal moved
-        at 00:30 on the Monday that opens the week is still Sunday in UTC, and the movement
-        would be filed in the week before the one it belongs to -- and on a Monday-first
-        calendar that is the week that has already been reported.
+        (`db/clock.py`). The bounds are converted here exactly as the rows used to be: the
+        week is «from midnight on the Monday to midnight on the next one, in the emitter's
+        zone», which `by_kind_between` reads half-open. A deal moved at 00:30 on that
+        Monday is still Sunday in UTC, and a window written in UTC days would file the
+        movement in the week before the one it belongs to -- which, on a Monday-first
+        calendar, is the week that has already been reported.
 
         One query for every title, never one per row.
         """
         zona = ZoneInfo(self.settings.timezone)
+        rows = ActivityRepository(self.session).by_kind_between(
+            [_STAGE_CHANGED],
+            datetime.combine(da, time.min, tzinfo=zona),
+            datetime.combine(a + timedelta(days=1), time.min, tzinfo=zona),
+            limit=_MOVIMENTI_LETTI,
+        )
         righe = [
-            (row, giorno)
-            for row in ActivityRepository(self.session).by_kind(
-                [_STAGE_CHANGED], limit=_MOVIMENTI_LETTI
-            )
+            (row, row.occurred_at.astimezone(zona).date())
+            for row in rows
             if row.entity_type == _ENTITA_DEAL
-            and da <= (giorno := row.occurred_at.astimezone(zona).date()) <= a
         ]
         titoli = deals.names({row.entity_id for row, _ in righe})
         return [

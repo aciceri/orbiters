@@ -40,6 +40,8 @@ from pigrocrm.core.db.base import uuid7
 from pigrocrm.core.deals.models import Deal
 from pigrocrm.core.digest.schemas import WeeklyDigest
 from pigrocrm.core.digest.service import (
+    _MOVIMENTI_LETTI,
+    IN_SCADENZA_GIORNI,
     DigestService,
     iso_week,
     previous_week,
@@ -364,7 +366,12 @@ def test_the_backlog_and_the_signals_come_from_the_operational_dashboard(
     corpus: Corpus,
 ) -> None:
     """§3.1's «Da emettere» and «Da sistemare». The hours and the accrued value are
-    `AnalyticsService`'s backlog verbatim, and only the signals that fired are carried."""
+    `AnalyticsService`'s backlog verbatim, and only the signals that fired are carried.
+
+    `vinti_da_fatturare` is asserted twice, at zero and at one: a field checked only
+    against zero is a field a `return 0` would satisfy, and this one is a count of the
+    deals somebody is supposed to invoice this week.
+    """
     digest = _build(corpus.engine, (corpus.da, corpus.a))
     assert digest.ore_non_fatturate == Decimal("6.00")
     assert digest.valore_maturato == Decimal("300.00")
@@ -377,6 +384,48 @@ def test_the_backlog_and_the_signals_come_from_the_operational_dashboard(
     ]
     assert all(s.conteggio > 0 for s in digest.segnali)
     assert all(s.collegamento for s in digest.segnali)
+
+    # One won deal with billable hours nobody has put on a document: exactly
+    # `won_with_unbilled_hours_predicate`, which is where «da fatturare» is defined.
+    with session_factory(corpus.engine)() as session:
+        vinto_id = session.execute(
+            select(PipelineStage.id).where(PipelineStage.nome == f"{_PREFIX} Vinto")
+        ).scalar_one()
+        customer_id = session.execute(
+            select(Customer.id).where(Customer.ragione_sociale == f"{_PREFIX} Cliente")
+        ).scalar_one()
+        user_id = session.execute(select(User.id).where(User.nome == "Digestore")).scalar_one()
+        deal = Deal(
+            nome=f"{_PREFIX} Deal vinto da fatturare",
+            customer_id=customer_id,
+            pipeline_stage_id=vinto_id,
+            probabilita=100,
+            valore_previsto=Decimal("2000.00"),
+            custom_fields={},
+        )
+        session.add(deal)
+        session.flush()
+        session.add(
+            TimeEntry(
+                deal_id=deal.id,
+                user_id=user_id,
+                data=corpus.da + timedelta(days=3),
+                ore=Decimal("4.00"),
+                descrizione=f"{_PREFIX} da fatturare",
+                fatturabile=True,
+                tariffa_applicata=Decimal("50.000000"),
+                tariffa_origine="manuale",
+                costo_applicato=None,
+                costo_origine="assente",
+                invoice_line_id=None,
+                custom_fields={},
+            )
+        )
+        session.commit()
+
+    aggiornato = _build(corpus.engine, (corpus.da, corpus.a))
+    assert aggiornato.vinti_da_fatturare == 1
+    assert "vinto_da_fatturare" in [s.codice for s in aggiornato.segnali]
 
 
 def test_the_pipeline_carries_only_the_stages_that_hold_something(corpus: Corpus) -> None:
@@ -423,6 +472,99 @@ def test_a_movement_just_after_midnight_belongs_to_the_week_it_opens(corpus: Cor
         corpus.da,
         corpus.da + timedelta(days=2),
     ]
+
+
+def test_a_week_keeps_its_movements_however_many_came_after_it(corpus: Corpus) -> None:
+    """A resend of an old week (`pigrocrm digest --data`) must report *that* week.
+
+    The read is bounded -- `_MOVIMENTI_LETTI` rows, newest first -- so a read by kind
+    alone answers the latest movements of the whole space and this week's are filtered
+    out of a list they were never in. Here every one of the two hundred and one rows
+    below happened *after* the week, which is enough to push its own movement past the
+    ceiling: with a window in the query the week still has its deal mosso, with a filter
+    in Python it silently has none.
+    """
+    with session_factory(corpus.engine)() as session:
+        deal_id = session.execute(
+            select(Deal.id).where(Deal.nome == f"{_PREFIX} Deal mosso")
+        ).scalar_one()
+        dopo = datetime.combine(
+            corpus.a + timedelta(days=1), datetime.min.time(), tzinfo=UTC
+        ) + timedelta(hours=12)
+        for i in range(_MOVIMENTI_LETTI + 1):
+            session.add(
+                Activity(
+                    entity_type="deal",
+                    entity_id=deal_id,
+                    kind="stage_changed",
+                    actor_id=None,
+                    actor_type="system",
+                    payload={"from": f"{_PREFIX} Aperto", "to": f"{_PREFIX} Vinto"},
+                    occurred_at=dopo + timedelta(seconds=i),
+                )
+            )
+        session.commit()
+
+    digest = _build(corpus.engine, (corpus.da, corpus.a))
+
+    assert [m.quando for m in digest.deal_mossi] == [corpus.da + timedelta(days=2)]
+
+
+def test_an_invoice_that_is_already_overdue_is_not_also_in_scadenza(corpus: Corpus) -> None:
+    """The two halves of «Da incassare» never name the same invoice.
+
+    `scadute` is «overdue today» and `in_scadenza` is «due in the seven days after the
+    week», so for the week the cron sends the second window is in the future and the two
+    cannot meet. For a week recomputed with `--data` they do: the window of a week two
+    months ago has since gone by, and the invoice due inside it is overdue today. Here it
+    is the corpus's own overdue invoice, and the week is chosen so that its due date falls
+    inside the «in scadenza» window that opens the day after.
+    """
+    oggi = today_local(SETTINGS)
+    settimana = week_containing(oggi - timedelta(days=IN_SCADENZA_GIORNI + 30))
+    with session_factory(corpus.engine)() as session:
+        scaduta = session.execute(
+            select(Invoice.id).where(Invoice.anno == 2026, Invoice.numero == 3)
+        ).scalar_one()
+
+    digest = _build(corpus.engine, settimana)
+
+    # The invoice is due inside the window the week opens: without the dedupe it is read
+    # twice, once as overdue and once as still coming.
+    assert settimana[1] + timedelta(days=1) <= oggi - timedelta(days=30)
+    assert oggi - timedelta(days=30) <= settimana[1] + timedelta(days=IN_SCADENZA_GIORNI)
+    assert scaduta in [i.invoice_id for i in digest.scadute]
+    assert scaduta not in [i.invoice_id for i in digest.in_scadenza]
+
+
+def test_an_invoice_with_no_date_at_all_is_refused_by_its_id(db_engine: Engine) -> None:
+    """`_riga`'s three predicates cannot produce a row with no date, so the row that
+    arrives without one is a register this report has no honest line for: `date.min`
+    would put «lun 1 gen» of the year 1 in a mail every Monday. The id is in the message
+    because that is what the operator has to look up."""
+    invoice = Invoice(
+        id=uuid7(),
+        customer_id=uuid7(),
+        tipo="fattura",
+        stato="bozza",
+        anno=None,
+        numero=None,
+        imponibile=Decimal("10.00"),
+        imposta=Decimal("0.00"),
+        bollo=Decimal("0.00"),
+        totale=Decimal("10.00"),
+        data_emissione=None,
+        data_scadenza=None,
+        data_incasso=None,
+        tipo_documento="TD01",
+        divisa="EUR",
+        custom_fields={},
+    )
+    with (
+        session_factory(db_engine)() as session,
+        pytest.raises(ValueError, match=str(invoice.id)),
+    ):
+        DigestService(session, SETTINGS)._riga(invoice, {}, None)
 
 
 def test_a_quiet_week_is_flagged_but_the_space_is_not_empty(corpus: Corpus) -> None:

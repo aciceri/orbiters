@@ -109,6 +109,7 @@ jobs:
       website_image: ${{ steps.filter.outputs.website_image }}
       hub_py: ${{ steps.filter.outputs.hub_py }}
       hub_web: ${{ steps.filter.outputs.hub_web }}
+      shared_analytics: ${{ steps.filter.outputs.shared_analytics }}
       hub_image: ${{ steps.filter.outputs.hub_image }}
       pigrocrm_deploy: ${{ steps.filter.outputs.pigrocrm_deploy }}
       website_deploy: ${{ steps.filter.outputs.website_deploy }}
@@ -220,6 +221,16 @@ jobs:
             hub_web:
               - 'projects/hub/apps/web/**'
               - 'shared/brand/**'
+              - 'shared/analytics/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/_node-gate.yml'
+            # shared/analytics's own suite: no `_node-gate.yml` caller above installs
+            # it as anything but a dependency of the SPA that imports it, which never
+            # runs the dependency's own `lint`/`test`/`tsc` (REB-253).
+            shared_analytics:
               - 'shared/analytics/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
@@ -434,6 +445,20 @@ jobs:
     with:
       filter: hub
 
+  # shared/analytics's own suite: two vitest files (posthog.test.ts and
+  # browser.test.ts) and a tsconfig, run by no hosted tier before this -- a
+  # `_node-gate.yml` caller with `filter: web`/`website`/`hub` installs the
+  # dependency closure but never runs a dependency's own scripts (REB-253).
+  # `build: false` because the package ships as source, with no build script.
+  analytics:
+    name: shared/analytics · web
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.all == 'true' || needs.changes.outputs.shared_analytics == 'true') }}
+    uses: ./.github/workflows/_node-gate.yml
+    with:
+      filter: '@rebase/analytics'
+      build: false
+
   # Tier 3, and scoped like everything else: an image nobody can have changed is an
   # image not worth two minutes of a metered runner.
   pigrocrm-images:
@@ -497,7 +522,7 @@ jobs:
     # arrives. This is the only status check the repository should ever be asked to
     # require: every job name above can change forever without touching a ruleset.
     if: always()
-    needs: [changes, pigrocrm-py, pigrocrm-py-corpus, pigrocrm-web, website, hub-py, hub-web, pigrocrm-images, website-image, hub-images]
+    needs: [changes, pigrocrm-py, pigrocrm-py-corpus, pigrocrm-web, website, hub-py, hub-web, analytics, pigrocrm-images, website-image, hub-images]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

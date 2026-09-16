@@ -54,6 +54,7 @@ class UserUpdate(BaseModel):
     nome: SafeStr | None = Field(default=None, max_length=NOME_MAX_LENGTH)
     ruolo: Role | None = None
     attivo: bool | None = None
+    digest_settimanale: bool | None = None
     tariffa_oraria_default: Decimal | None = Field(
         default=None, max_digits=FACTOR_MAX_DIGITS, decimal_places=FACTOR_DECIMAL_PLACES, ge=0
     )
@@ -70,6 +71,7 @@ class UserRead(BaseModel):
     nome: str
     ruolo: Role
     attivo: bool
+    digest_settimanale: bool
     tariffa_oraria_default: Decimal | None
     costo_orario_default: Decimal | None
     created_at: datetime

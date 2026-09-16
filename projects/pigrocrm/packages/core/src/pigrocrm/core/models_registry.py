@@ -12,6 +12,7 @@ from pigrocrm.core.auth.refresh_models import RefreshToken  # noqa: F401
 from pigrocrm.core.automations.models import AutomationConfig  # noqa: F401
 from pigrocrm.core.customers.models import Customer  # noqa: F401
 from pigrocrm.core.deals.models import Deal  # noqa: F401
+from pigrocrm.core.digest.models import Digest  # noqa: F401
 from pigrocrm.core.documents.models import Document, DocumentVersion  # noqa: F401
 from pigrocrm.core.drive.models import GoogleDriveAccount  # noqa: F401
 from pigrocrm.core.emitter.models import EmitterProfile  # noqa: F401

@@ -21,6 +21,9 @@ class User(Base, PrimaryKeyMixin, TimestampMixin):
     nome: Mapped[str] = mapped_column(String(200), nullable=False)
     ruolo: Mapped[str] = mapped_column(String(20), nullable=False, default="collaboratore")
     attivo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Whether the weekly report reaches this person (spec 2026-09-16 §3.3). On by
+    # default: the report is the reason to come back, and the mail carries the switch.
+    digest_settimanale: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # When a link by mail was first used by this user: the moment the address stopped
     # being a claim. Written once by `MagicLinkService.enter`, which also revokes every
     # session issued before it. `None` for the accounts that only ever used a password.

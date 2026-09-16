@@ -10,6 +10,7 @@ is a copy on purpose and deliberately tiny rather than a dependency.
 
 import threading
 import time
+from typing import Any
 
 from fastapi import HTTPException, Request, status
 
@@ -17,6 +18,13 @@ from fastapi import HTTPException, Request, status
 # leaves room for a double click, a reload on a slow connection, and a household
 # sharing one address, while making a scripted sweep of a mailing list pointless.
 REQUESTS_PER_MINUTE = 5
+# `GET /api/tenants/{slug}/disponibile` is a typeahead, not a submit: registrati.tsx
+# asks it once per 350ms pause while a person is still deciding a name, so sharing
+# `REQUESTS_PER_MINUTE`'s budget with `POST /api/tenants/membro` and
+# `POST /api/tenants/` would let ordinary typing starve the tokens the actual signup
+# needs (REB-228) -- five hesitations while naming a business is not a scripted sweep.
+# A generous ceiling on a read-only lookup that sends no mail and provisions nothing.
+DISPONIBILE_REQUESTS_PER_MINUTE = 30
 RETRY_AFTER_SECONDS = 60
 # Bounds the table: an attacker who varies `X-Forwarded-For` on every request must not
 # be able to grow it without limit. Full buckets (clients that have gone quiet) are
@@ -24,12 +32,16 @@ RETRY_AFTER_SECONDS = 60
 # overflowing table makes the limiter too lenient and never locks anybody out.
 MAX_TRACKED_CLIENTS = 4096
 
-# client key -> (tokens left, when they were last counted). Per process, on purpose:
-# with several workers the effective ceiling is `REQUESTS_PER_MINUTE` times the number
-# of workers, which is the honest cost of not introducing shared state for a signup
-# form. A real cap belongs at the reverse proxy (`limit_req`), and this is the floor
-# under it, not a substitute for it.
-_buckets: dict[str, tuple[float, float]] = {}
+# client key -> (tokens left, when they were last counted, that key's own per-minute
+# cap). The cap travels with the bucket, rather than living in a single module
+# constant, because REB-228 gave `disponibile` its own larger budget (see `spend_one`'s
+# `scope` below): without it, `_forget_the_quiet_ones` would test every bucket's fill
+# against whichever cap the *current* caller happened to pass, which is wrong for every
+# other scope's buckets sharing this same table. Per process, on purpose: with several
+# workers the effective ceiling is a cap times the number of workers, which is the
+# honest cost of not introducing shared state for a signup form. A real cap belongs at
+# the reverse proxy (`limit_req`), and this is the floor under it, not a substitute.
+_buckets: dict[str, tuple[float, float, float]] = {}
 _buckets_lock = threading.Lock()
 
 
@@ -56,18 +68,15 @@ def client_key(request: Request) -> str:
     return request.client.host if request.client else "sconosciuto"
 
 
-def _refilled(tokens: float, last_seen: float, now: float) -> float:
-    return min(
-        float(REQUESTS_PER_MINUTE),
-        tokens + (now - last_seen) * REQUESTS_PER_MINUTE / 60.0,
-    )
+def _refilled(tokens: float, last_seen: float, now: float, per_minute: float) -> float:
+    return min(per_minute, tokens + (now - last_seen) * per_minute / 60.0)
 
 
 def _forget_the_quiet_ones(now: float) -> None:
     for key in [
         key
-        for key, (tokens, last_seen) in _buckets.items()
-        if _refilled(tokens, last_seen, now) >= REQUESTS_PER_MINUTE
+        for key, (tokens, last_seen, per_minute) in _buckets.items()
+        if _refilled(tokens, last_seen, now, per_minute) >= per_minute
     ]:
         del _buckets[key]
     if len(_buckets) > MAX_TRACKED_CLIENTS:
@@ -76,20 +85,56 @@ def _forget_the_quiet_ones(now: float) -> None:
             del _buckets[key]
 
 
-def spend_one(request: Request) -> None:
-    """A token bucket per client, refilling at `REQUESTS_PER_MINUTE`."""
-    key = client_key(request)
+def spend_one(request: Request, *, scope: str = "", per_minute: int = REQUESTS_PER_MINUTE) -> None:
+    """A token bucket per client, refilling at `per_minute`. `scope` namespaces the
+    bucket away from the default one: REB-228 gave `GET /api/tenants/{slug}/disponibile`
+    its own (`scope="disponibile"`, a higher `per_minute`) precisely so a typeahead
+    probing a name has its own budget rather than starving `POST /api/tenants/membro`
+    and `POST /api/tenants/` -- the actual submit actions -- of the tokens a person
+    needs to finish signing up."""
+    key = f"{scope}:{client_key(request)}" if scope else client_key(request)
     now = time.monotonic()
     with _buckets_lock:
-        tokens, last_seen = _buckets.get(key, (float(REQUESTS_PER_MINUTE), now))
-        tokens = _refilled(tokens, last_seen, now)
+        tokens, last_seen, cap = _buckets.get(key, (float(per_minute), now, float(per_minute)))
+        tokens = _refilled(tokens, last_seen, now, cap)
         if tokens < 1.0:
-            _buckets[key] = (tokens, now)
+            _buckets[key] = (tokens, now, cap)
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Troppe richieste da qui. Riprova tra un minuto.",
                 headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
             )
-        _buckets[key] = (tokens - 1.0, now)
+        _buckets[key] = (tokens - 1.0, now, cap)
         if len(_buckets) > MAX_TRACKED_CLIENTS:
             _forget_the_quiet_ones(now)
+
+
+# Documents the 429 `spend_one` raises above, for the routes that call it
+# (`POST /api/auth/link`, `GET /api/tenants/{slug}/disponibile`, REB-228): a plain
+# `HTTPException`, `application/json`, never `application/problem+json`
+# (`pigrocrm_api.errors.PROBLEM_RESPONSES` would misdocument the content type -- the
+# same reason auth.py's own `_UNAUTHENTICATED_RESPONSE` cannot reuse it for 401).
+# Attach with `responses={429: TOO_MANY_REQUESTS_RESPONSE}` on each route's own
+# decorator; FastAPI merges a route's `responses=` with its router's.
+TOO_MANY_REQUESTS_RESPONSE: dict[str, Any] = {
+    "description": (
+        "Troppe richieste da questo indirizzo nell'ultimo minuto (il bucket è per "
+        "client, non per rotta): il client deve attendere `Retry-After` secondi "
+        "prima di riprovare."
+    ),
+    "content": {
+        "application/json": {
+            "schema": {
+                "type": "object",
+                "properties": {"detail": {"type": "string"}},
+                "required": ["detail"],
+            }
+        }
+    },
+    "headers": {
+        "Retry-After": {
+            "description": "Secondi da attendere prima di riprovare.",
+            "schema": {"type": "integer"},
+        }
+    },
+}

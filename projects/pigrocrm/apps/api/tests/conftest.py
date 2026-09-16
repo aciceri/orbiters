@@ -15,6 +15,7 @@ from pigrocrm.core.db import Base, create_engine_from_settings, session_factory
 from pigrocrm.core.storage import LocalFileStorage
 from pigrocrm_api.deps import get_session, get_storage
 from pigrocrm_api.main import create_app
+from pigrocrm_api.ratelimit import reset_rate_limit
 
 ADMIN_EMAIL = "admin@pigro.it"
 ADMIN_PASSWORD = "supersegreta1"
@@ -63,6 +64,19 @@ def api_session(api_engine: Engine) -> Iterator[Session]:
         session.close()
         transaction.rollback()
         connection.close()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limit() -> None:
+    # The limiter's bucket is a module-level dict, so it outlives any one test's own
+    # fixtures: without this, a test that spends its budget on `/api/auth/link` or
+    # `/api/tenants/{slug}/disponibile` (REB-228) hands the next one an already-spent
+    # bucket -- including a test that builds its own `TestClient` by hand instead of
+    # going through `client` or `test_tenants_api.py`'s own `spaces_client`
+    # (`test_the_root_slug_is_the_root_itself_and_nobody_elses_name` reaches
+    # `disponibile` that way). Autouse, not tucked inside one fixture, so no test in
+    # this directory can be the one left uncovered.
+    reset_rate_limit()
 
 
 @pytest.fixture

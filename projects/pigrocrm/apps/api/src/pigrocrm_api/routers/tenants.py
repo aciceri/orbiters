@@ -29,7 +29,11 @@ from pigrocrm.core.tenants import (
 from pigrocrm.core.tenants.database import tenant_database_name, tenant_database_url
 from pigrocrm_api.deps import SettingsDep, TenantsRegistryDep
 from pigrocrm_api.errors import PROBLEM_RESPONSES
-from pigrocrm_api.ratelimit import spend_one
+from pigrocrm_api.ratelimit import (
+    DISPONIBILE_REQUESTS_PER_MINUTE,
+    TOO_MANY_REQUESTS_RESPONSE,
+    spend_one,
+)
 from pigrocrm_api.sessions import SenderDep, set_access_cookie
 
 router = APIRouter(prefix="/api/tenants", tags=["tenants"], responses=PROBLEM_RESPONSES)
@@ -116,12 +120,22 @@ def member(
     )
 
 
-@router.get("/{slug}/disponibile", response_model=TenantAvailability)
+@router.get(
+    "/{slug}/disponibile",
+    response_model=TenantAvailability,
+    responses={429: TOO_MANY_REQUESTS_RESPONSE},
+)
 def availability(
-    slug: str, registry: TenantsRegistryDep, settings: SettingsDep
+    slug: str, request: Request, registry: TenantsRegistryDep, settings: SettingsDep
 ) -> TenantAvailability:
     """Whether a name can still be taken, and if not why -- reserved, malformed or in
-    use -- in the words the page shows while the person is still typing."""
+    use -- in the words the page shows while the person is still typing. Unauthenticated
+    by design, like `member` and `signup`, so it is throttled the same way (REB-228) --
+    but on its own budget (`scope="disponibile"`, `DISPONIBILE_REQUESTS_PER_MINUTE`),
+    since this is the one route of the three a person's own typing calls repeatedly: a
+    shared bucket with `member` and `signup` would let a few hesitations while naming a
+    business starve the tokens the actual `POST /` still needs to create the space."""
+    spend_one(request, scope="disponibile", per_minute=DISPONIBILE_REQUESTS_PER_MINUTE)
     return TenantService(registry, settings).availability(slug.strip().lower())
 
 

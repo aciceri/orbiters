@@ -182,4 +182,25 @@ describe('the signup wizard', () => {
     await throughStepOne(user, '  bob@studio.it ')
     expect(POST).toHaveBeenCalledWith('/api/tenants/membro', { body: { email: 'bob@studio.it' } })
   })
+
+  it('shows the throttle message instead of leaving the availability check stuck (REB-228)', async () => {
+    answers({ '/api/tenants/membro': NOBODY })
+    GET.mockResolvedValueOnce({
+      error: { detail: 'Troppe richieste da qui. Riprova tra un minuto.' },
+      response: { status: 429 },
+    })
+    const user = userEvent.setup()
+    render(<SignupPage />)
+    await throughStepOne(user, 'bob@studio.it')
+    await user.type(await screen.findByLabelText('Come si chiama il tuo spazio?'), 'Ada Lovelace')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Troppe richieste/)
+    // Honestly disabled -- no fresh "free" answer yet -- but never stuck forever: the
+    // "checking" state was dropped back to idle, so a further edit asks again on its
+    // own, later budget rather than the wizard being dead-ended by one throttled probe.
+    expect(screen.getByRole('button', { name: 'Crea lo spazio' })).toBeDisabled()
+    await user.type(screen.getByLabelText('Come si chiama il tuo spazio?'), '2')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Crea lo spazio' })).toBeEnabled(),
+    )
+  })
 })

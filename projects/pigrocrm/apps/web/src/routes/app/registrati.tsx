@@ -68,13 +68,21 @@ export function SignupPage({ go = (url) => window.location.assign(url) }: { go?:
       setAvailability({ state: 'checking', slug: asked })
       void api
         .GET('/api/tenants/{slug}/disponibile', { params: { path: { slug: asked } } })
-        .then(({ data }) => {
-          if (!data) return
-          setAvailability(
-            data.disponibile
-              ? { state: 'free', slug: asked }
-              : { state: 'taken', slug: asked, reason: data.motivo ?? 'questo nome è già in uso' },
-          )
+        .then(({ data, error: apiError, response }) => {
+          if (data) {
+            setAvailability(
+              data.disponibile
+                ? { state: 'free', slug: asked }
+                : { state: 'taken', slug: asked, reason: data.motivo ?? 'questo nome è già in uso' },
+            )
+            return
+          }
+          // The probe has its own rate limit (REB-228), separate from the create
+          // request's: a throttled check must not leave the wizard stuck on
+          // "checking" forever with no explanation, so this always drops back to
+          // idle, and a 429 specifically says why on the same alert `onCreate` uses.
+          setAvailability({ state: 'idle' })
+          if (response.status === 429) setError(toProblem(apiError, response.status).detail)
         })
         .catch(() => setAvailability({ state: 'idle' }))
     }, 350)

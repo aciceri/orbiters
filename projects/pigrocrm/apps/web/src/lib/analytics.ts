@@ -20,19 +20,21 @@ import { tenantPrefix } from './tenant'
  * `METHOD /path` as the OpenAPI document spells it, with the space's prefix and any
  * trailing slash removed first. Closed on purpose: nothing else the client does is an
  * event, and «first customer» or «activated within seven days» are funnels PostHog
- * computes from these, not something the code decides.
+ * computes from these, not something the code decides. A segment written `{name}`
+ * (`api-types.ts`'s own shape for a resource id) matches any one path segment: the
+ * invoice's own id is not something PostHog groups the funnel by.
  */
-const EVENTS: ReadonlyMap<string, string> = new Map([
+const EVENTS: ReadonlyArray<readonly [string, string]> = [
   ['POST /api/tenants', 'spazio_creato'],
   ['POST /api/auth/entra', 'entrato_con_link'],
   ['POST /api/customers', 'cliente_creato'],
   ['POST /api/deals', 'deal_creato'],
   ['POST /api/documents', 'documento_creato'],
   ['POST /api/time-entries', 'ore_registrate'],
-  ['POST /api/invoices', 'fattura_emessa'],
+  ['POST /api/invoices/{invoice_id}/issue', 'fattura_emessa'],
   ['POST /api/tokens', 'assistente_collegato'],
   ['PUT /api/emitter', 'profilo_emittente_salvato'],
-])
+]
 
 /**
  * The pathname the table is keyed on. Under a space every request is `/<slug>/api/...`
@@ -46,9 +48,23 @@ function tablePath(pathname: string, prefix: string): string {
   return bare.length > 1 ? bare.replace(/\/+$/, '') : bare
 }
 
+/** Whether a table row's `METHOD /path` describes the request's: a row segment
+ *  written `{name}` matches any single non-empty request segment, everything else
+ *  matches literally. The first matching row wins, so a literal row belongs above
+ *  any `{name}` row it would otherwise be shadowed by. */
+function rowMatches(row: string, requestSegments: readonly string[]): boolean {
+  const rowSegments = row.split('/')
+  return (
+    rowSegments.length === requestSegments.length &&
+    rowSegments.every((segment, i) => (segment.startsWith('{') ? requestSegments[i] !== '' : segment === requestSegments[i]))
+  )
+}
+
 /** The event a successful call earns, or undefined for everything the table leaves out. */
 export function eventFor(method: string, pathname: string, prefix: string): string | undefined {
-  return EVENTS.get(`${method.toUpperCase()} ${tablePath(pathname, prefix)}`)
+  const methodAndPath = `${method.toUpperCase()} ${tablePath(pathname, prefix)}`
+  const requestSegments = methodAndPath.split('/')
+  return EVENTS.find(([row]) => rowMatches(row, requestSegments))?.[1]
 }
 
 /**

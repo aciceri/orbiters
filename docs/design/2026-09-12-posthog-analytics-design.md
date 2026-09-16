@@ -107,7 +107,7 @@ never mentions analytics and an action counts only when the API said yes.
 | `POST /api/deals` | `deal_creato` |
 | `POST /api/documents` | `documento_creato` |
 | `POST /api/time-entries` | `ore_registrate` |
-| `POST /api/invoices` | `fattura_emessa` |
+| `POST /api/invoices/{invoice_id}/issue` | `fattura_emessa` |
 | `POST /api/tokens` | `assistente_collegato` |
 | `PUT /api/settings/emitter` (the emitter profile) | `profilo_emittente_salvato` |
 

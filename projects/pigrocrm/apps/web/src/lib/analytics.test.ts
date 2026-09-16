@@ -39,13 +39,26 @@ describe('the funnel table', () => {
     ['POST', '/api/deals', 'deal_creato'],
     ['POST', '/api/documents', 'documento_creato'],
     ['POST', '/api/time-entries', 'ore_registrate'],
-    ['POST', '/api/invoices', 'fattura_emessa'],
+    ['POST', '/api/invoices/inv-1/issue', 'fattura_emessa'],
     ['POST', '/api/tokens', 'assistente_collegato'],
     ['PUT', '/api/emitter', 'profilo_emittente_salvato'],
   ])('%s %s on a 2xx is exactly one %s', async (method, path, event) => {
     await answered(method, path, 201)
     expect(capture).toHaveBeenCalledTimes(1)
     expect(capture).toHaveBeenCalledWith(event)
+  })
+
+  it('counts an issued invoice, never the draft POST that created it', async () => {
+    await answered('POST', '/api/invoices', 201)
+    expect(capture).not.toHaveBeenCalled()
+    await answered('POST', '/api/invoices/inv-1/issue', 201)
+    expect(capture).toHaveBeenCalledTimes(1)
+    expect(capture).toHaveBeenCalledWith('fattura_emessa')
+  })
+
+  it('never matches a {name} placeholder against an empty segment', async () => {
+    await answered('POST', '/api/invoices//issue', 201)
+    expect(capture).not.toHaveBeenCalled()
   })
 
   it.each([400, 401, 409, 422, 500, 503])('a %i is not an event', async (status) => {
@@ -56,12 +69,16 @@ describe('the funnel table', () => {
 
   it('leaves out everything the table does not name', async () => {
     // A read, an update, a nested write, a sibling route and a wrong method on a
-    // listed path: none of them is an activation step.
+    // listed path: none of them is an activation step. The two invoice siblings
+    // (`/artifacts`, `/confirm`) pin that only `/issue` matches: a lax trailing
+    // segment would double-count `fattura_emessa` on every emission.
     await answered('GET', '/api/customers', 200)
     await answered('PUT', '/api/customers/c1', 200)
     await answered('POST', '/api/deals/d1/stage', 200)
     await answered('POST', '/api/documents/from-template', 201)
     await answered('POST', '/api/invoices/import', 201)
+    await answered('POST', '/api/invoices/inv-1/artifacts', 201)
+    await answered('POST', '/api/invoices/inv-1/confirm', 200)
     await answered('POST', '/api/emitter', 200)
     await answered('POST', '/api/auth/login', 200)
     await answered('POST', '/api/auth/logout', 200)

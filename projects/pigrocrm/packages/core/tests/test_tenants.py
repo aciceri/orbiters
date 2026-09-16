@@ -17,6 +17,7 @@ from pigrocrm.core.db import session_factory
 from pigrocrm.core.errors import Conflict, ValidationFailed
 from pigrocrm.core.tenants import (
     RESERVED_SLUGS,
+    Tenant,
     TenantService,
     TenantSignup,
     ensure_tenants_database,
@@ -457,3 +458,70 @@ def test_a_failing_seed_undoes_the_space_and_frees_the_name(
             text("select 1 from pg_database where datname = :n"), {"n": tenant_database_name(slug)}
         ).scalar()
     assert exists is None
+
+
+# --- REB-230: a failed drop must not free the slug -----------------------------------
+
+
+def test_a_failed_drop_keeps_the_registry_row_and_the_exception_propagates(
+    settings: Settings, registry_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The old `_undo` deleted the registry row in a `finally`, whether or not
+    `drop_database` succeeded. `DROP DATABASE` raises `ObjectInUse` when a connection
+    appears between its own `pg_terminate_backend` and the drop, which a concurrent
+    request for the same slug can cause, and the old code freed the name onto a
+    database that survived that failure, already migrated, already holding whatever
+    the failed attempt wrote. The row must stay, and the failure must not be
+    swallowed."""
+    import pigrocrm.core.tenants.service as tenants_service
+    from psycopg.errors import ObjectInUse
+
+    def fake_drop(settings: Settings, url: object) -> None:
+        raise ObjectInUse('database "pigro_t_prova_undo_fail" is being accessed by other users')
+
+    monkeypatch.setattr(tenants_service, "drop_database", fake_drop)
+    slug = "prova-undo-fail"
+    tenant = Tenant(slug=slug, db_name=tenant_database_name(slug), owner_email="ada@studio.it")
+    registry_session.add(tenant)
+    registry_session.commit()
+
+    service = TenantService(registry_session, settings)
+    with pytest.raises(ObjectInUse):
+        service._undo(tenant, tenant_database_url(settings, tenant.db_name))
+    assert (
+        registry_session.execute(
+            text("select count(*) from tenants where slug = :s"), {"s": slug}
+        ).scalar()
+        == 1
+    )
+    registry_session.execute(text("delete from tenants where slug = :s"), {"s": slug})
+    registry_session.commit()
+
+
+def test_a_successful_drop_deletes_the_registry_row(
+    settings: Settings, registry_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The counterpart: once the database is actually gone, the row goes with it, as
+    before."""
+    import pigrocrm.core.tenants.service as tenants_service
+
+    dropped: list[str] = []
+
+    def fake_drop(settings: Settings, url: object) -> None:
+        dropped.append(str(url))
+
+    monkeypatch.setattr(tenants_service, "drop_database", fake_drop)
+    slug = "prova-undo-ok"
+    tenant = Tenant(slug=slug, db_name=tenant_database_name(slug), owner_email="ada@studio.it")
+    registry_session.add(tenant)
+    registry_session.commit()
+
+    service = TenantService(registry_session, settings)
+    service._undo(tenant, tenant_database_url(settings, tenant.db_name))
+    assert dropped
+    assert (
+        registry_session.execute(
+            text("select count(*) from tenants where slug = :s"), {"s": slug}
+        ).scalar()
+        == 0
+    )

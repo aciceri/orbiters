@@ -235,15 +235,22 @@ jobs:
                 # the list entirely rather than reported as not running (REB-246 review).
                 # The oneoff filter excludes a `docker compose run` leftover, which `-a`
                 # also surfaces and which is not part of the stack's own service set.
-                ps_json=$(docker compose -p "${COMPOSE_PROJECT}" ps -a --format json) || {
+                # A Go template and a shell loop, not `jq`: the host has docker and
+                # nothing else, and the first version of this step failed the
+                # pigrocrm-v0.17.0 deploy after a successful rollout for that reason
+                # (REB-264).
+                states=$(docker compose -p "${COMPOSE_PROJECT}" ps -a --format '{{.Service}}\t{{.State}}\t{{.Labels}}') || {
                   echo "::error::Could not read container states for ${COMPOSE_PROJECT}."
                   exit 1
                 }
-                not_running=$(printf '%s\n' "${ps_json}" \
-                  | jq -s -r '[.[] | select(.Labels | test("com.docker.compose.oneoff=True") | not) | select(.State != "running")] | map("\(.Service): \(.State)") | join(", ")') || {
-                  echo "::error::Could not read container states for ${COMPOSE_PROJECT} (is jq installed on this host?)."
-                  exit 1
-                }
+                not_running=""
+                while IFS="$(printf '\t')" read -r service state labels; do
+                  [ -z "${service}" ] && continue
+                  case "${labels}" in *com.docker.compose.oneoff=True*) continue ;; esac
+                  if [ "${state}" != "running" ]; then
+                    not_running="${not_running}${not_running:+, }${service}: ${state}"
+                  fi
+                done < <(printf '%s\n' "${states}")
                 if [ -n "$not_running" ]; then
                   echo "::error::Service(s) not running for ${COMPOSE_PROJECT}: ${not_running}"
                   docker compose -p "${COMPOSE_PROJECT}" logs --tail 50

@@ -1,7 +1,8 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ELSEWHERE, PAGES, REDIRECTS, route } from './path-map-plugin'
+import { ELSEWHERE, GENERATED_PATHS, PAGES, REDIRECTS, SITE_HOST, pathMapPlugin, route } from './path-map-plugin'
 
 const nginx = readFileSync(join(__dirname, '..', 'deploy', 'nginx.conf'), 'utf-8')
 const vhost = readFileSync(join(__dirname, '..', 'deploy', 'letsrebase.conf'), 'utf-8')
@@ -23,7 +24,12 @@ function nginxMap(conf: string): { pages: Record<string, string>; redirects: Rec
 
 describe('the path map, against deploy/nginx.conf', () => {
   it('serves the same file at each path nginx does, and no other', () => {
-    expect(PAGES).toEqual(nginxMap(nginx).pages)
+    // GENERATED_PATHS have no rollup input in vite.config.ts; this plugin writes them
+    // into the build output itself (see the robots.txt describe block below), but
+    // nginx serves them with the same `try_files <path> =404` shape as every page, so
+    // they still have to appear here for the two files to agree.
+    const generatedAsPages = Object.fromEntries(GENERATED_PATHS.map((path) => [path, path]))
+    expect({ ...PAGES, ...generatedAsPages }).toEqual(nginxMap(nginx).pages)
   })
 
   it('redirects the same paths to the same places', () => {
@@ -89,5 +95,31 @@ describe('route', () => {
     // 404 to a fictional tenant.
     expect(route('/apple')).toEqual({ kind: 'not-found' })
     expect(route('/hubris')).toEqual({ kind: 'not-found' })
+  })
+})
+
+describe('robots.txt (REB-109)', () => {
+  it('has its own exact-match location in nginx.conf, like every page', () => {
+    expect(nginx).toMatch(/location = \/robots\.txt \{ try_files \/robots\.txt =404; \}/)
+  })
+
+  it('names the sitemap and disallows the noindex pages, nothing else', () => {
+    const decision = route('/robots.txt')
+    expect(decision.kind).toBe('generated')
+    if (decision.kind !== 'generated') throw new Error('unreachable')
+    expect(decision.contentType).toBe('text/plain; charset=utf-8')
+    expect(decision).toMatchObject({
+      content: `User-agent: *\nDisallow: /pitch\nSitemap: ${SITE_HOST}/sitemap.xml\n`,
+    })
+  })
+
+  it('is written into the build output by the plugin\'s own writeBundle hook', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'website-robots-'))
+    const plugin = pathMapPlugin()
+    if (typeof plugin.writeBundle !== 'function') throw new Error('writeBundle is not a plain function')
+    plugin.writeBundle.call({} as never, { dir } as never, {} as never)
+    const builtPath = join(dir, 'robots.txt')
+    expect(existsSync(builtPath)).toBe(true)
+    expect(readFileSync(builtPath, 'utf-8')).toContain(`Sitemap: ${SITE_HOST}/sitemap.xml`)
   })
 })

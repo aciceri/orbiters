@@ -49,21 +49,22 @@ function tablePath(pathname: string, prefix: string): string {
 }
 
 /** Whether a table row's `METHOD /path` describes the request's: a row segment
- *  written `{name}` matches any single request segment, everything else matches
- *  literally. */
-function rowMatches(row: string, methodAndPath: string): boolean {
+ *  written `{name}` matches any single non-empty request segment, everything else
+ *  matches literally. The first matching row wins, so a literal row belongs above
+ *  any `{name}` row it would otherwise be shadowed by. */
+function rowMatches(row: string, requestSegments: readonly string[]): boolean {
   const rowSegments = row.split('/')
-  const requestSegments = methodAndPath.split('/')
   return (
     rowSegments.length === requestSegments.length &&
-    rowSegments.every((segment, i) => segment.startsWith('{') || segment === requestSegments[i])
+    rowSegments.every((segment, i) => (segment.startsWith('{') ? requestSegments[i] !== '' : segment === requestSegments[i]))
   )
 }
 
 /** The event a successful call earns, or undefined for everything the table leaves out. */
 export function eventFor(method: string, pathname: string, prefix: string): string | undefined {
   const methodAndPath = `${method.toUpperCase()} ${tablePath(pathname, prefix)}`
-  return EVENTS.find(([row]) => rowMatches(row, methodAndPath))?.[1]
+  const requestSegments = methodAndPath.split('/')
+  return EVENTS.find(([row]) => rowMatches(row, requestSegments))?.[1]
 }
 
 /**

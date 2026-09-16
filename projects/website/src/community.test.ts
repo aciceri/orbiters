@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { SITE_HOST } from './path-map-plugin'
 
 const html = readFileSync(join(__dirname, 'community.html'), 'utf-8')
 const css = readFileSync(join(__dirname, 'community.css'), 'utf-8')
@@ -98,7 +99,13 @@ describe('community.html', () => {
     // written into the markup, no second analytics stack, and no state kept on the
     // visitor's machine by our own script. Which pages may carry the pixel, and what
     // it is allowed to do, is `pixel.test.ts`.
-    expect(html).not.toMatch(/(?:href|src)="https?:/)
+    // REB-111: the canonical link is the one absolute href allowed, and only when it
+    // points at this origin, never a third party; `links.test.ts` checks it agrees
+    // with the path map, so here it is stripped before checking the rest of the
+    // markup carries no other one.
+    const canonicalTag = html.match(/<link rel="canonical" href="([^"]*)"\s*\/>\s*/)
+    const withoutCanonical = canonicalTag?.[1]?.startsWith(`${SITE_HOST}/`) ? html.replace(canonicalTag[0], '') : html
+    expect(withoutCanonical).not.toMatch(/(?:href|src)="https?:/)
     expect(html).not.toMatch(/gtag|googletagmanager|plausible|fathom|hotjar/i)
     expect(js).not.toMatch(/https?:\/\//)
     expect(js).not.toMatch(/localStorage|sessionStorage|document\.cookie|navigator\.sendBeacon/)
@@ -114,6 +121,18 @@ describe('community.html', () => {
     // which the header brand and the footer's "Home" link also match and would pass
     // even if this specific back-link were ever removed.
     expect(privacy).toMatch(/href="\/(?:community)?">letsrebase\.com</)
+  })
+
+  it('keeps the Privacy link outside #note, so a validation error never removes it (REB-94)', () => {
+    // Every path through community.js's say() replaces #note's whole textContent
+    // (community.js:139-140): the first empty-field refusal, a 422, a network failure
+    // and success all did that, and until REB-94 the Privacy link lived inside #note
+    // and vanished with it on every one of them, shrinking .box and re-centring the
+    // whole card. It now lives in the static paragraph beside it, which say() never
+    // touches.
+    const noteRegion = html.match(/<p class="note" id="note"[\s\S]*?<\/p>/)?.[0] ?? ''
+    expect(noteRegion).not.toMatch(/href="\/privacy"/)
+    expect(html).toMatch(/<a href="\/privacy">privacy<\/a>/)
   })
 
   it('no longer signs itself as a PigroCRM project, and offers no login', () => {

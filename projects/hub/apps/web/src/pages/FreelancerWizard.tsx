@@ -7,7 +7,7 @@ import { isLinkedinName, LINKEDIN_OWN_PROFILE, linkedinFieldValue, linkedinProfi
 import { resolveAttribution } from '@/lib/utm'
 import { clearDraft, loadDraft, saveDraft } from '@/wizard/draft'
 import { ChoiceField, FileField, LinksField, TextField } from '@/wizard/fields'
-import { Wizard, type Step } from '@/wizard/Wizard'
+import { screensFromFields, Wizard, type Field } from '@/wizard/Wizard'
 
 const EMPTY: FreelancerApplication = {
   nome: '',
@@ -24,14 +24,16 @@ const EMPTY: FreelancerApplication = {
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const MAX_CV = 5 * 1024 * 1024
 
-export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
+export const FREELANCER_FIELDS: Field<FreelancerApplication>[] = [
   {
     id: 'nome',
-    title: 'Come ti chiami?',
-    render: ({ value, set, autoFocus }) => (
+    label: 'Come ti chiami?',
+    render: ({ value, set, autoFocus, error, errorId }) => (
       <div className="grid gap-3 sm:grid-cols-2">
         <TextField
           aria-label="Nome"
+          aria-invalid={!!error && !value.nome.trim()}
+          aria-describedby={error ? errorId : undefined}
           placeholder="Nome"
           value={value.nome}
           onChange={(nome) => set({ nome })}
@@ -39,6 +41,8 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
         />
         <TextField
           aria-label="Cognome"
+          aria-invalid={!!error && !value.cognome.trim()}
+          aria-describedby={error ? errorId : undefined}
           placeholder="Cognome"
           value={value.cognome}
           onChange={(cognome) => set({ cognome })}
@@ -51,10 +55,12 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
   },
   {
     id: 'email',
-    title: 'A che indirizzo ti scriviamo?',
-    render: ({ value, set, autoFocus }) => (
+    label: 'A che indirizzo ti scriviamo?',
+    render: ({ value, set, autoFocus, error, errorId }) => (
       <TextField
         aria-label="Email"
+        aria-invalid={!!error}
+        aria-describedby={error ? errorId : undefined}
         type="email"
         inputMode="email"
         placeholder="nome@studio.it"
@@ -68,41 +74,48 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
   },
   {
     id: 'linkedin_url',
-    title: 'Il tuo profilo LinkedIn',
+    label: 'Il tuo profilo LinkedIn',
     hint: 'Se ce l’hai. Basta il nome che segue linkedin.com/in/, oppure incolla l’indirizzo com’è.',
     optional: true,
-    render: ({ value, set, autoFocus }) => (
-      <div className="grid gap-2">
-        <div className="flex items-center gap-2">
-          {/* The fixed half of the address, shown while the field holds a name: an
-              address pasted whole is reduced to its name as it lands (ORB-203). */}
-          {isLinkedinName(value.linkedin_url) && (
-            <span id="linkedin-prefix" className="text-lg text-muted-foreground">
-              linkedin.com/in/
-            </span>
-          )}
-          <TextField
-            aria-label="Profilo LinkedIn"
-            aria-describedby={isLinkedinName(value.linkedin_url) ? 'linkedin-prefix' : undefined}
-            inputMode="url"
-            placeholder="mario-rossi"
-            value={value.linkedin_url}
-            onChange={(linkedin_url) =>
-              set({ linkedin_url: linkedinFieldValue(linkedin_url, value.linkedin_url) })
-            }
-            autoFocus={autoFocus}
-          />
+    render: ({ value, set, autoFocus, error, errorId }) => {
+      const prefixed = isLinkedinName(value.linkedin_url)
+      const describedBy = [error ? errorId : null, prefixed ? 'linkedin-prefix' : null]
+        .filter(Boolean)
+        .join(' ')
+      return (
+        <div className="grid gap-2">
+          <div className="flex items-center gap-2">
+            {/* The fixed half of the address, shown while the field holds a name: an
+                address pasted whole is reduced to its name as it lands (ORB-203). */}
+            {prefixed && (
+              <span id="linkedin-prefix" className="text-lg text-muted-foreground">
+                linkedin.com/in/
+              </span>
+            )}
+            <TextField
+              aria-label="Profilo LinkedIn"
+              aria-invalid={!!error}
+              aria-describedby={describedBy || undefined}
+              inputMode="url"
+              placeholder="mario-rossi"
+              value={value.linkedin_url}
+              onChange={(linkedin_url) =>
+                set({ linkedin_url: linkedinFieldValue(linkedin_url, value.linkedin_url) })
+              }
+              autoFocus={autoFocus}
+            />
+          </div>
+          <a
+            className="w-fit text-sm underline underline-offset-2"
+            href={LINKEDIN_OWN_PROFILE}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Apri il tuo profilo LinkedIn
+          </a>
         </div>
-        <a
-          className="w-fit text-sm underline underline-offset-2"
-          href={LINKEDIN_OWN_PROFILE}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Apri il tuo profilo LinkedIn
-        </a>
-      </div>
-    ),
+      )
+    },
     validate: (value) =>
       linkedinProfile(value.linkedin_url) === null
         ? 'Serve il tuo profilo su linkedin.com, oppure niente.'
@@ -111,18 +124,20 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
   },
   {
     id: 'cv',
-    title: 'Il tuo CV',
+    label: 'Il tuo CV',
     // Optional since the wizard started turning away people who did not have a PDF to
     // hand: the card is stored without one, the area they land in asks for it again,
     // and `completa` on the admin side already says which cards are missing it.
     optional: true,
     hint: 'Un PDF, al massimo 5 MB. Se non ce l’hai qui, salta: puoi caricarlo quando vuoi dalla tua area. Lo leggiamo noi e chi ti proporrà un progetto; puoi chiederci di cancellarlo quando vuoi.',
-    render: ({ value, set }) => (
+    render: ({ value, set, error, errorId }) => (
       <FileField
         value={value.cv}
         onChange={(cv) => set({ cv })}
         accept="application/pdf,.pdf"
         hint="PDF fino a 5 MB"
+        invalid={!!error}
+        describedBy={error ? errorId : undefined}
       />
     ),
     // What is attached is still checked here, with the same two rules the server
@@ -140,12 +155,14 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
   },
   {
     id: 'tariffa_giornaliera',
-    title: 'Quanto costa una tua giornata?',
+    label: 'Quanto costa una tua giornata?',
     hint: 'In euro, IVA esclusa. Una cifra indicativa: serve a proporti i progetti giusti.',
-    render: ({ value, set, autoFocus }) => (
+    render: ({ value, set, autoFocus, error, errorId }) => (
       <div className="flex items-center gap-3">
         <TextField
           aria-label="Tariffa a giornata"
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
           inputMode="decimal"
           placeholder="450"
           value={value.tariffa_giornaliera}
@@ -165,11 +182,13 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
   },
   {
     id: 'posizione',
-    title: 'Cosa fai?',
+    label: 'Cosa fai?',
     hint: 'Il ruolo con cui ti presenti: «Backend developer», «AI engineer», «Fractional CTO».',
-    render: ({ value, set, autoFocus }) => (
+    render: ({ value, set, autoFocus, error, errorId }) => (
       <TextField
         aria-label="Posizione"
+        aria-invalid={!!error}
+        aria-describedby={error ? errorId : undefined}
         placeholder="Backend developer"
         value={value.posizione}
         onChange={(posizione) => set({ posizione })}
@@ -181,11 +200,13 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
   },
   {
     id: 'remoto',
-    title: 'Come preferisci lavorare?',
-    render: ({ value, set }) => (
+    label: 'Come preferisci lavorare?',
+    render: ({ value, set, error, errorId }) => (
       <ChoiceField
         value={value.remoto}
         onChange={(remoto) => set({ remoto })}
+        invalid={!!error}
+        describedBy={error ? errorId : undefined}
         options={[
           { value: 'remoto', label: 'Da remoto', hint: 'Ovunque, con le call che servono.' },
           { value: 'ibrido', label: 'Ibrido', hint: 'Qualche giorno in sede va bene.' },
@@ -199,11 +220,17 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
   },
   {
     id: 'links',
-    title: 'Altri link che vuoi farci vedere',
+    label: 'Altri link che vuoi farci vedere',
     hint: 'GitHub, portfolio, sito: uno per riga, con https.',
     optional: true,
-    render: ({ value, set, autoFocus }) => (
-      <LinksField value={value.links} onChange={(links) => set({ links })} autoFocus={autoFocus} />
+    render: ({ value, set, autoFocus, error, errorId }) => (
+      <LinksField
+        value={value.links}
+        onChange={(links) => set({ links })}
+        autoFocus={autoFocus}
+        invalid={!!error}
+        describedBy={error ? errorId : undefined}
+      />
     ),
     validate: (value) => {
       const links = value.links.map((link) => link.trim()).filter(Boolean)
@@ -215,6 +242,8 @@ export const FREELANCER_STEPS: Step<FreelancerApplication>[] = [
     summary: (value) => value.links.map((link) => link.trim()).filter(Boolean).join(', '),
   },
 ]
+
+export const FREELANCER_SCREENS = screensFromFields(FREELANCER_FIELDS)
 
 /** The perk the URL says the person came for, if any: `?perk=guida` is what the
  *  landing's «Entra e scaricala» button carries (ORB-154), so the wizard can say why it
@@ -257,7 +286,7 @@ function Intro() {
     >
       <p className="font-medium">rebase è la community di chi fa software in proprio in Italia.</p>
       <p className="mt-1 text-sm text-muted-foreground">
-        {FREELANCER_STEPS.length} domande, circa tre minuti: chi sei, cosa fai e quanto costi,
+        {FREELANCER_FIELDS.length} domande, circa tre minuti: chi sei, cosa fai e quanto costi,
         così le aziende che cercano persone ti trovano. Dentro c’è anche PigroCRM, gratis.
       </p>
     </aside>
@@ -297,7 +326,7 @@ export function FreelancerWizard() {
   // Bumped by «Ricomincia»: a new key remounts the engine on the first question.
   const [attempt, setAttempt] = useState(0)
   const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<{ message: string; step?: string } | null>(null)
+  const [submitError, setSubmitError] = useState<{ message: string; field?: string } | null>(null)
 
   // Once the application is in, nothing is saved again, whatever React still has to
   // flush: the next visit must open a blank form, not the one just sent.
@@ -327,7 +356,7 @@ export function FreelancerWizard() {
       const failure = error instanceof ApiError ? error : null
       setSubmitError({
         message: failure?.message ?? 'Non siamo riusciti a inviare la candidatura. Riprova.',
-        step: failure?.fields[0],
+        field: failure?.fields[0],
       })
     } finally {
       setSubmitting(false)
@@ -341,7 +370,7 @@ export function FreelancerWizard() {
       <Wizard
         key={attempt}
         title="Entra in rebase"
-        steps={FREELANCER_STEPS}
+        screens={FREELANCER_SCREENS}
         value={value}
         set={(patch) => setValue((current) => ({ ...current, ...patch }))}
         onSubmit={() => void submit()}

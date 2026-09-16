@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { SITE_HOST } from './path-map-plugin'
 
 const PAGES = ['index.html', 'pigrocrm.html', 'privacy.html', 'termini.html'] as const
 const html = Object.fromEntries(
@@ -47,7 +48,14 @@ describe.each(PAGES)('%s', (name) => {
   })
 
   it('requests nothing from another origin, bar the one script it declares', () => {
-    for (const [, url] of page.matchAll(/(?:href|src)="(https?:\/\/[^"]+)"/g)) {
+    // REB-111: `<link rel="canonical">` carries this page's own absolute address, on
+    // this origin. It is metadata a crawler reads, never a request anywhere, and is
+    // checked on its own two lines below rather than against the allowlist here; only
+    // that exact value is exempt, not every same-origin absolute URL.
+    const canonical = page.match(/<link\b[^>]*\brel="canonical"[^>]*\bhref="([^"]*)"/)?.[1]
+    for (const match of page.matchAll(/(?:href|src)="(https?:\/\/[^"]+)"/g)) {
+      const url = match[1]!
+      if (url === canonical) continue
       // An href the reader clicks -- the repository, the hosted signup, or OpenAI's
       // own privacy policy, which the cookie section has to point at -- is fine; a
       // subresource is not. `humancraft.tech` is in the list because Italian law
@@ -66,7 +74,15 @@ describe.each(PAGES)('%s', (name) => {
       )
     }
     expect(page).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/)
-    expect(page).not.toMatch(/<link[^>]+href="https?:/)
+    // REB-111: the one `<link>` allowed an absolute href is its own canonical, and only
+    // when it points back at this origin; a stylesheet or a preconnect fetched from
+    // anywhere else is still banned, which is what this assertion used to say outright.
+    for (const tag of page.match(/<link\b[^>]*>/g) ?? []) {
+      const href = tag.match(/\bhref="(https?:\/\/[^"]+)"/)?.[1]
+      if (href === undefined) continue
+      expect(tag, 'the only <link> allowed an absolute href').toMatch(/\brel="canonical"/)
+      expect(href.startsWith(`${SITE_HOST}/`), `canonical link ${href} is not on this origin`).toBe(true)
+    }
     // Still no third-party tag written into the markup. Since 2026-09-09 index.html
     // *does* fetch one script from another origin -- the ChatGPT Ads measurement SDK,
     // injected by the inline snippet in its head -- and that is the single exception,
@@ -211,6 +227,38 @@ describe('index.html', () => {
   it('links the two pages Google reads during verification', () => {
     expect(page).toMatch(/href="\/privacy"/)
     expect(page).toMatch(/href="\/termini"/)
+  })
+
+  it('carries WebSite and Organization structured data, with nothing invented', () => {
+    // REB-113: one block, on this page only (links.test.ts checks the other five carry
+    // none). The legal entity, its VAT number and its contact address are the ones
+    // privacy.html and termini.html already state.
+    const scripts = [...page.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+    expect(scripts).toHaveLength(1)
+    const data = JSON.parse(scripts[0]![1]!)
+    expect(data['@context']).toBe('https://schema.org')
+    expect(data['@graph']).toHaveLength(2)
+    const website = data['@graph'].find((node: { '@type': string }) => node['@type'] === 'WebSite')
+    const organization = data['@graph'].find((node: { '@type': string }) => node['@type'] === 'Organization')
+    // toMatchObject alone would not fail on an extra, invented property (a postal
+    // address, say); the exact key set is checked too, so the "nothing invented" rule
+    // this test's name promises actually holds.
+    expect(Object.keys(website).sort()).toEqual(['@type', 'name', 'url'].sort())
+    expect(website).toMatchObject({ name: 'rebase', url: 'https://letsrebase.com/' })
+    expect(Object.keys(organization).sort()).toEqual(
+      ['@type', 'name', 'legalName', 'url', 'logo', 'vatID', 'email'].sort(),
+    )
+    expect(organization).toMatchObject({
+      name: 'rebase',
+      legalName: 'Humancraft di Ivan Sala',
+      url: 'https://letsrebase.com/',
+      vatID: '14518240966',
+      email: 'ivansala@humancraft.tech',
+    })
+    // The logo is checked against the page's own og:image rather than a second
+    // hardcoded literal, so a future redraw (the numbered file REB-205 already owns)
+    // cannot update one and silently leave the other stale.
+    expect(organization.logo).toBe(meta(page, 'og:image'))
   })
 
   it('signs its footer with the studio behind the site, never with a fixture', () => {

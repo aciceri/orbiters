@@ -273,7 +273,9 @@ search; a preview name only ever proxies preview containers, so a click inside p
 cannot walk out into production data; and preview's own database and secrets are its
 own. The consequence for a new project: if its preview would expose something that must
 not be read by whoever finds the URL, that is a reason to keep the surface off preview,
-not a reason to put a password back.
+not a reason to put a password back. `projects/website/deploy/check-unindexable.sh`
+(preflight `check-unindexable`) is what proves this stays true against the live
+names rather than only against the vhost files that promise it (REB-108).
 
 TLS on the preview names is a **certificate of their own**, `preview.letsrebase.com`,
 covering both of them, rather than two more names on the production certificate. The

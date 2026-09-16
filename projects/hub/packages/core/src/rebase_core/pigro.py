@@ -19,7 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from rebase_core.config import Settings
-from rebase_core.http import HttpCall
+from rebase_core.http import MAX_BODY_BYTES, HttpCall
 from rebase_core.models import Freelancer
 
 REGISTRY_PATH = "/api/tenants/"
@@ -87,6 +87,8 @@ class PigroRegistry:
             raise PigroUnavailable("Pigro non risponde.") from exc
         if status != 200:
             raise PigroUnavailable(f"Pigro non ha risposto ({status}).")
+        if len(body) > MAX_BODY_BYTES:
+            raise PigroUnavailable("Pigro ha risposto qualcosa di troppo lungo.")
         try:
             rows = _ROWS.validate_python(json.loads(body))
         except (ValueError, ValidationError) as exc:

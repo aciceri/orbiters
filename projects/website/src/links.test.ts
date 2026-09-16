@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { REDIRECTS, route } from './path-map-plugin'
+import { PAGES, REDIRECTS, SITE_HOST, route } from './path-map-plugin'
 
 /**
  * ORB-66: nothing else in the suite resolves an `<a href>` against what the site
@@ -141,11 +141,46 @@ describe('REDIRECTS resolve to something real', () => {
   })
 })
 
+/** `PAGES` maps a served path to a file (e.g. `/pigrocrm` -> `/pigrocrm.html`); this
+ *  inverts it to the file name this test already keys on (`pigrocrm.html`), so the
+ *  canonical address and `og:url` each page declares can be checked against the one
+ *  map that says what its real address is (REB-111). */
+const PATH_OF: Record<PageFile, string> = Object.fromEntries(
+  Object.entries(PAGES).map(([path, file]) => [file.replace(/^\//, ''), path]),
+) as Record<PageFile, string>
+
+describe('PAGE_FILES, the set this file checks', () => {
+  it('is exactly the set of files the path map serves', () => {
+    // A page in PAGES but missing here would get no canonical/og:url assertion at
+    // all, the hole REB-111 closes; a page here but missing from PAGES would make
+    // PATH_OF[name] undefined and the expected value a nonsense string. Either drift
+    // fails on its own terms rather than as a confusing string mismatch below.
+    const served = Object.values(PAGES).map((file) => file.replace(/^\//, ''))
+    expect([...PAGE_FILES].sort()).toEqual(served.sort())
+  })
+})
+
 describe.each(PAGE_FILES)('%s', (name) => {
   it('links only to what the site actually serves', () => {
     const hrefs = [...html[name].matchAll(/<a\s[^>]*\bhref="([^"]+)"/g)].map((m) => m[1]!)
     const failures = hrefs.map((href) => checkHref(name, href)).filter((reason): reason is string => reason !== undefined)
     expect(failures).toEqual([])
+  })
+
+  it('declares its own canonical address, and og:url agrees with the path map', () => {
+    const expected = `${SITE_HOST}${PATH_OF[name]}`
+    // A tolerant attribute-order pattern, like the `meta()` helper elsewhere in the
+    // suite, so a reflow or a reordered attribute is not mistaken for a missing tag.
+    const canonical = html[name].match(/<link[^>]*\brel="canonical"[^>]*\bhref="([^"]*)"/)?.[1]
+    const ogUrl = html[name].match(/<meta[^>]*\bproperty="og:url"[^>]*\bcontent="([^"]*)"/)?.[1]
+    expect(canonical, `${name} <link rel="canonical">`).toBe(expected)
+    expect(ogUrl, `${name} og:url`).toBe(expected)
+  })
+
+  it('carries structured data only if it is the front door', () => {
+    // REB-113: the WebSite/Organization block lives on index.html alone; the assertion
+    // that block is well-formed and says what the legal pages say is landing-pages.test.ts's.
+    expect(html[name].includes('application/ld+json'), name).toBe(name === 'index.html')
   })
 })
 

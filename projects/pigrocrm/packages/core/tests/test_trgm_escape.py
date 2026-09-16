@@ -460,8 +460,10 @@ def test_the_planner_left_alone_still_prefers_a_sequential_scan_at_this_scale(
     take those forced plans for a claim about what production does on a small table.
 
     No longer `@pytest.mark.planner`: that marker meant the plan depended on which machine
-    ran it, and `customers_at_reference_scale` is what removes the dependency, so this now
-    runs in the ordinary gate instead of preflight's single-machine lane.
+    ran it, and `customers_at_reference_scale` is what removes the dependency, so this
+    runs in the ordinary gate instead of the single-machine preflight lane the marker used
+    to earn -- `pigrocrm-py-planner`, retired by REB-90 once `test_sort_plan.py` was the
+    last test anywhere in the repository still carrying it.
 
     `customers_at_reference_scale` is what makes this a property of the data instead of a
     property of which tests happened to run first: see its own docstring for the table-bloat

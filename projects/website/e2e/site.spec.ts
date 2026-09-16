@@ -506,9 +506,37 @@ test.describe('the path map, as production serves it', () => {
   // and the nginx block out of its config; only a server answers whether the two meet,
   // and the same `location /assets/` block serves this card and the hashed bundles.
   test('the share card is served from /assets, as a PNG', async ({ request }) => {
-    const response = await request.get('/assets/share-card-1.png')
+    const response = await request.get('/assets/share-card-2.png')
     expect(response.status()).toBe(200)
     expect(response.headers()['content-type']).toBe('image/png')
+  })
+
+  // path-map-plugin.ts's writeBundle hook only runs at the end of a real `vite
+  // build`, but the preview server's own middleware answers /robots.txt with the same
+  // generated content from memory regardless of what landed on disk (REB-109), so an
+  // HTTP request here proves nothing about the build. Reading the file this
+  // webServer's own `pnpm build` produced is the only way to prove the hook ran.
+  test('robots.txt is served, and the build actually wrote it', async ({ request }) => {
+    const response = await request.get('/robots.txt')
+    expect(response.status()).toBe(200)
+    expect(response.headers()['content-type']).toBe('text/plain; charset=utf-8')
+    const built = readFileSync(new URL('../dist/robots.txt', import.meta.url), 'utf-8')
+    expect(built).toContain('Sitemap: https://letsrebase.com/sitemap.xml')
+  })
+
+  // Same reasoning as robots.txt above: the preview middleware would answer this from
+  // memory even if the build never wrote it, so the file this webServer's own build
+  // produced is what actually proves the writeBundle hook ran (REB-110).
+  test('sitemap.xml is served, lists the indexable pages, and the build actually wrote it', async ({ request }) => {
+    const response = await request.get('/sitemap.xml')
+    expect(response.status()).toBe(200)
+    expect(response.headers()['content-type']).toBe('text/xml; charset=utf-8')
+    const built = readFileSync(new URL('../dist/sitemap.xml', import.meta.url), 'utf-8')
+    for (const path of ['/', '/pigrocrm', '/community', '/privacy', '/termini']) {
+      expect(built).toContain(`<loc>https://letsrebase.com${path}</loc>`)
+    }
+    // /pitch is noindex and stays out of the sitemap, the point of REB-110.
+    expect(built).not.toContain('<loc>https://letsrebase.com/pitch</loc>')
   })
 })
 

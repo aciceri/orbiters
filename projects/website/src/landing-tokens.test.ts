@@ -6,6 +6,7 @@ import { extractSharedTokens } from './palette-plugin'
 
 const shared = extractSharedTokens(readFileSync(fileURLToPath(import.meta.resolve('@rebase/brand/palette.css')), 'utf-8'))
 const landingCss = readFileSync(join(__dirname, 'landing.css'), 'utf-8')
+const pitchCss = readFileSync(join(__dirname, 'pitch.css'), 'utf-8')
 
 type Triple = [number, number, number]
 
@@ -31,12 +32,15 @@ function contrastRatio(hexA: string, hexB: string): number {
 }
 
 const LANDING_DECLARATION = /--landing-[\w-]+\s*:\s*[^;]+;/g
+// pitch.css keeps its own short names (REB-248): longest alternative first, so
+// `--melon-strong` is not cut short by `--melon` matching its own prefix.
+const PITCH_DECLARATION = /--(?:ink|quiet|paper|gold|melon-strong|melon)\s*:\s*[^;]+;/g
 const VAR = /^var\((--color-[\w-]+)\)$/
 
-function declaredValue(token: string): string {
-  const match = landingCss.match(new RegExp(`${token}\\s*:\\s*([^;]+);`))
+function declaredValue(token: string, css: string): string {
+  const match = css.match(new RegExp(`${token}\\s*:\\s*([^;]+);`))
   const value = match?.[1]
-  if (!value) throw new Error(`${token} is not declared in landing.css`)
+  if (!value) throw new Error(`${token} is not declared`)
   return value.trim()
 }
 
@@ -46,7 +50,18 @@ function declaredValue(token: string): string {
  *  `--landing-grid`, `--landing-cell` and `--landing-step` are a line, a length and a
  *  length, not text colours, and are not read through here. */
 function resolveLandingColour(token: string): string {
-  const value = declaredValue(token)
+  const value = declaredValue(token, landingCss)
+  const direct = VAR.exec(value)
+  if (!direct) throw new Error(`${token} is not var(--color-…): ${value}`)
+  const hex = shared[direct[1] ?? '']
+  if (!hex) throw new Error(`${token} points at ${direct[1]}, which tokens.css does not define`)
+  return hex
+}
+
+/** Same resolution for pitch.css's own six names. `--grid`, `--cell`, `--step` and
+ *  `--ease` are a line, two lengths and a curve, not colours, and are not read here. */
+function resolvePitchColour(token: string): string {
+  const value = declaredValue(token, pitchCss)
   const direct = VAR.exec(value)
   if (!direct) throw new Error(`${token} is not var(--color-…): ${value}`)
   const hex = shared[direct[1] ?? '']
@@ -132,5 +147,32 @@ describe('landing tokens', () => {
       (m) => m[1],
     )
     expect(families).toEqual(['Outfit'])
+  })
+})
+
+// pitch.css joined TOKEN_CONSUMERS in REB-248: it used to restate the six colours and
+// its own @font-face, a latent fork of shared/brand that a palette change would have
+// left the deck on. These hold the same two guarantees landing.css already had.
+describe('pitch deck tokens', () => {
+  it('resolves every pitch colour variable out of the shared palette', () => {
+    expect(resolvePitchColour('--ink')).toBe('#011936')
+    expect(resolvePitchColour('--quiet')).toBe('#465362')
+    expect(resolvePitchColour('--paper')).toBe('#f1f2f3')
+    expect(resolvePitchColour('--gold')).toBe('#f9dc5c')
+    expect(resolvePitchColour('--melon')).toBe('#ed254e')
+    expect(resolvePitchColour('--melon-strong')).toBe('#e5133e')
+  })
+
+  it('contains no raw hexadecimal in its colour variables, other than white', () => {
+    for (const declaration of pitchCss.match(PITCH_DECLARATION) ?? []) {
+      for (const hex of declaration.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []) {
+        expect(hex.toLowerCase(), `raw hex in ${declaration}`).toBe('#ffffff')
+      }
+    }
+  })
+
+  it('declares no @font-face of its own, since palette-plugin.ts prepends the brand font', () => {
+    expect(pitchCss).not.toMatch(/@font-face/)
+    expect(pitchCss).toMatch(/font-family:\s*var\(--font-sans\)/)
   })
 })

@@ -83,10 +83,9 @@ in `vite.config.ts` to build it from. `GENERATED_PATHS` in that file lists them,
 is where the next file made this way goes.
 
 `deploy/letsrebase.conf` is the host's vhost: it terminates TLS and sends everything
-here except what belongs to the other tenants of the origin: `/hub/`, `/api/hub/` and
-`/api/community/signups` go to the rebase hub (`projects/hub`), `/health` stays on
-PigroCRM's stack, and `/app` and `/app/` redirect to `pigro.letsrebase.com`, which is
-the CRM.
+here except what belongs to the other tenants of the origin: `/hub/`, `/api/hub/`,
+`/api/community/signups` and `/health` go to the rebase hub (`projects/hub`), and
+`/app` and `/app/` redirect to `pigro.letsrebase.com`, which is the CRM.
 
 Deploys are `deploy-website.yml`: preview on a push to `main` that touched this project,
 production on a `website-v<semver>` tag. Until 2026-09-09 this project had no deployable

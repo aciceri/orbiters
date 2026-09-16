@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
 
 const TOKENS_CSS = fileURLToPath(import.meta.resolve('@rebase/brand/palette.css'))
-/** The rules the two landing sheets share (grid line, tile, glyph, contrast guard),
- *  prepended after the tokens so neither sheet restates them. */
+/** The rules the landing sheets and the pitch deck share (grid line, tile, glyph,
+ *  contrast guard), prepended after the tokens so no consumer restates them. */
 const SYSTEM_CSS = resolve(__dirname, 'system.css')
 /** The typeface, self-hosted, shared with the application: one @font-face for the
  *  whole brand rather than a copy in each sheet. Prepended rather than @import-ed
@@ -69,9 +69,9 @@ export function extractSharedTokens(css: string): Record<string, string> {
   return shared
 }
 
-/** The stylesheets that receive the tokens and the shared system: the landing's own
- *  and the community page's. */
-const TOKEN_CONSUMERS = ['src/landing.css', 'src/community.css']
+/** The stylesheets that receive the tokens and the shared system: the landing's own,
+ *  the community page's, and the pitch deck's. */
+const TOKEN_CONSUMERS = ['src/landing.css', 'src/community.css', 'src/pitch.css']
 
 /** Prepends the shared tokens, then system.css, to each stylesheet in TOKEN_CONSUMERS,
  *  at build and at dev time. */

@@ -1,7 +1,8 @@
-/* The part of the visual system the two landing sheets share, injected once.
-   palette-plugin.ts prepends this file to landing.css and to community.css right after
-   the tokens, so the grid line, the tile, the step and the glyph are written here and
-   nowhere else in the landing. The app cannot consume this file (Tailwind owns its
+/* The part of the visual system every TOKEN_CONSUMERS sheet shares, injected once.
+   palette-plugin.ts prepends this file to landing.css, to community.css and to
+   pitch.css right after the tokens, so the grid line, the tile, the step and the glyph
+   are written here and nowhere else in the landing (pitch.css keeps its own larger,
+   `.dark`-aware drawing of the tiles for the deck's chrome, see its own comment). The app cannot consume this file (Tailwind owns its
    cascade), so tokens.css restates the grid line and BrandMark.tsx the glyph; the
    test in landing-style.test.ts holds those two copies to these values.
 
@@ -32,8 +33,9 @@
    content or takes the focus: see `body::after` below for how the first half of that is
    kept on a phone. No animation: the one these pages spend is the title's cursor, below.
 
-   Only shared tokens, like the rest of this file: the two sheets map them to their own
-   names (--orb-*, --landing-*), so a colour spelled here would be a third palette. */
+   Only shared tokens, like the rest of this file: each consumer maps them to its own
+   names (--orb-*, --landing-*, pitch.css's own six), so a colour spelled here would be
+   a fork of its own. */
 .consent {
   position: fixed;
   left: 1rem;

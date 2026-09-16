@@ -55,16 +55,19 @@ All three come from [`shared/brand`](../../shared/brand), and none of them may b
 restated here:
 
 - **Palette.** `src/palette-plugin.ts` reads the seven shared tokens out of
-  `@rebase/brand/palette.css` at build time and prepends them to the two stylesheets
-  as plain custom properties. The application consumes the same file as part of its
-  Tailwind theme. A hex pasted into a stylesheet here is the fork both mechanisms exist
-  to prevent, and the plugin fails the build if the palette stops being extractable.
+  `@rebase/brand/palette.css` at build time and prepends them to its three consumers
+  (`landing.css`, `community.css`, `pitch.css`) as plain custom properties. The
+  application consumes the same file as part of its Tailwind theme. A hex pasted into a
+  stylesheet here is the fork both mechanisms exist to prevent, and the plugin fails the
+  build if the palette stops being extractable.
 - **Typeface.** Outfit, self-hosted, declared once in `@rebase/brand/font.css` and
   prepended the same way. Nothing is fetched from a CDN, on purpose: PigroCRM is sold
   on self-hosting, and a webfont request hands every visitor's IP to a third party.
-- **The mark.** The four tiles are `.glyph` in `src/system.css` here and Tailwind
-  classes in the application's `BrandMark.tsx`. Both assert their order against
-  `@rebase/brand/mark`, so the two cannot drift.
+- **The mark.** The four tiles are `.glyph` in `src/system.css` here (shared by
+  `landing.css` and `community.css`), a second, larger drawing of the same four
+  colours in `pitch.css` for the deck's own chrome, and Tailwind classes in the
+  application's `BrandMark.tsx`. The first and third assert their order against
+  `@rebase/brand/mark`, so those two cannot drift.
 
 ## How it is served
 

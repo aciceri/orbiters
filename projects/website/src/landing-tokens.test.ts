@@ -6,6 +6,7 @@ import { extractSharedTokens } from './palette-plugin'
 
 const shared = extractSharedTokens(readFileSync(fileURLToPath(import.meta.resolve('@rebase/brand/palette.css')), 'utf-8'))
 const landingCss = readFileSync(join(__dirname, 'landing.css'), 'utf-8')
+const pitchCss = readFileSync(join(__dirname, 'pitch.css'), 'utf-8')
 
 type Triple = [number, number, number]
 
@@ -31,22 +32,26 @@ function contrastRatio(hexA: string, hexB: string): number {
 }
 
 const LANDING_DECLARATION = /--landing-[\w-]+\s*:\s*[^;]+;/g
+// pitch.css keeps its own short names (REB-248): the pattern reaches only these six
+// declarations, never the many `var(--ink)`-style uses that follow them.
+const PITCH_DECLARATION = /--(?:ink|quiet|paper|gold|melon-strong|melon)\s*:\s*[^;]+;/g
 const VAR = /^var\((--color-[\w-]+)\)$/
 
-function declaredValue(token: string): string {
-  const match = landingCss.match(new RegExp(`${token}\\s*:\\s*([^;]+);`))
+function declaredValue(token: string, css: string): string {
+  const match = css.match(new RegExp(`${token}\\s*:\\s*([^;]+);`))
   const value = match?.[1]
-  if (!value) throw new Error(`${token} is not declared in landing.css`)
+  if (!value) throw new Error(`${token} is not declared`)
   return value.trim()
 }
 
-/** Resolves a --landing-* colour token to the sRGB hex a browser would compute. Every
- *  text colour on the landing is now a plain var() of a shared token: the opaque box
- *  replaced the tinted veils, so there is no color-mix toward white left to resolve.
- *  `--landing-grid`, `--landing-cell` and `--landing-step` are a line, a length and a
- *  length, not text colours, and are not read through here. */
-function resolveLandingColour(token: string): string {
-  const value = declaredValue(token)
+/** Resolves a colour token declared as `var(--color-…)` in the given sheet to the
+ *  sRGB hex a browser would compute, against either sheet: every text colour on the
+ *  landing and on the deck is now a plain var() of a shared token, so there is no
+ *  color-mix toward white left to resolve. `--landing-grid`/`--grid`,
+ *  `--landing-cell`/`--cell` and `--landing-step`/`--step` are a line and lengths, not
+ *  colours, and are not read through here. */
+function resolveColour(token: string, css: string): string {
+  const value = declaredValue(token, css)
   const direct = VAR.exec(value)
   if (!direct) throw new Error(`${token} is not var(--color-…): ${value}`)
   const hex = shared[direct[1] ?? '']
@@ -56,11 +61,11 @@ function resolveLandingColour(token: string): string {
 
 describe('landing tokens', () => {
   it('resolves every --landing-* colour out of the shared palette', () => {
-    expect(resolveLandingColour('--landing-surface')).toBe('#f1f2f3')
-    expect(resolveLandingColour('--landing-ink')).toBe('#011936')
-    expect(resolveLandingColour('--landing-ink-quiet')).toBe('#465362')
-    expect(resolveLandingColour('--landing-cta')).toBe('#e5133e')
-    expect(resolveLandingColour('--landing-focus')).toBe('#ed254e')
+    expect(resolveColour('--landing-surface', landingCss)).toBe('#f1f2f3')
+    expect(resolveColour('--landing-ink', landingCss)).toBe('#011936')
+    expect(resolveColour('--landing-ink-quiet', landingCss)).toBe('#465362')
+    expect(resolveColour('--landing-cta', landingCss)).toBe('#e5133e')
+    expect(resolveColour('--landing-focus', landingCss)).toBe('#ed254e')
   })
 
   it('contains no raw hexadecimal in the --landing-* block, other than white', () => {
@@ -75,16 +80,16 @@ describe('landing tokens', () => {
   })
 
   it('reaches 4.5:1 on every text pair', () => {
-    const surface = resolveLandingColour('--landing-surface')
-    const ink = resolveLandingColour('--landing-ink')
-    const quiet = resolveLandingColour('--landing-ink-quiet')
+    const surface = resolveColour('--landing-surface', landingCss)
+    const ink = resolveColour('--landing-ink', landingCss)
+    const quiet = resolveColour('--landing-ink-quiet', landingCss)
     // Boxes and cards are opaque white, so every text colour is also read on white.
     for (const [text, background] of [
       [ink, surface],
       [quiet, surface],
       [ink, '#ffffff'],
       [quiet, '#ffffff'],
-      ['#ffffff', resolveLandingColour('--landing-cta')],
+      ['#ffffff', resolveColour('--landing-cta', landingCss)],
     ] as const) {
       expect(contrastRatio(text, background), `${text} on ${background}`).toBeGreaterThanOrEqual(4.5)
     }
@@ -92,8 +97,8 @@ describe('landing tokens', () => {
 
   it('reaches 3:1 on the focus ring, which is a component and not text', () => {
     const ratio = contrastRatio(
-      resolveLandingColour('--landing-focus'),
-      resolveLandingColour('--landing-surface'),
+      resolveColour('--landing-focus', landingCss),
+      resolveColour('--landing-surface', landingCss),
     )
     expect(ratio).toBeGreaterThanOrEqual(3)
   })
@@ -132,5 +137,32 @@ describe('landing tokens', () => {
       (m) => m[1],
     )
     expect(families).toEqual(['Outfit'])
+  })
+})
+
+// pitch.css joined TOKEN_CONSUMERS in REB-248: it used to restate the six colours and
+// its own @font-face, a latent fork of shared/brand that a palette change would have
+// left the deck on. These hold the same two guarantees landing.css already had.
+describe('pitch deck tokens', () => {
+  it('resolves every pitch colour variable out of the shared palette', () => {
+    expect(resolveColour('--ink', pitchCss)).toBe('#011936')
+    expect(resolveColour('--quiet', pitchCss)).toBe('#465362')
+    expect(resolveColour('--paper', pitchCss)).toBe('#f1f2f3')
+    expect(resolveColour('--gold', pitchCss)).toBe('#f9dc5c')
+    expect(resolveColour('--melon', pitchCss)).toBe('#ed254e')
+    expect(resolveColour('--melon-strong', pitchCss)).toBe('#e5133e')
+  })
+
+  it('contains no raw hexadecimal in its colour variables, other than white', () => {
+    for (const declaration of pitchCss.match(PITCH_DECLARATION) ?? []) {
+      for (const hex of declaration.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []) {
+        expect(hex.toLowerCase(), `raw hex in ${declaration}`).toBe('#ffffff')
+      }
+    }
+  })
+
+  it('declares no @font-face of its own, since palette-plugin.ts prepends the brand font', () => {
+    expect(pitchCss).not.toMatch(/@font-face/)
+    expect(pitchCss).toMatch(/font-family:\s*var\(--font-sans\)/)
   })
 })

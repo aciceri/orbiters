@@ -13,7 +13,7 @@ from pigrocrm.core.auth.service import UserService
 from pigrocrm.core.auth.tokens import decode_token, issue_access_token
 from pigrocrm.core.config import Settings
 from pigrocrm.core.db.session import session_factory
-from pigrocrm.core.errors import DomainError, ValidationFailed
+from pigrocrm.core.errors import DomainError, NotFound, ValidationFailed
 from pigrocrm.core.mail import magic_link_mail
 from pigrocrm.core.tenants import TenantService
 from pigrocrm.core.tenants.database import (
@@ -454,12 +454,16 @@ def update_me(data: MeUpdate, actor: ActorDep, session: SessionDep) -> UserRead:
     deliberately: `PATCH /api/users/{id}` (`UserService.update`) is for an
     administrator changing someone else's account, but this is a person changing
     their own weekly-digest preference, and the mail's own opt-out link (spec
-    2026-09-16 §3.6) must work whatever role received it. Same existence check as
-    `me` just above, and the same 401 rather than `UserService.update_own_digest`'s
-    own `NotFound` -- a session whose user row is gone is "not authenticated," not
-    "not found," here as everywhere else on this router.
+    2026-09-16 §3.6) must work whatever role received it.
+
+    The row is loaded once, by the service. `update_own_digest` already refuses an
+    actor with no id and an id with no row, both as `NotFound`, so a check here would
+    be the same query asked twice and a second place deciding who exists. What stays
+    the router's own is the *answer*: a session whose user row is gone is "not
+    authenticated," not "not found," here as everywhere else on this router, so the
+    domain error is translated to the same 401 `me` just above gives.
     """
-    user = UserRepository(session).get(actor.id) if actor.id else None
-    if user is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Utente non trovato")
-    return UserService(session).update_own_digest(actor, data.digest_settimanale)
+    try:
+        return UserService(session).update_own_digest(actor, data.digest_settimanale)
+    except NotFound as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Utente non trovato") from exc

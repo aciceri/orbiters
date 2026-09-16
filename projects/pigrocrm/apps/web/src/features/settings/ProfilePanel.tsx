@@ -29,7 +29,7 @@ function ReportSwitch({
       type="button"
       role="switch"
       aria-checked={checked}
-      aria-label="Resoconto settimanale"
+      aria-label="Ricevi il resoconto settimanale"
       disabled={disabled}
       onClick={() => onToggle(!checked)}
       className={cn(
@@ -87,7 +87,7 @@ export function ProfilePanel() {
 
       <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
         <div className="space-y-1">
-          <p className="text-sm font-medium">Resoconto settimanale</p>
+          <p className="text-sm font-medium">Ricevi il resoconto settimanale</p>
           <p className="text-sm text-muted-foreground">
             Ogni lunedì alle 8 ricevi la settimana appena chiusa: fatture, incassi, ore,
             pipeline.

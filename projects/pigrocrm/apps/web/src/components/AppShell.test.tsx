@@ -391,6 +391,45 @@ describe('AppShell', () => {
   })
 
   /**
+   * The whole «Impostazioni» group is admin-only in the sidebar, and the profile tab is
+   * inside it -- so for a non-admin this menu entry is the only way to their own profile
+   * from inside the app, and the weekly report's opt-out link (spec 2026-09-16 §3.6) was
+   * the only way to it from outside. Checked for both non-admin roles, as «Token» is:
+   * "collaboratore" and "readonly" are two different guards.
+   *
+   * Queried as a link inside the open menu, not as a `menuitem`: the `Link` stand-in at
+   * the top of this file renders a plain anchor and drops the props Radix clones onto
+   * its child, the role among them. Scoping to the menu is what keeps this from finding
+   * the settings sub-item of the same name that an admin also has in the sidebar.
+   */
+  it.each(['admin', 'collaboratore', 'readonly'])(
+    'offers «Profilo» to a %s, linking to the profile tab',
+    async (ruolo) => {
+      mockAuth.ruolo = ruolo
+      renderShell()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Menu del profilo' }))
+
+      const menu = within(await screen.findByRole('menu'))
+      expect(menu.getByRole('link', { name: 'Profilo' })).toHaveAttribute(
+        'href',
+        '/app/impostazioni/profilo',
+      )
+    },
+  )
+
+  it('leaves «Impostazioni dello spazio» to an admin', async () => {
+    mockAuth.ruolo = 'collaboratore'
+    renderShell()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Menu del profilo' }))
+
+    const menu = within(await screen.findByRole('menu'))
+    expect(menu.getByRole('link', { name: 'Profilo' })).toBeInTheDocument()
+    expect(menu.queryByRole('link', { name: 'Impostazioni dello spazio' })).not.toBeInTheDocument()
+  })
+
+  /**
    * «Collega un agente» is not gated by role, for the same reason Token is not: the token
    * it mints belongs to whoever creates it, not to the space.
    */

@@ -17,6 +17,7 @@ import {
   Rocket,
   Search,
   Settings,
+  UserRound,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -492,6 +493,19 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              {/* «Profilo», for every role and with no gate on it: the sidebar's whole
+                  «Impostazioni» group is admin-only, so without this entry a
+                  collaborator had no way of reaching their own profile tab from inside
+                  the app at all -- the weekly report's opt-out link (spec 2026-09-16
+                  §3.6) was the only door to it. One menu item, above the admin's own
+                  entry, because it is the one thing here that belongs to the person
+                  rather than to the space. */}
+              <DropdownMenuItem asChild>
+                <Link to="/app/impostazioni/profilo">
+                  <UserRound className="size-4" />
+                  Profilo
+                </Link>
+              </DropdownMenuItem>
               {isAdmin && (
                 <DropdownMenuItem asChild>
                   <Link to="/app/impostazioni/spazio">

@@ -73,7 +73,7 @@ describe('ProfilePanel', () => {
     )
     renderPanel()
 
-    const toggle = screen.getByRole('switch', { name: 'Resoconto settimanale' })
+    const toggle = screen.getByRole('switch', { name: 'Ricevi il resoconto settimanale' })
     expect(toggle).toHaveAttribute('aria-checked', 'true')
 
     await userEvent.click(toggle)
@@ -95,7 +95,7 @@ describe('ProfilePanel', () => {
     )
     renderPanel()
 
-    await userEvent.click(screen.getByRole('switch', { name: 'Resoconto settimanale' }))
+    await userEvent.click(screen.getByRole('switch', { name: 'Ricevi il resoconto settimanale' }))
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Il server non risponde.'))
   })

@@ -163,6 +163,35 @@ def test_the_link_enters_once_sets_the_member_cookie_and_opens_only_the_members_
     assert client.get("/api/hub/me").status_code == 401
 
 
+def test_a_cv_filename_outside_latin_1_still_downloads_instead_of_500(
+    client: TestClient, sender: RecordingSender, clean: None
+) -> None:
+    """`isalnum()` alone is Unicode-aware and used to let a CJK character or an emoji
+    through the sanitiser whole, which Starlette then failed to encode into the
+    Latin-1 `Content-Disposition` header at all: the download answered 500 instead of
+    the file (REB-241)."""
+    response = client.post(
+        "/api/hub/freelancers",
+        data={
+            "nome": "Cheng",
+            "cognome": "Wei",
+            "email": "cheng@studio.it",
+            "tariffa_giornaliera": "450",
+            "posizione": "Backend developer",
+            "remoto": "remoto",
+        },
+        files={"cv": ("简历📄.pdf", PDF, "application/pdf")},
+    )
+    assert response.status_code == 201, response.text
+
+    _enter(client, sender, "cheng@studio.it")
+    cv = client.get("/api/hub/me/cv")
+    assert cv.status_code == 200 and cv.content == PDF
+    disposition = cv.headers["content-disposition"]
+    disposition.encode("latin-1")  # raised before the fix, as the header itself did
+    assert 'filename="___.pdf"' in disposition
+
+
 def test_the_guide_is_a_perk_of_the_session_and_not_a_public_file(
     client: TestClient, sender: RecordingSender, clean: None
 ) -> None:

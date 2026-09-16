@@ -8,8 +8,14 @@ from rebase_core.schemas import CvFile
 def cv_response(cv: CvFile) -> Response:
     """The bytes as an attachment. ASCII-safe filename: a quote or a newline in a name
     the applicant chose must not become a header injection, and this is the one place
-    that rule lives."""
-    safe = "".join(ch if ch.isalnum() or ch in "._- " else "_" for ch in cv.filename) or "cv.pdf"
+    that rule lives. `isalnum()` alone is Unicode-aware and would let a script outside
+    Latin-1 through, which Starlette then fails to encode into the header at all."""
+    safe = (
+        "".join(
+            ch if (ch.isascii() and ch.isalnum()) or ch in "._- " else "_" for ch in cv.filename
+        )
+        or "cv.pdf"
+    )
     return Response(
         content=cv.content,
         media_type=cv.mime,

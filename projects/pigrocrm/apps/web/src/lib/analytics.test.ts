@@ -39,13 +39,21 @@ describe('the funnel table', () => {
     ['POST', '/api/deals', 'deal_creato'],
     ['POST', '/api/documents', 'documento_creato'],
     ['POST', '/api/time-entries', 'ore_registrate'],
-    ['POST', '/api/invoices', 'fattura_emessa'],
+    ['POST', '/api/invoices/inv-1/issue', 'fattura_emessa'],
     ['POST', '/api/tokens', 'assistente_collegato'],
     ['PUT', '/api/emitter', 'profilo_emittente_salvato'],
   ])('%s %s on a 2xx is exactly one %s', async (method, path, event) => {
     await answered(method, path, 201)
     expect(capture).toHaveBeenCalledTimes(1)
     expect(capture).toHaveBeenCalledWith(event)
+  })
+
+  it('counts an issued invoice, never the draft POST that created it', async () => {
+    await answered('POST', '/api/invoices', 201)
+    expect(capture).not.toHaveBeenCalled()
+    await answered('POST', '/api/invoices/inv-1/issue', 201)
+    expect(capture).toHaveBeenCalledTimes(1)
+    expect(capture).toHaveBeenCalledWith('fattura_emessa')
   })
 
   it.each([400, 401, 409, 422, 500, 503])('a %i is not an event', async (status) => {

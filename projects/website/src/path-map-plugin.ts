@@ -1,4 +1,6 @@
+import { writeFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { join } from 'node:path'
 import type { Plugin } from 'vite'
 
 /**
@@ -16,6 +18,12 @@ import type { Plugin } from 'vite'
  * two copies of anything stay equal.
  */
 
+/** The host every absolute address in this module points at: this file's own
+ *  robots.txt, the sitemap it names (REB-110), and every page's canonical and
+ *  og:url (REB-111). One constant, so a rebrand (REB-193 already moved it once from
+ *  joinorbiters.com) is one line here instead of one per consumer. */
+export const SITE_HOST = 'https://letsrebase.com'
+
 /** `location = <path> { try_files <file> =404; }`, one line each in nginx.conf. */
 export const PAGES: Readonly<Record<string, string>> = {
   '/': '/index.html',
@@ -30,6 +38,34 @@ export const PAGES: Readonly<Record<string, string>> = {
  *  and so does this. `/orbiters` is the community page's name before REB-212 moved it
  *  to `/community`; kept so a bookmark or an inbound link still lands. */
 export const REDIRECTS: Readonly<Record<string, string>> = { '/orbiters': '/community' }
+
+/** Paths nginx serves via `try_files`, exactly like `PAGES`, whose file this plugin
+ *  writes at build time instead of Vite building it from an HTML input named in
+ *  `vite.config.ts`: robots.txt (REB-109), naming the sitemap. A page added to
+ *  `PAGES` needs no edit here. */
+export const GENERATED_PATHS = ['/robots.txt'] as const
+type GeneratedPath = (typeof GENERATED_PATHS)[number]
+
+/** No `Disallow` line: `/pitch` is the one page a visitor reaches that this site
+ *  would rather a crawler skipped, and it already says so with its own
+ *  `<meta name="robots" content="noindex">` (`src/pitch.html:8`). Blocking the crawl
+ *  in robots.txt too would stop a crawler from ever reaching that tag, and Google's
+ *  own guidance is that a page blocked from crawling can still be indexed by an
+ *  inbound link with no snippet, worse than the noindex outcome it has today
+ *  (developers.google.com/search/docs/crawling-indexing/block-indexing). So robots.txt
+ *  disallows nothing a visitor can reach, exactly what REB-109 asked for. */
+function robotsTxt(): string {
+  return `User-agent: *\nSitemap: ${SITE_HOST}/sitemap.xml\n`
+}
+
+/** The content and `Content-Type` for one of `GENERATED_PATHS`, computed fresh on
+ *  every call: cheap, and it keeps a single function honest about what ships. */
+function generate(pathname: GeneratedPath): { content: string; contentType: string } {
+  switch (pathname) {
+    case '/robots.txt':
+      return { content: robotsTxt(), contentType: 'text/plain; charset=utf-8' }
+  }
+}
 
 /**
  * Paths the host's vhost (`deploy/letsrebase.conf`) hands to other tenants of the
@@ -50,6 +86,7 @@ export const ELSEWHERE: Readonly<Record<string, string>> = {
 export type Route =
   | { kind: 'page'; file: string }
   | { kind: 'redirect'; to: string }
+  | { kind: 'generated'; content: string; contentType: string }
   | { kind: 'proxy' }
   | { kind: 'elsewhere'; owner: string }
   | { kind: 'file' }
@@ -66,6 +103,9 @@ export function route(pathname: string): Route {
   if (redirect !== undefined) return { kind: 'redirect', to: redirect }
   const file = PAGES[pathname]
   if (file !== undefined) return { kind: 'page', file }
+  if ((GENERATED_PATHS as readonly string[]).includes(pathname)) {
+    return { kind: 'generated', ...generate(pathname as GeneratedPath) }
+  }
   for (const [prefix, owner] of Object.entries(ELSEWHERE)) {
     if (underPrefix(pathname, prefix)) return prefix === '/api' ? { kind: 'proxy' } : { kind: 'elsewhere', owner }
   }
@@ -93,6 +133,11 @@ function handle(req: IncomingMessage, res: ServerResponse, next: () => void): vo
     case 'page':
       req.url = `${decision.file}${query ? `?${query}` : ''}`
       next()
+      return
+    case 'generated':
+      res.statusCode = 200
+      res.setHeader('Content-Type', decision.contentType)
+      res.end(decision.content)
       return
     case 'elsewhere':
       res.statusCode = 200
@@ -124,6 +169,18 @@ export function pathMapPlugin(): Plugin {
     },
     configurePreviewServer(server) {
       server.middlewares.use(handle)
+    },
+    // GENERATED_PATHS have no HTML input in vite.config.ts for Vite to build, so this
+    // writes them straight into the build's output directory once the rest of it
+    // exists. `writeBundle` over `generateBundle`: a plain file write needs none of
+    // Rollup's asset bookkeeping, and this hook runs only at the end of a real
+    // `bundle.write()`, exactly when there is an output directory to write into.
+    writeBundle(options) {
+      const dir = options.dir
+      if (!dir) throw new Error('website-path-map: the build has no output directory, so robots.txt cannot be written')
+      for (const pathname of GENERATED_PATHS) {
+        writeFileSync(join(dir, pathname.slice(1)), generate(pathname).content)
+      }
     },
   }
 }

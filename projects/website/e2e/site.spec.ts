@@ -510,6 +510,19 @@ test.describe('the path map, as production serves it', () => {
     expect(response.status()).toBe(200)
     expect(response.headers()['content-type']).toBe('image/png')
   })
+
+  // path-map-plugin.ts's writeBundle hook only runs at the end of a real `vite
+  // build`, but the preview server's own middleware answers /robots.txt with the same
+  // generated content from memory regardless of what landed on disk (REB-109), so an
+  // HTTP request here proves nothing about the build. Reading the file this
+  // webServer's own `pnpm build` produced is the only way to prove the hook ran.
+  test('robots.txt is served, and the build actually wrote it', async ({ request }) => {
+    const response = await request.get('/robots.txt')
+    expect(response.status()).toBe(200)
+    expect(response.headers()['content-type']).toBe('text/plain; charset=utf-8')
+    const built = readFileSync(new URL('../dist/robots.txt', import.meta.url), 'utf-8')
+    expect(built).toContain('Sitemap: https://letsrebase.com/sitemap.xml')
+  })
 })
 
 // The two policy pages are the two whose text column carries long unbreakable strings:

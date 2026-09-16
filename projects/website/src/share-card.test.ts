@@ -12,6 +12,7 @@ import { readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { BRAND_TILES } from '@rebase/brand/mark'
 import { describe, expect, it } from 'vitest'
+import { SITE_HOST } from './path-map-plugin'
 
 const PAGES = [
   'index.html',
@@ -28,7 +29,7 @@ const PAGES = [
  *  together. */
 const CARD_FILE = 'share-card-1.png'
 const CARD_PATH = `/assets/${CARD_FILE}`
-const CARD_URL = `https://letsrebase.com${CARD_PATH}`
+const CARD_URL = `${SITE_HOST}${CARD_PATH}`
 const CARD_ON_DISK = join(__dirname, 'public', 'assets', CARD_FILE)
 const CARD_ALT =
   'Il marchio rebase, quattro tessere su fondo blu, con il claim «freelance, ma non da soli»'

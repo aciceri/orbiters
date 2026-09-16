@@ -176,6 +176,12 @@ describe.each(PAGE_FILES)('%s', (name) => {
     expect(canonical, `${name} <link rel="canonical">`).toBe(expected)
     expect(ogUrl, `${name} og:url`).toBe(expected)
   })
+
+  it('carries structured data only if it is the front door', () => {
+    // REB-113: the WebSite/Organization block lives on index.html alone; the assertion
+    // that block is well-formed and says what the legal pages say is landing-pages.test.ts's.
+    expect(html[name].includes('application/ld+json'), name).toBe(name === 'index.html')
+  })
 })
 
 describe('idsOn, the id-extraction helper behind the fragment check', () => {

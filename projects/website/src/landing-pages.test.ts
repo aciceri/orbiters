@@ -229,6 +229,28 @@ describe('index.html', () => {
     expect(page).toMatch(/href="\/termini"/)
   })
 
+  it('carries WebSite and Organization structured data, with nothing invented', () => {
+    // REB-113: one block, on this page only (links.test.ts checks the other five carry
+    // none). The legal entity, its VAT number and its contact address are the ones
+    // privacy.html and termini.html already state; the logo is the share card og:image
+    // already names above.
+    const scripts = [...page.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+    expect(scripts).toHaveLength(1)
+    const data = JSON.parse(scripts[0]![1]!)
+    expect(data['@context']).toBe('https://schema.org')
+    const website = data['@graph'].find((node: { '@type': string }) => node['@type'] === 'WebSite')
+    const organization = data['@graph'].find((node: { '@type': string }) => node['@type'] === 'Organization')
+    expect(website).toMatchObject({ name: 'rebase', url: 'https://letsrebase.com/' })
+    expect(organization).toMatchObject({
+      name: 'rebase',
+      legalName: 'Humancraft di Ivan Sala',
+      url: 'https://letsrebase.com/',
+      logo: 'https://letsrebase.com/assets/share-card-1.png',
+      vatID: '14518240966',
+      email: 'ivansala@humancraft.tech',
+    })
+  })
+
   it('signs its footer with the studio behind the site, never with a fixture', () => {
     // ORB-116: the pre-publication sanitisation swapped this link for «Studio Rossi» at
     // example.com, the suite's stock customer, and website-v0.4.0 shipped it. The studio

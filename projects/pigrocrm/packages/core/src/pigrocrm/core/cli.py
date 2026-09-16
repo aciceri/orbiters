@@ -2,18 +2,21 @@ import argparse
 import getpass
 import sys
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import cast
 
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
+from pigrocrm.core import telemetry
 from pigrocrm.core.actor import Actor, Role
 from pigrocrm.core.auth.repository import UserRepository
 from pigrocrm.core.auth.schemas import UserCreate
 from pigrocrm.core.auth.service import UserService
 from pigrocrm.core.config import get_settings
 from pigrocrm.core.db import create_engine_from_settings, session_factory
+from pigrocrm.core.digest.run import DigestOutcome, DigestRun
+from pigrocrm.core.digest.service import previous_week, week_containing
 from pigrocrm.core.errors import Conflict, DomainError, ValidationFailed
 from pigrocrm.core.gmail.errors import GoogleCallFailed
 from pigrocrm.core.gmail.models import GoogleAccount
@@ -22,6 +25,8 @@ from pigrocrm.core.gmail.schemas import SyncReport
 from pigrocrm.core.gmail.sync import GmailSyncService
 from pigrocrm.core.gmail.tokens import GoogleTokenClient
 from pigrocrm.core.gmail.transport import GmailTransport
+from pigrocrm.core.mail import sender_from_settings
+from pigrocrm.core.telemetry import tracker_from_settings
 
 
 def createadmin(email: str | None, nome: str | None) -> int:
@@ -192,6 +197,122 @@ def ensure_space_defaults() -> int:
         else:
             print(f"{slug}: già a posto")
     return 0
+
+
+def digest(*, slug: str | None, data: date | None, forza: bool, dry_run: bool) -> int:
+    """`pigrocrm digest`: the weekly report of every space in the registry, for cron.
+
+    Spec 2026-09-16 §3.4. One run a week, Monday morning (the runbook is
+    `docs/superpowers/notes/2026-09-09-gmail-cron-runbook.md`), one line per space, and
+    exit 0 whatever happens: the spaces are independent, so one that fails must not take
+    the exit status -- and with it the operator's attention -- away from the ones that
+    worked. What decides anything about a space's week is `DigestRun`, not this function;
+    here there is a registry to walk, a session to open per space and a line to print.
+
+    **This command migrates nothing.** `ensure-space-defaults` at boot is the only
+    migrator (ORB-189), and that separation is the point: a cron job that ran Alembic on
+    eight databases at eight o'clock on a Monday would be the riskiest thing this product
+    does, and would do it unattended. So a space whose schema is behind -- no `digests`
+    table, no `users.digest_settimanale` -- fails here, once, as one `saltato` line naming
+    the exception's type, and is picked up by the next deploy's boot command.
+
+    **One sender, one tracker, one week, for the whole run.** Resend's client and
+    PostHog's are per process, not per space, and `previous_week` asked once is what makes
+    a run that starts at 07:59:59 on a Monday send *one* week to every space rather than
+    two different ones side by side. Only `public_url` is per space, because only it
+    differs: `space_base_settings` gives a space the root's URL plus its slug, which is
+    what every link in the mail is built from.
+
+    **`telemetry.shutdown()` in a `finally`.** The PostHog SDK queues captures on a
+    background thread and flushes them on its own schedule; a process that exits without
+    shutting it down loses whatever was still in the queue -- which, for a command that
+    runs for a few seconds once a week, is potentially every event it just produced. It
+    is a no-op on an installation with no key, which is most of them.
+    """
+    from sqlalchemy import create_engine, select
+
+    from pigrocrm.core.tenants import Tenant, ensure_tenants_database, space_base_settings
+    from pigrocrm.core.tenants.database import tenant_database_url
+
+    settings = get_settings()
+    try:
+        registry = ensure_tenants_database(settings)
+        try:
+            with session_factory(registry)() as session:
+                spaces = [
+                    (row.slug, row.db_name, row.owner_email)
+                    for row in session.scalars(select(Tenant).order_by(Tenant.created_at)).all()
+                    if slug is None or row.slug == slug
+                ]
+        finally:
+            registry.dispose()
+    except Exception as exc:  # noqa: BLE001 - a cron line, never a traceback
+        # The type and never the text: a psycopg error can carry the URL, password
+        # included, and this line is appended to a file on the host.
+        print(f"registro degli spazi non raggiungibile ({type(exc).__name__})", file=sys.stderr)
+        return 0
+    if slug is not None and not spaces:
+        # A typo in a cron line. Said once, on stderr, and not as a week that went out.
+        print(f"{slug}: non nel registro", file=sys.stderr)
+        return 0
+    if not spaces:
+        print("nessuno spazio nel registro")
+        return 0
+
+    settimana = week_containing(data) if data is not None else previous_week(settings)
+    sender = sender_from_settings(settings)
+    tracker = tracker_from_settings(settings)
+    try:
+        for space_slug, db_name, owner_email in spaces:
+            engine = create_engine(tenant_database_url(settings, db_name), future=True)
+            try:
+                # A session of its own per space, with no transaction open: `DigestRun`
+                # opens the dashboard's snapshot itself and hands the session back clean
+                # on every path.
+                with session_factory(engine)() as space:
+                    esito = DigestRun(
+                        space,
+                        settings,
+                        sender=sender,
+                        tracker=tracker,
+                        public_url=space_base_settings(settings, space_slug).public_url,
+                    ).send_for_space(
+                        space_slug, owner_email, settimana, forza=forza, dry_run=dry_run
+                    )
+            except Exception as exc:  # noqa: BLE001 - one space must not stop the others
+                # `send_for_space` answers `saltato` for everything that fails once it has
+                # started; what is left for here is what fails before that -- a database
+                # that cannot be reached, a schema behind the image's. The same line
+                # either way, because it is the same thing for the operator reading it.
+                print(f"{space_slug}: saltato ({type(exc).__name__})", file=sys.stderr)
+                continue
+            finally:
+                engine.dispose()
+            _stampa_esito(esito, dry_run=dry_run)
+    finally:
+        telemetry.shutdown()
+    return 0
+
+
+def _stampa_esito(esito: DigestOutcome, *, dry_run: bool) -> None:
+    """One space, one line, counters only -- never an address and never a figure out of
+    the report. `saltato` goes to stderr, so `2>&1` in the cron line keeps the order and a
+    log split by stream keeps the failures on their own.
+
+    `(prova)` on a rehearsal: `--dry-run` answers `inviato` with the people it *would*
+    have written to, and a log where the rehearsal and the real Monday read identically is
+    a log that cannot answer whether last week went out.
+    """
+    if esito.esito == "inviato":
+        print(f"{esito.slug}: inviato a {esito.destinatari}{' (prova)' if dry_run else ''}")
+    elif esito.esito == "vuoto":
+        print(f"{esito.slug}: vuoto")
+    elif esito.esito == "gia_inviato":
+        print(f"{esito.slug}: già inviato per {esito.settimana}")
+    elif esito.esito == "nessun_destinatario":
+        print(f"{esito.slug}: nessun destinatario")
+    else:
+        print(f"{esito.slug}: saltato ({esito.motivo})", file=sys.stderr)
 
 
 def gmail_sync(email: str | None) -> int:
@@ -382,6 +503,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     sync = sub.add_parser("gmail-sync", help="Sincronizza la casella Google collegata (per cron)")
     sync.add_argument("--email", help="La casella da sincronizzare, se ne è collegata più di una")
+    settimanale = sub.add_parser(
+        "digest", help="Manda a ogni spazio il resoconto della settimana (per cron)"
+    )
+    settimanale.add_argument("--slug", help="Un solo spazio, invece di tutto il registro")
+    settimanale.add_argument(
+        "--data",
+        # `type=` rather than a parse in the dispatch below: a mistyped date then comes
+        # back as argparse's own usage message and an exit 2, not as a traceback at the
+        # bottom of a cron log.
+        type=date.fromisoformat,
+        metavar="YYYY-MM-DD",
+        help="Un giorno della settimana da mandare; senza, la settimana appena chiusa",
+    )
+    settimanale.add_argument(
+        "--forza", action="store_true", help="Manda di nuovo una settimana già inviata"
+    )
+    settimanale.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Prova: prepara il resoconto, dice a quanti andrebbe e non manda niente",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "createadmin":
@@ -394,6 +536,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return ensure_space_defaults()
     if args.command == "gmail-sync":
         return gmail_sync(args.email)
+    if args.command == "digest":
+        return digest(slug=args.slug, data=args.data, forza=args.forza, dry_run=args.dry_run)
     return 1
 
 

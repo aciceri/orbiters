@@ -98,7 +98,10 @@ describe('community.html', () => {
     // written into the markup, no second analytics stack, and no state kept on the
     // visitor's machine by our own script. Which pages may carry the pixel, and what
     // it is allowed to do, is `pixel.test.ts`.
-    expect(html).not.toMatch(/(?:href|src)="https?:/)
+    // REB-111: the canonical link is the one absolute href allowed, on this origin,
+    // not a third party; `links.test.ts` checks it agrees with the path map, so here
+    // it is stripped before checking the rest of the markup carries no other one.
+    expect(html.replace(/<link rel="canonical"[^>]*>\s*/, '')).not.toMatch(/(?:href|src)="https?:/)
     expect(html).not.toMatch(/gtag|googletagmanager|plausible|fathom|hotjar/i)
     expect(js).not.toMatch(/https?:\/\//)
     expect(js).not.toMatch(/localStorage|sessionStorage|document\.cookie|navigator\.sendBeacon/)

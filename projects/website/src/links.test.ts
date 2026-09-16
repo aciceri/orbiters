@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { REDIRECTS, route } from './path-map-plugin'
+import { PAGES, REDIRECTS, SITE_HOST, route } from './path-map-plugin'
 
 /**
  * ORB-66: nothing else in the suite resolves an `<a href>` against what the site
@@ -141,11 +141,27 @@ describe('REDIRECTS resolve to something real', () => {
   })
 })
 
+/** `PAGES` maps a served path to a file (e.g. `/pigrocrm` -> `/pigrocrm.html`); this
+ *  inverts it to the file name this test already keys on (`pigrocrm.html`), so the
+ *  canonical address and `og:url` each page declares can be checked against the one
+ *  map that says what its real address is (REB-111). */
+const PATH_OF: Record<PageFile, string> = Object.fromEntries(
+  Object.entries(PAGES).map(([path, file]) => [file.replace(/^\//, ''), path]),
+) as Record<PageFile, string>
+
 describe.each(PAGE_FILES)('%s', (name) => {
   it('links only to what the site actually serves', () => {
     const hrefs = [...html[name].matchAll(/<a\s[^>]*\bhref="([^"]+)"/g)].map((m) => m[1]!)
     const failures = hrefs.map((href) => checkHref(name, href)).filter((reason): reason is string => reason !== undefined)
     expect(failures).toEqual([])
+  })
+
+  it('declares its own canonical address, and og:url agrees with the path map', () => {
+    const expected = `${SITE_HOST}${PATH_OF[name]}`
+    const canonical = html[name].match(/<link rel="canonical" href="([^"]*)"\s*\/>/)?.[1]
+    const ogUrl = html[name].match(/<meta property="og:url" content="([^"]*)"\s*\/>/)?.[1]
+    expect(canonical, `${name} <link rel="canonical">`).toBe(expected)
+    expect(ogUrl, `${name} og:url`).toBe(expected)
   })
 })
 

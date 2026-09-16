@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { SITE_HOST } from './path-map-plugin'
 
 const PAGES = ['index.html', 'pigrocrm.html', 'privacy.html', 'termini.html'] as const
 const html = Object.fromEntries(
@@ -47,7 +48,11 @@ describe.each(PAGES)('%s', (name) => {
   })
 
   it('requests nothing from another origin, bar the one script it declares', () => {
-    for (const [, url] of page.matchAll(/(?:href|src)="(https?:\/\/[^"]+)"/g)) {
+    for (const [, url] of page.matchAll(/(?:href|src)="(https?:\/\/[^"]+)"/g) as IterableIterator<[string, string]>) {
+      // REB-111: `<link rel="canonical">` carries this page's own absolute address,
+      // on this origin. It is metadata a crawler reads, never a request anywhere, and
+      // is checked on its own two lines below rather than against the allowlist here.
+      if (url.startsWith(`${SITE_HOST}/`)) continue
       // An href the reader clicks -- the repository, the hosted signup, or OpenAI's
       // own privacy policy, which the cookie section has to point at -- is fine; a
       // subresource is not. `humancraft.tech` is in the list because Italian law
@@ -66,7 +71,15 @@ describe.each(PAGES)('%s', (name) => {
       )
     }
     expect(page).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/)
-    expect(page).not.toMatch(/<link[^>]+href="https?:/)
+    // REB-111: the one `<link>` allowed an absolute href is its own canonical, and only
+    // when it points back at this origin; a stylesheet or a preconnect fetched from
+    // anywhere else is still banned, which is what this assertion used to say outright.
+    for (const tag of page.match(/<link\b[^>]*>/g) ?? []) {
+      const href = tag.match(/\bhref="(https?:\/\/[^"]+)"/)?.[1]
+      if (href === undefined) continue
+      expect(tag, 'the only <link> allowed an absolute href').toMatch(/\brel="canonical"/)
+      expect(href.startsWith(`${SITE_HOST}/`), `canonical link ${href} is not on this origin`).toBe(true)
+    }
     // Still no third-party tag written into the markup. Since 2026-09-09 index.html
     // *does* fetch one script from another origin -- the ChatGPT Ads measurement SDK,
     // injected by the inline snippet in its head -- and that is the single exception,

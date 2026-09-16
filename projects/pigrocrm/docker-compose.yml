@@ -48,9 +48,11 @@ x-api-environment: &api-environment
   PIGROCRM_POSTHOG_KEY: ${PIGROCRM_POSTHOG_KEY:-}
   PIGROCRM_POSTHOG_HOST: ${PIGROCRM_POSTHOG_HOST:-https://eu.i.posthog.com}
   # PIGROCRM_COOKIE_SECURE is deliberately NOT set here -- do not add it.
-  # .env (this same file, shared with the plain `uv run uvicorn`/`uv run pytest`
-  # local-dev flow) carries PIGROCRM_COOKIE_SECURE=false for that flow's own
-  # reason (see .env.example). Compose only forwards the variables a service's
+  # a `.env` derived from `.env.example` carries, for the plain `uv run uvicorn`/
+  # `uv run pytest` local-dev flow, PIGROCRM_COOKIE_SECURE=false for that flow's own
+  # reason (see .env.example) -- a separate copy from the one compose reads for this
+  # stack (.env.example's own header says where each lives). Compose only forwards
+  # the variables a service's
   # `environment:` block names explicitly; it does not leak every key of `.env`
   # into every container. Leaving this key out means the api container always
   # gets Settings' own compiled-in default (cookie_secure=True), regardless of

@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ELSEWHERE, GENERATED_PATHS, PAGES, REDIRECTS, SITE_HOST, pathMapPlugin, route } from './path-map-plugin'
+import { ELSEWHERE, GENERATED_PATHS, NOINDEX, PAGES, REDIRECTS, SITE_HOST, pathMapPlugin, route } from './path-map-plugin'
 
 const nginx = readFileSync(join(__dirname, '..', 'deploy', 'nginx.conf'), 'utf-8')
 const vhost = readFileSync(join(__dirname, '..', 'deploy', 'letsrebase.conf'), 'utf-8')
@@ -129,5 +129,54 @@ describe('robots.txt (REB-109)', () => {
     const { writeBundle } = pathMapPlugin()
     if (typeof writeBundle !== 'function') throw new Error('writeBundle is not a plain function')
     expect(() => writeBundle.call({} as never, {} as never, {} as never)).toThrow(/output directory/)
+  })
+})
+
+describe('sitemap.xml (REB-110)', () => {
+  it('has its own exact-match location in nginx.conf, like robots.txt', () => {
+    expect(nginx).toMatch(/location = \/sitemap\.xml \{ try_files \/sitemap\.xml =404; \}/)
+  })
+
+  it('lists exactly the pages in PAGES that are not in NOINDEX, absolute, on SITE_HOST, and no others', () => {
+    const decision = route('/sitemap.xml')
+    expect(decision.kind).toBe('generated')
+    if (decision.kind !== 'generated') throw new Error('unreachable')
+    expect(decision.contentType).toBe('application/xml; charset=utf-8')
+    const locs = [...decision.content.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1])
+    const expected = Object.keys(PAGES)
+      .filter((path) => !(NOINDEX as readonly string[]).includes(path))
+      .map((path) => `${SITE_HOST}${path}`)
+    // A page removed from PAGES with nothing else changed shrinks `expected` and this
+    // still catches it: `toEqual` on two sorted arrays fails on either side being
+    // longer, not only on a mismatched element.
+    expect([...locs].sort()).toEqual([...expected].sort())
+  })
+
+  it('carries no lastmod, changefreq or priority', () => {
+    const decision = route('/sitemap.xml')
+    if (decision.kind !== 'generated') throw new Error('unreachable')
+    expect(decision.content).not.toMatch(/lastmod|changefreq|priority/)
+  })
+
+  it('is written into the build output by the writeBundle hook, alongside robots.txt', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'website-sitemap-'))
+    try {
+      const { writeBundle } = pathMapPlugin()
+      if (typeof writeBundle !== 'function') throw new Error('writeBundle is not a plain function')
+      writeBundle.call({} as never, { dir } as never, {} as never)
+      expect(readFileSync(join(dir, 'sitemap.xml'), 'utf-8')).toContain(`${SITE_HOST}/pigrocrm`)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('NOINDEX, against every page\'s own head', () => {
+  it('matches exactly the pages that declare <meta name="robots" content="noindex">', () => {
+    const actuallyNoindex = Object.entries(PAGES)
+      .filter(([, file]) => readFileSync(join(__dirname, file.slice(1)), 'utf-8').includes('<meta name="robots" content="noindex"'))
+      .map(([path]) => path)
+      .sort()
+    expect([...NOINDEX].sort()).toEqual(actuallyNoindex)
   })
 })

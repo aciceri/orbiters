@@ -316,6 +316,71 @@ def test_forza_with_a_day_of_that_week_sends_it_again(
     assert _settimane(settings, UNO) == [iso]
 
 
+def test_a_space_whose_database_is_gone_does_not_take_the_others_with_it(
+    settings: Settings,
+    cron: RecordingSender,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The contract the whole command is built around: the spaces are independent.
+
+    A space whose database cannot be opened -- dropped, moved, never created -- is one
+    `saltato` line on stderr naming the exception's type, and the spaces beside it are
+    mailed in the same run. `tenant_database_url` is patched on the module `digest`
+    imports it from, because that is where the name is resolved at call time; this file's
+    own `_motore` holds the real function and goes on reaching the real databases, which
+    is what lets the fixtures clean up after this test.
+    """
+    import pigrocrm.core.tenants.database as tenants_database
+
+    vero = tenants_database.tenant_database_url
+    monkeypatch.setattr(
+        tenants_database,
+        "tenant_database_url",
+        lambda impostazioni, db_name: vero(
+            impostazioni,
+            "pigrocrm_spazio_mai_creato" if db_name == tenant_database_name(DUE) else db_name,
+        ),
+    )
+
+    assert cli.main(["digest"]) == 0
+
+    captured = capsys.readouterr()
+    assert f"{UNO}: inviato a 1" in captured.out
+    assert DUE not in captured.out
+    # The type and never the text: a psycopg error carries the connection's URL.
+    assert captured.err.strip() == f"{DUE}: saltato (OperationalError)"
+    assert [mail.to for mail in _mie(cron)] == [TITOLARI[UNO]]
+    assert _settimane(settings, DUE) == []
+
+
+def test_a_client_that_cannot_be_built_is_one_line_and_still_shuts_the_sdk_down(
+    cron: RecordingSender,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """PostHog's client is built once per run, and building it can fail -- a malformed
+    key, a host it refuses. Built outside the `try` it would be a traceback in a cron log
+    and an SDK left running; inside it, it is a line, an exit 0, and a `shutdown()` that
+    happens anyway, which is the whole reason that `finally` exists.
+    """
+    chiuso: list[str] = []
+
+    def esplode(_settings: Settings) -> None:
+        raise RuntimeError("chiave storta")
+
+    monkeypatch.setattr(cli, "tracker_from_settings", esplode)
+    monkeypatch.setattr(cli.telemetry, "shutdown", lambda: chiuso.append("shutdown"))
+
+    assert cli.main(["digest", "--slug", UNO]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.err.strip() == "invio non configurabile (RuntimeError)"
+    assert captured.out == ""
+    assert chiuso == ["shutdown"]
+    assert _mie(cron) == []
+
+
 def test_an_unreachable_registry_is_one_line_on_stderr_and_still_exits_zero(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

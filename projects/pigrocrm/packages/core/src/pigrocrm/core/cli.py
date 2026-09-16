@@ -26,6 +26,12 @@ from pigrocrm.core.gmail.sync import GmailSyncService
 from pigrocrm.core.gmail.tokens import GoogleTokenClient
 from pigrocrm.core.gmail.transport import GmailTransport
 from pigrocrm.core.mail import sender_from_settings
+
+# Both forms of the same module, deliberately. `telemetry` as a module is what
+# `digest` calls `shutdown()` through, so the call resolves the attribute at run time and
+# a test that replaces it is obeyed; `tracker_from_settings` is imported by name because
+# that is the seam the tests patch on *this* module (`monkeypatch.setattr(cli,
+# "tracker_from_settings", ...)`), which only works on a name this module owns.
 from pigrocrm.core.telemetry import tracker_from_settings
 
 
@@ -221,7 +227,11 @@ def digest(*, slug: str | None, data: date | None, forza: bool, dry_run: bool) -
     a run that starts at 07:59:59 on a Monday send *one* week to every space rather than
     two different ones side by side. Only `public_url` is per space, because only it
     differs: `space_base_settings` gives a space the root's URL plus its slug, which is
-    what every link in the mail is built from.
+    what every link in the mail is built from. The week comes from the *root* settings and
+    not from `space_base_settings`: there is one week per run, and that function only adds
+    a space's slug to the public URL -- it does not change the timezone, so asking it per
+    space would be the same answer computed eight times, with eight chances to straddle
+    midnight.
 
     **`telemetry.shutdown()` in a `finally`.** The PostHog SDK queues captures on a
     background thread and flushes them on its own schedule; a process that exits without
@@ -260,9 +270,19 @@ def digest(*, slug: str | None, data: date | None, forza: bool, dry_run: bool) -
         return 0
 
     settimana = week_containing(data) if data is not None else previous_week(settings)
-    sender = sender_from_settings(settings)
-    tracker = tracker_from_settings(settings)
     try:
+        # Both clients are built *inside* this `try`, so that the `finally` below reaches
+        # them: PostHog's constructor is the one that can fail here -- a malformed key, a
+        # host it refuses -- and built above, its failure would leave the command with a
+        # traceback instead of a line and, worse, with whatever the SDK had already
+        # started never shut down. The inner `except` is narrow on purpose: a space's own
+        # failure is caught per space below, with the slug in front of it.
+        try:
+            sender = sender_from_settings(settings)
+            tracker = tracker_from_settings(settings)
+        except Exception as exc:  # noqa: BLE001 - a cron line, never a traceback
+            print(f"invio non configurabile ({type(exc).__name__})", file=sys.stderr)
+            return 0
         for space_slug, db_name, owner_email in spaces:
             engine = create_engine(tenant_database_url(settings, db_name), future=True)
             try:

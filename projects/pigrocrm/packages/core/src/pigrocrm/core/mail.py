@@ -2,9 +2,12 @@
 
 The seam exists so tests never send and production never guesses: `sender_from_settings`
 answers `None` without a key, and the API turns that into a 503 sentence rather than a
-mail that does not arrive. Nothing here raises past `send`, and nothing logs an address
-or the key. The HTML is the same box the hub's mails use (tables, inline styles, the
-brand values written out), with PigroCRM's name and the site's legal pages.
+mail that does not arrive. Nothing here raises past `send`; a refusal leaves a warning
+carrying the status and nothing else, because the caller drops what `send` answers and
+the log is the only trace a mail did not leave. No address and no key are ever logged.
+
+The HTML is the same box the hub's mails use (tables, inline styles, the brand values
+written out), with PigroCRM's name and the site's legal pages.
 
 Same shape as `rebase_core/mail.py` on purpose, and not an import of it: the two
 products do not import each other (root `AGENTS.md`), and eighty lines are cheaper than
@@ -13,6 +16,7 @@ a dependency between two release trains.
 
 import html as html_escape
 import json
+import logging
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Sequence
@@ -21,14 +25,26 @@ from typing import Protocol
 
 from pigrocrm.core.config import Settings
 
+logger = logging.getLogger(__name__)
+
 RESEND_URL = "https://api.resend.com/emails"
+# Resend sits behind Cloudflare, which answers `403 error code: 1010` to urllib's
+# default `Python-urllib/3.x` signature and never reaches the API behind it. Every
+# mail this module sent was refused there between the feature shipping and REB-261
+# (2026-09-16), silently, because a refusal is only a `False` nobody reads. The same
+# name `pigrocrm.core.tenants.hub` already uses, and the same lesson `rebase_core.http`
+# learned on 2026-09-10.
+USER_AGENT = "pigrocrm/0.1 (+https://pigro.letsrebase.com)"
 
 HttpCall = Callable[[str, str, dict[str, str], bytes], tuple[int, bytes]]
 
 
 def urllib_call(method: str, url: str, headers: dict[str, str], body: bytes) -> tuple[int, bytes]:
-    """The one HTTP call this module makes, as a function so a test can replace it."""
-    request = urllib.request.Request(url, data=body, method=method, headers=headers)
+    """The one HTTP call this module makes, as a function so a test can replace it.
+
+    The request names itself, unless the caller already named it."""
+    sent = {"User-Agent": USER_AGENT, **headers}
+    request = urllib.request.Request(url, data=body, method=method, headers=sent)
     try:
         with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
             return int(response.status), bytes(response.read())
@@ -83,8 +99,15 @@ class ResendSender:
         try:
             status, _ = self.http("POST", RESEND_URL, headers, payload)
         except Exception:  # noqa: BLE001 - the seam's contract is "never raises"
+            # The caller hands `send` to a background task and drops what it answers,
+            # so this line is the only trace the mail did not leave. The status, and
+            # nothing else: neither the address nor the key may reach a log.
+            logger.warning("mail non inviata: la chiamata al provider non ha risposto")
             return False
-        return 200 <= status < 300
+        if not 200 <= status < 300:
+            logger.warning("mail non inviata: il provider ha risposto %s", status)
+            return False
+        return True
 
 
 def sender_from_settings(settings: Settings) -> EmailSender | None:

@@ -1,15 +1,35 @@
 """The CRM's outbound mail: a seam, Resend behind it, and the one mail this slice sends."""
 
+import logging
+import urllib.request
+
+import pytest
+
 from pigrocrm.core.config import Settings
 from pigrocrm.core.mail import (
     RESEND_URL,
+    USER_AGENT,
     Mail,
     RecordingSender,
     ResendSender,
     magic_link_mail,
     sender_from_settings,
+    urllib_call,
     welcome_mail,
 )
+
+
+class _Response:
+    status = 200
+
+    def __enter__(self) -> "_Response":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def read(self, amt: int = -1) -> bytes:
+        return b"{}"
 
 
 def _settings(**overrides: object) -> Settings:
@@ -102,3 +122,59 @@ def test_the_welcome_mail_enters_with_a_link_and_says_what_to_do_first() -> None
         "x@x.it", 'https://pigro.test/x/app/entra?t="><script>', login, membro=True
     )
     assert hostile.html is not None and "<script>" not in hostile.html
+
+
+def test_every_call_names_itself_unless_the_caller_already_did(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cloudflare in front of Resend answers `403 error code: 1010` to urllib's default
+    signature: without a name of our own every link by mail is refused before reaching
+    the API. Found in production on 2026-09-16 (REB-261), with no mail ever delivered
+    since the feature shipped; the hub's seam learned the same lesson on 2026-09-10."""
+    seen: list[urllib.request.Request] = []
+
+    def fake_open(request: urllib.request.Request, timeout: float) -> _Response:
+        seen.append(request)
+        return _Response()
+
+    # `mail.urllib_call` resolves `urllib.request.urlopen` at call time, so patching the
+    # module attribute is enough and reaches no private name of the module under test.
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    urllib_call("POST", "https://api.example.test/x", {"Content-Type": "application/json"}, b"{}")
+    urllib_call("GET", "https://api.example.test/y", {"User-Agent": "altro/1"}, b"")
+    assert seen[0].get_header("User-agent") == USER_AGENT
+    assert USER_AGENT.startswith("pigrocrm/")
+    assert seen[1].get_header("User-agent") == "altro/1"
+    assert seen[0].get_header("Content-type") == "application/json"
+
+
+def test_a_refused_send_leaves_a_line_behind_with_no_address_and_no_key(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """`send` answering `False` is dropped by the caller's background task, so the log
+    is the only trace a mail did not leave. The status is enough to tell a blocked
+    signature from a rejected address; neither the recipient nor the key may appear."""
+    mail = Mail(to="ada@x.it", subject="s", text="t")
+    with caplog.at_level(logging.WARNING):
+        assert (
+            ResendSender("re_secret", "x", http=lambda *a: (403, b"error code: 1010")).send(mail)
+            is False
+        )
+    assert "403" in caplog.text
+    assert "ada@x.it" not in caplog.text
+    assert "re_secret" not in caplog.text
+
+
+def test_a_send_that_never_reached_the_provider_leaves_a_line_too(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The other silent path: no status at all, because the call itself failed."""
+
+    def boom(method: str, url: str, headers: dict[str, str], body: bytes) -> tuple[int, bytes]:
+        raise OSError("down")
+
+    with caplog.at_level(logging.WARNING):
+        assert ResendSender("re_secret", "x", http=boom).send(Mail("a@x.it", "s", "t")) is False
+    assert caplog.text != ""
+    assert "a@x.it" not in caplog.text
+    assert "re_secret" not in caplog.text

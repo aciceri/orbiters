@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/select'
 import { fieldErrorFrom, toProblem, type ProblemDetail } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { cn } from '@/lib/utils'
 import { useCreateUser, useUpdateUser, useUsers, type UserRecord } from './queries'
 
 const ROLES: { value: UserRecord['ruolo']; label: string }[] = [
@@ -40,6 +41,46 @@ function unattributed(problem: ProblemDetail | null): string | null {
   const fieldError = fieldErrorFrom(problem)
   if (fieldError && KNOWN_FIELDS.includes(fieldError.field)) return null
   return problem.detail
+}
+
+/**
+ * A switch, hand-rolled rather than imported: `components/ui/` has no `switch.tsx`
+ * (same gap `AutomationsPanel`'s `RuleSwitch` already found), and adding one means
+ * running the shadcn generator for a single control. `role="switch"` with
+ * `aria-checked` is what a screen reader and `getByRole('switch')`/`toBeChecked()`
+ * both read, so nothing is lost but the CLI's animation.
+ */
+function ReportSwitch({
+  checked,
+  disabled,
+  onToggle,
+}: {
+  checked: boolean
+  disabled: boolean
+  onToggle: (next: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label="Resoconto settimanale"
+      disabled={disabled}
+      onClick={() => onToggle(!checked)}
+      className={cn(
+        'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50',
+        checked ? 'bg-primary' : 'bg-muted',
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          'inline-block size-4 rounded-full bg-card transition-transform',
+          checked ? 'translate-x-4' : 'translate-x-0.5',
+        )}
+      />
+    </button>
+  )
 }
 
 export function UsersPanel() {
@@ -138,6 +179,32 @@ export function UsersPanel() {
           {info.row.original.attivo ? 'Attivo' : 'Disattivato'}
         </StatusPill>
       ),
+    },
+    {
+      header: 'Resoconto settimanale',
+      id: 'digest_settimanale',
+      // Own row only: it is a preference, not something an admin sets for someone
+      // else, and the digest mail's opt-out link (`?da=digest`) lands a person on
+      // this exact screen to change their own setting -- never anyone else's.
+      cell: (info) => {
+        const user = info.row.original
+        if (user.id !== currentUser?.id) return null
+        return (
+          <ReportSwitch
+            checked={user.digest_settimanale}
+            disabled={update.isPending}
+            onToggle={(next) =>
+              update.mutate(
+                { userId: user.id, body: { digest_settimanale: next } },
+                {
+                  onSuccess: () => toast.success('Resoconto settimanale aggiornato'),
+                  onError: (error) => toast.error(toProblem(error).detail),
+                },
+              )
+            }
+          />
+        )
+      },
     },
     {
       header: '',

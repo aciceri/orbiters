@@ -6432,6 +6432,8 @@ export interface components {
             ruolo: "admin" | "collaboratore" | "readonly";
             /** Attivo */
             attivo: boolean;
+            /** Digest Settimanale */
+            digest_settimanale: boolean;
             /** Tariffa Oraria Default */
             tariffa_oraria_default: string | null;
             /** Costo Orario Default */
@@ -6450,6 +6452,8 @@ export interface components {
             ruolo?: ("admin" | "collaboratore" | "readonly") | null;
             /** Attivo */
             attivo?: boolean | null;
+            /** Digest Settimanale */
+            digest_settimanale?: boolean | null;
             /** Tariffa Oraria Default */
             tariffa_oraria_default?: number | string | null;
             /** Costo Orario Default */

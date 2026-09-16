@@ -224,10 +224,11 @@
         "shared/analytics/**"
       ],
       "unless": [
-        "projects/website/src/**/*.test.ts"
+        "projects/website/src/**/*.test.ts",
+        "projects/website/deploy/check-unindexable.sh"
       ],
       "serial": true,
-      "why": "Playwright against `vite preview` on 4173. Serial because that port is fixed and shared with anything else on this box. The vitest files under src/ are excluded: Playwright loads projects/website/e2e/ and the site it previews is the build, which no unit test enters (ORB-141)."
+      "why": "Playwright against `vite preview` on 4173. Serial because that port is fixed and shared with anything else on this box. The vitest files under src/ are excluded: Playwright loads projects/website/e2e/ and the site it previews is the build, which no unit test enters (ORB-141). check-unindexable.sh is excluded for the same reason: it reaches live hosts over the network, never `dist/`."
     },
     {
       "id": "pigrocrm-e2e",
@@ -266,10 +267,11 @@
         "pnpm-lock.yaml"
       ],
       "unless": [
-        "projects/website/src/**/*.test.ts"
+        "projects/website/src/**/*.test.ts",
+        "projects/website/deploy/check-unindexable.sh"
       ],
       "serial": true,
-      "why": "The deploy builds this image on a single-core server. Building it here is seconds and it is the only check that reads projects/website/deploy/nginx.conf at all. Excluded for the same reason as website-e2e: the Dockerfile runs `pnpm --filter website build`, whose rollup inputs are the four HTML files, so a vitest file under src/ reaches neither dist nor the nginx layer."
+      "why": "The deploy builds this image on a single-core server. Building it here is seconds and it is the only check that reads projects/website/deploy/nginx.conf at all. Excluded for the same reason as website-e2e: the Dockerfile runs `pnpm --filter website build`, whose rollup inputs are the four HTML files, so a vitest file under src/ reaches neither dist nor the nginx layer; check-unindexable.sh reaches live hosts and the Dockerfile does not read it either."
     },
     {
       "id": "hub-image",
@@ -285,6 +287,17 @@
       ],
       "serial": true,
       "why": "The one project whose images were verified on no tier before the trunk: ci.yml builds them on push only, so a broken Dockerfile here reached main before anything said so. `-p rebase` because that is the project name the deploy passes (docs/adding-a-project.md section 7) and the name decides the image tags. Serial for the same reason as the other two: a docker build saturates the box."
+    },
+    {
+      "id": "check-unindexable",
+      "run": "sh projects/website/deploy/check-unindexable.sh",
+      "when": [
+        "projects/website/deploy/preview.letsrebase.conf",
+        "projects/pigrocrm/deploy/nginx/pigro.letsrebase.conf",
+        "projects/pigrocrm/deploy/nginx/preview.pigro.letsrebase.conf",
+        "projects/website/deploy/check-unindexable.sh"
+      ],
+      "why": "The three vhosts that decide whether a preview or the CRM's production host tells a crawler to stay out are edited by hand and rewritten in place by certbot, and nothing else ever asks the live host what it actually answers. Named one by one rather than globbed: the directories they live in also hold nginx.conf, spa.conf, orbiters-proxy.conf and letsrebase.conf (production website, which stays indexable and this script never asserts on), none of which the live hosts under test depend on, and a docker build or Playwright run over an unrelated comment in one of those was exactly the ORB-141 cost this repository already paid once. Reaches preview.letsrebase.com, preview.pigro.letsrebase.com and pigro.letsrebase.com over HTTPS for the X-Robots-Tag and robots.txt REB-108 checks; a GitHub-hosted runner has nothing of its own to prove here, which is why this runs only from the devbox."
     }
   ]
 }

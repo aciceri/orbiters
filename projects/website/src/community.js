@@ -2,8 +2,12 @@
  *
  * The page is complete without this file: the grid is CSS, the box is HTML. What is
  * added here is the drifting field on the canvas -- painted by the shared field.js,
- * loaded before this script -- the fetch behind the button, and the conversion event
- * that follows a signup the API accepted (see pixel.test.ts).
+ * loaded before this script -- the fetch behind the button, the conversion event that
+ * follows a signup the API accepted (see pixel.test.ts), and since REB-247 carrying a
+ * visitor's campaign onto this page's one door into the hub, through the shared
+ * `utm.js` (`window.__utm.carryUtm()`), the same mechanism `landing.js` already uses
+ * for `/` and `/pigrocrm`. This file keeps no browser state of its own: the tab is
+ * written to only from inside `utm.js`, which this file merely calls.
  */
 ;(function () {
   var doc = document
@@ -209,6 +213,7 @@
     /* The title's first word, typed by the shared typewriter.js, loaded before this. */
     var role = doc.querySelector('h1 .role')
     if (role && window.__typewriter) window.__typewriter.mount(role)
+    if (window.__utm) window.__utm.carryUtm()
     var canvas = doc.getElementById('field')
     if (canvas && typeof canvas.getContext === 'function') field(canvas)
     var form = doc.getElementById('signup')

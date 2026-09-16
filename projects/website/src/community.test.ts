@@ -260,13 +260,13 @@ describe('community.css', () => {
 describe('community.js', () => {
   it('stays small', () => {
     // Commented source, so most of these bytes never ship. The ceiling moved from 7 KB
-    // to 9 KB on 2026-09-09, when the file gained the conversion event: the oppref, the
-    // event id shared with the server, and the guarded `measure`. Raised by one step
-    // and not removed -- and the comments were cut back first, which is why it is 9 and
-    // not 12. What actually protects the visitor is the *shipped* budget, asserted per
-    // page in `e2e/site.spec.ts` (40 KB); this one keeps the source from quietly
-    // becoming an application.
-    expect(Buffer.byteLength(js, 'utf-8')).toBeLessThan(9 * 1024)
+    // to 9 KB on 2026-09-09, when the file gained the conversion event, and to 10 KB on
+    // REB-247, when it gained the one-line call into the shared `utm.js`. Raised by one
+    // step and not removed each time, and the comments were cut back first, which is
+    // why it is 10 and not 13. What actually protects the visitor is the *shipped*
+    // budget, asserted per page in `e2e/site.spec.ts` (40 KB); this one keeps the
+    // source from quietly becoming an application.
+    expect(Buffer.byteLength(js, 'utf-8')).toBeLessThan(10 * 1024)
   })
 
   it('carries no colour of its own', () => {
@@ -336,6 +336,16 @@ describe('community.js', () => {
     expect(html).toMatch(
       /<script type="module" src="\.\/field\.js"><\/script>\s*<script type="module" src="\.\/community\.js">/,
     )
+  })
+
+  it('carries a visitor from a campaign onto its door into the hub too (REB-247)', () => {
+    // Until REB-247 only landing.js called carryUtm, so `/community`'s one door into
+    // the hub (`Raccontacelo`, href="/hub/aziende") lost the campaign a company click
+    // arrived with. This file gets the same call, never its own copy: `utm.js` is the
+    // one place that reads sessionStorage, pinned in `utm.test.ts`.
+    expect(js).toContain('window.__utm.carryUtm()')
+    expect(html).toMatch(/<script type="module" src="\.\/utm\.js"><\/script>/)
+    expect(html.indexOf('utm.js')).toBeLessThan(html.indexOf('community.js'))
   })
 })
 

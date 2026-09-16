@@ -32,7 +32,7 @@ export const FREELANCER_FIELDS: Field<FreelancerApplication>[] = [
       <div className="grid gap-3 sm:grid-cols-2">
         <TextField
           aria-label="Nome"
-          aria-invalid={!!error}
+          aria-invalid={!!error && !value.nome.trim()}
           aria-describedby={error ? errorId : undefined}
           placeholder="Nome"
           value={value.nome}
@@ -41,7 +41,7 @@ export const FREELANCER_FIELDS: Field<FreelancerApplication>[] = [
         />
         <TextField
           aria-label="Cognome"
-          aria-invalid={!!error}
+          aria-invalid={!!error && !value.cognome.trim()}
           aria-describedby={error ? errorId : undefined}
           placeholder="Cognome"
           value={value.cognome}

@@ -146,10 +146,12 @@ describe('Wizard', () => {
     const user = userEvent.setup()
     render(<Harness onSubmit={() => {}} />)
 
-    const nome = screen.getByLabelText('Nome')
-    expect(nome).toHaveAttribute('aria-invalid', 'false')
+    expect(screen.getByLabelText('Nome')).toHaveAttribute('aria-invalid', 'false')
     await user.click(screen.getByRole('button', { name: /Avanti/ }))
 
+    // The control remounts when a field turns invalid, so the element found before
+    // the click is stale: re-query it.
+    const nome = screen.getByLabelText('Nome')
     expect(nome).toHaveAttribute('aria-invalid', 'true')
     const alert = screen.getByRole('alert')
     expect(nome.getAttribute('aria-describedby')).toBe(alert.id)
@@ -159,17 +161,24 @@ describe('Wizard', () => {
   })
 
   // REB-243: a server error naming an id that matches no field must never be silent.
-  it('falls back to the review’s own alert when the error names no field at all', () => {
-    render(
+  it('falls back to the review’s own alert when the error names no field at all', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<Harness onSubmit={() => {}} />)
+    await user.type(screen.getByLabelText('Nome'), 'Ada{Enter}')
+    await user.type(screen.getByLabelText('Email'), 'ada@studio.it{Enter}')
+    expect(screen.getByRole('heading', { name: 'Tutto giusto?' })).toBeInTheDocument()
+
+    rerender(
       <Harness
         onSubmit={() => {}}
         submitError={{ message: 'Cognome troppo lungo.', field: 'cognome' }}
       />,
     )
     // No field here is called `cognome`, so the engine cannot jump anywhere: the person
-    // stays wherever they were (the first screen, on this fresh mount) and the message
-    // is never dropped -- it is exactly this silence REB-243 is about.
-    expect(screen.getByRole('heading', { name: 'Come ti chiami?' })).toBeInTheDocument()
+    // stays on the review and the message is never dropped -- it is exactly this
+    // silence REB-243 is about.
+    expect(screen.getByRole('heading', { name: 'Tutto giusto?' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Cognome troppo lungo.')
   })
 })
 

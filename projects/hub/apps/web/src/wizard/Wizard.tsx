@@ -110,7 +110,7 @@ export function Wizard<T>({
   const review = index === screens.length
   const screen = screens[index]
   const fields = screens.flatMap((candidate) => candidate.fields)
-  const [handled, setHandled] = useState<string | null>(null)
+  const [handled, setHandled] = useState<{ message: string; field?: string } | null>(null)
 
   useEffect(() => {
     onStep?.(index, screens.length)
@@ -120,14 +120,17 @@ export function Wizard<T>({
   }, [index, onIndexChange])
 
   // A server error that names a field sends the person back to its screen, once per
-  // error. State adjusted during render, the way React asks for "state that follows a
-  // prop", rather than in an effect that would paint the review first and jump a frame
-  // later. An id that names no field is left alone here: the review's own alert below
-  // shows it instead (REB-243).
-  if (submitError?.field && handled !== submitError.message) {
+  // error. Keyed on the error object itself, not its text: `submit()` makes a fresh
+  // object every attempt, so a second refusal with the same words (the address is
+  // still taken, say) still gets handled rather than silently matching the first
+  // one's `handled` and never jumping again. State adjusted during render, the way
+  // React asks for "state that follows a prop", rather than in an effect that would
+  // paint the review first and jump a frame later. An id that names no field is left
+  // alone here: the review's own alert below shows it instead (REB-243).
+  if (submitError?.field && handled !== submitError) {
     const at = screens.findIndex((candidate) => candidate.fields.some((field) => field.id === submitError.field))
     if (at >= 0) {
-      setHandled(submitError.message)
+      setHandled(submitError)
       setIndex(at)
       setErrors({ [submitError.field]: submitError.message })
       setFocusId(submitError.field)
@@ -279,7 +282,7 @@ export function Wizard<T>({
             const error = errors[field.id] ?? null
             const errorId = `${field.id}-error`
             return (
-              <div key={field.id} className="space-y-2">
+              <div key={`${field.id}:${error ? 'invalid' : 'valid'}`} className="space-y-2">
                 <div>
                   {field.render({
                     value,

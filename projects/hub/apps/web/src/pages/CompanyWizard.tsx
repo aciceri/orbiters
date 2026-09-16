@@ -45,7 +45,7 @@ export const COMPANY_FIELDS: Field<CompanyRequest>[] = [
       <div className="grid gap-3">
         <TextField
           aria-label="Referente"
-          aria-invalid={!!error}
+          aria-invalid={!!error && !value.referente.trim()}
           aria-describedby={error ? errorId : undefined}
           placeholder="Nome e cognome"
           value={value.referente}
@@ -54,7 +54,7 @@ export const COMPANY_FIELDS: Field<CompanyRequest>[] = [
         />
         <TextField
           aria-label="Email"
-          aria-invalid={!!error}
+          aria-invalid={!!error && !EMAIL.test(value.email.trim())}
           aria-describedby={error ? errorId : undefined}
           type="email"
           inputMode="email"
@@ -97,7 +97,7 @@ export const COMPANY_FIELDS: Field<CompanyRequest>[] = [
       <div className="grid gap-3 sm:grid-cols-2">
         <TextField
           aria-label="Da quando"
-          aria-invalid={!!error}
+          aria-invalid={!!error && !/^\d{4}-\d{2}-\d{2}$/.test(value.periodo_da)}
           aria-describedby={error ? errorId : undefined}
           type="date"
           value={value.periodo_da}
@@ -106,7 +106,7 @@ export const COMPANY_FIELDS: Field<CompanyRequest>[] = [
         />
         <TextField
           aria-label="Per quanto"
-          aria-invalid={!!error}
+          aria-invalid={!!error && !value.durata.trim()}
           aria-describedby={error ? errorId : undefined}
           placeholder="3 mesi"
           value={value.durata}
@@ -226,11 +226,13 @@ export function CompanyWizard() {
       void navigate({ to: '/grazie', search: { chi: 'azienda' } })
     } catch (error) {
       const failure = error instanceof ApiError ? error : null
-      // `durata` shares the field with `periodo_da`; anything else names its own field.
+      // `durata` and `email` share a field with `periodo_da` and `referente`;
+      // anything else names its own field.
       const field = failure?.fields[0]
+      const knownField = field === 'durata' ? 'periodo_da' : field === 'email' ? 'referente' : field
       setSubmitError({
         message: failure?.message ?? 'Non siamo riusciti a inviare la richiesta. Riprova.',
-        field: field === 'durata' ? 'periodo_da' : field,
+        field: knownField,
       })
     } finally {
       setSubmitting(false)

@@ -198,8 +198,9 @@ def test_refresh_token_days_is_forwarded_with_its_documented_default() -> None:
     ceiling nobody moves, so no `.env` could ever change it. Pinned here, with the
     same default `Settings` compiles in, so it cannot quietly fall back into
     NOT_FORWARDED without this failing."""
-    forwarded = _shared_environment()[f"{PREFIX}REFRESH_TOKEN_DAYS"]
-    assert forwarded == "${PIGROCRM_REFRESH_TOKEN_DAYS:-180}"
+    variable = f"{PREFIX}REFRESH_TOKEN_DAYS"
+    default = Settings.model_fields["refresh_token_days"].default
+    assert _shared_environment()[variable] == f"${{{variable}:-{default}}}"
 
 
 def test_both_python_services_share_the_one_environment_block() -> None:

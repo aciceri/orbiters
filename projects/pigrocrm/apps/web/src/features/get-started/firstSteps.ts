@@ -142,7 +142,7 @@ export function useFirstSteps({ enabled = true }: { enabled?: boolean } = {}): F
 
   const active = [token, fiscali, cliente, deal, ore, documento]
   const loading = enabled && active.some((q) => q.isPending)
-  const failed = active.some((q) => q.isError)
+  const failed = enabled && active.some((q) => q.isError)
   const value = (q: { data?: boolean; isError: boolean }) => (q.isError ? true : (q.data ?? false))
 
   const list: FirstStep[] = [

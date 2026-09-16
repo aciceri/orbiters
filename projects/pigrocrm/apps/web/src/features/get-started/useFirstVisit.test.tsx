@@ -42,11 +42,12 @@ function Home() {
 
 function renderHome() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  render(
     <QueryClientProvider client={client}>
       <Home />
     </QueryClientProvider>,
   )
+  return client
 }
 
 beforeEach(() => {
@@ -108,9 +109,12 @@ describe('the first visit', () => {
 
   it('leaves the visit undecided when a read fails, so nothing is marked and nothing navigates', async () => {
     vi.mocked(api.GET).mockRejectedValue(new Error('network broke'))
-    renderHome()
-    await waitFor(() => expect(api.GET).toHaveBeenCalled())
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    const client = renderHome()
+    await waitFor(() => {
+      const queries = client.getQueryCache().getAll()
+      expect(queries).toHaveLength(6)
+      expect(queries.every((query) => query.state.status === 'error')).toBe(true)
+    })
     expect(navigate).not.toHaveBeenCalled()
     expect(window.localStorage.getItem('pigrocrm.get-started.visto:/:u1')).toBeNull()
   })

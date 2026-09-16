@@ -22,7 +22,10 @@ import { tenantPrefix } from './tenant'
  * event, and «first customer» or «activated within seven days» are funnels PostHog
  * computes from these, not something the code decides. A segment written `{name}`
  * (`api-types.ts`'s own shape for a resource id) matches any one path segment: the
- * invoice's own id is not something PostHog groups the funnel by.
+ * invoice's own id is not something PostHog groups the funnel by. The upload flow
+ * (`POST /api/documents`) and «Nuovo da template» (`POST /api/documents/from-template`)
+ * both earn `documento_creato`: the funnel's meaning is «a document exists now», which
+ * is true of either, not which button was pressed.
  */
 const EVENTS: ReadonlyArray<readonly [string, string]> = [
   ['POST /api/tenants', 'spazio_creato'],
@@ -30,6 +33,7 @@ const EVENTS: ReadonlyArray<readonly [string, string]> = [
   ['POST /api/customers', 'cliente_creato'],
   ['POST /api/deals', 'deal_creato'],
   ['POST /api/documents', 'documento_creato'],
+  ['POST /api/documents/from-template', 'documento_creato'],
   ['POST /api/time-entries', 'ore_registrate'],
   ['POST /api/invoices/{invoice_id}/issue', 'fattura_emessa'],
   ['POST /api/tokens', 'assistente_collegato'],

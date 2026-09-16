@@ -38,6 +38,7 @@ describe('the funnel table', () => {
     ['POST', '/api/customers', 'cliente_creato'],
     ['POST', '/api/deals', 'deal_creato'],
     ['POST', '/api/documents', 'documento_creato'],
+    ['POST', '/api/documents/from-template', 'documento_creato'],
     ['POST', '/api/time-entries', 'ore_registrate'],
     ['POST', '/api/invoices/inv-1/issue', 'fattura_emessa'],
     ['POST', '/api/tokens', 'assistente_collegato'],
@@ -75,7 +76,6 @@ describe('the funnel table', () => {
     await answered('GET', '/api/customers', 200)
     await answered('PUT', '/api/customers/c1', 200)
     await answered('POST', '/api/deals/d1/stage', 200)
-    await answered('POST', '/api/documents/from-template', 201)
     await answered('POST', '/api/invoices/import', 201)
     await answered('POST', '/api/invoices/inv-1/artifacts', 201)
     await answered('POST', '/api/invoices/inv-1/confirm', 200)
@@ -83,6 +83,15 @@ describe('the funnel table', () => {
     await answered('POST', '/api/auth/login', 200)
     await answered('POST', '/api/auth/logout', 200)
     expect(capture).not.toHaveBeenCalled()
+  })
+
+  it('counts a document made from a template the same as one from the upload flow', async () => {
+    await answered('POST', '/api/documents', 201)
+    expect(capture).toHaveBeenCalledTimes(1)
+    expect(capture).toHaveBeenCalledWith('documento_creato')
+    await answered('POST', '/api/documents/from-template', 201)
+    expect(capture).toHaveBeenCalledTimes(2)
+    expect(capture).toHaveBeenLastCalledWith('documento_creato')
   })
 
   it('reads the path under a space with the prefix removed', async () => {

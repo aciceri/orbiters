@@ -185,6 +185,10 @@ jobs:
               - '.github/workflows/_python-gate.yml'
             pigrocrm_web:
               - 'projects/pigrocrm/apps/web/**'
+              # The vhost `projects/pigrocrm/apps/web/src/test/robots.test.ts` reads
+              # (REB-107): not under `apps/web/**` itself, so a change to just this
+              # file would otherwise skip the test that guards it.
+              - 'projects/pigrocrm/deploy/nginx/pigro.letsrebase.conf'
               - 'shared/brand/**'
               - 'shared/analytics/**'
               - 'package.json'

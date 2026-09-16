@@ -272,6 +272,27 @@ def test_only_sections_with_rows_appear_and_every_link_says_da_digest() -> None:
     assert "2026/1" in mail.text and "2026/1" in mail.html
 
 
+def test_an_issued_row_prints_its_state_word_as_it_is() -> None:
+    """§3.1 item 3: «Numero, cliente, importo, stato». The state is the one extra fact
+    «Emesse questa settimana» is about, and it is printed as the register spells it --
+    there is no mapping table here, so a value added to `StatoPagamento`'s neighbour
+    `InvoiceStato` reads in the mail the day it exists rather than the day somebody
+    remembers to extend a dictionary in `mail.py`.
+    """
+    mail = digest_mail("a@b.it", digest_with(emesse=1), public_url="https://x")
+    assert "2026/1 — Cliente Prova — 0,00 € — mar 8 set — emessa" in mail.text
+    assert mail.html is not None and "mar 8 set — emessa" in mail.html
+    # The value itself, not the word «emessa»: another state reads as itself.
+    trasmessa = digest_with(emesse=1)
+    trasmessa.emesse[0].stato = "trasmessa"
+    assert "mar 8 set — trasmessa" in digest_mail("a@b.it", trasmessa, public_url="https://x").text
+    # Only the issued rows: «Incassate questa settimana» is a list of what arrived, and
+    # the state of an invoice that has been paid says nothing a reader of that heading
+    # does not already know.
+    incassate = digest_mail("a@b.it", digest_with(incassate=1), public_url="https://x")
+    assert "2026/1 — Cliente Prova — 0,00 € — mar 8 set\n" in incassate.text
+
+
 def test_external_values_are_escaped() -> None:
     mail = digest_mail("ada@example.it", digest_with(cliente="<b>ACME</b>"), public_url="https://x")
     assert mail.html is not None

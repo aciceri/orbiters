@@ -40,6 +40,14 @@ stays for a developer and for the tests, and it needs the same token in
 `REBASE_MCP_TOKEN`: `python -m rebase_mcp` refuses to start without one that
 resolves. That variable follows REB-211's rename with the others.
 
+**Correction, 2026-09-16 (REB-245).** The transport did not end up mounted inside
+the hub API. `apps/api`'s `ruff.toml` bans importing `rebase_mcp` ("apps/api must
+not import from apps/mcp"), so `rebase_mcp.http:app` ships as its own compose
+service, `mcp`, on its own port (`REBASE_MCP_PORT`, `projects/hub/docker-compose.yml`),
+and the host vhost proxies `/api/hub/mcp` there directly rather than through the API
+process. The rest of this paragraph, stdio and the token, is unchanged. See
+`projects/hub/AGENTS.md` § The MCP server is an admin's, by token.
+
 **The actor.** The admin behind the token is the author of what the tools write: a
 comment, a card drafted from a signup. Over HTTP the admin is resolved per request and
 carried on a `ContextVar` for the duration of the call; over stdio it is resolved once
@@ -92,6 +100,11 @@ token filled in once it exists. An admin sees and revokes their own tokens only.
 - `main.py` mounts the MCP transport at `/api/hub/mcp` and enters its lifespan in the
   app's own, so the SDK's session manager runs for the life of the process.
 
+  **Correction, 2026-09-16 (REB-245).** `main.py` mounts nothing: `apps/api` may
+  not import `apps/mcp` (`projects/hub/apps/api/ruff.toml`). `rebase_mcp.http:app`
+  runs as its own `mcp` compose service and its own uvicorn process; the host vhost
+  proxies `/api/hub/mcp` there directly.
+
 ### 3.3 MCP
 
 - `build_server(factory, admin, *, settings=None, http=None)`: `admin` is a callable
@@ -138,3 +151,7 @@ token filled in once it exists. An admin sees and revokes their own tokens only.
 
 OAuth and the claude.ai connectors (the CRM's reasoning, unchanged). Tokens for members.
 A token that opens PigroCRM. Expiry on tokens. A separate `mcp` service.
+
+**Correction, 2026-09-16 (REB-245).** "A separate `mcp` service" shipped anyway,
+because `apps/api` may not import `apps/mcp` (`projects/hub/AGENTS.md`); that last
+line of this list is superseded, not out of scope.

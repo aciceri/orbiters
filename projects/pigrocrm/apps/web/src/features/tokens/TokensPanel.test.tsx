@@ -189,6 +189,11 @@ describe('TokensPanel', () => {
       expect(screen.getByRole('button', { name: 'Crea' })).not.toBeDisabled()
     })
 
+    it('gives the revealed token field an accessible name', async () => {
+      await createToken()
+      expect(screen.getByLabelText('Token')).toHaveValue('pgc_the-entire-raw-secret-value')
+    })
+
     it('lets the value be copied to the clipboard', async () => {
       await createToken()
       await screen.findByDisplayValue('pgc_the-entire-raw-secret-value')

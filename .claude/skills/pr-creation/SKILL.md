@@ -187,9 +187,10 @@ waits and the person hears why; a PR without its card is not the smaller harm.
 
 ## After `gh pr create`
 
-1. Move the issue to **`In Review`** and comment the PR URL on it. The PR does link
-   itself within seconds, and that link is not a state change: the status automation is
-   off on this team (PR #33 linked, REB-80 stayed `In Progress`), so move it yourself.
+1. Comment the PR URL on the issue. The PR links itself within seconds, and since
+   2026-09-16 the team's automation moves the state as well: `In Progress` while the PR
+   is open, `Done` when it merges (REB-247, PR #161). The state is not yours from here;
+   the comments are.
 2. **Independent review.** Dispatch a fresh, read-only reviewer (an `Agent` of type
    `general-purpose`, told the worktree path, the diff command, the files that give it
    context, and to rank findings by severity with a concrete fix each). Do not review your
@@ -205,12 +206,15 @@ waits and the person hears why; a PR without its card is not the smaller harm.
    the same comment when you push it.
 5. **Merge with a merge commit**, the repository's shape:
    `gh pr merge <n> --merge --delete-branch`. Never squash a two-commit PR whose second
-   commit is the review: the history is the record.
+   commit is the review: the history is the record. Then, right away, the
+   `**Merged:**` comment on the card with the run ids, the commit sha, the test counts
+   and what you opened and saw: the automation sets `Done` at the merge without waiting
+   for it, and a card that closes with nothing under it was closed by a robot.
 6. **Clean up**: `git worktree remove ../<repo>-orb<N>`, `git worktree prune`.
-7. **Close on Linear only with evidence**: run ids, commit sha, the test counts, what
-   you opened and saw. Preview deploys on the green trunk run; **production moves only
-   on a tag** (`docs/design/DECISIONS.md`, 2026-09-09) and only when asked, and when it
-   does, the card gets its `**In production:**` comment with the tag and what answered.
+7. **Production is a separate step.** Preview deploys on the green trunk run;
+   **production moves only on a tag** (`docs/design/DECISIONS.md`, 2026-09-09) and only
+   when asked, and when it does, the card gets its `**In production:**` comment with the
+   tag and what answered.
 
 ## What never goes in a PR
 

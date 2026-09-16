@@ -156,13 +156,15 @@ not learn it from here. What that section leaves to the caller:
   relations go in that same call; the paragraph as
   `patch: [{ "op": "append", "text": "\n\n**Adjacent.** ..." }]`, because `description`
   on an update replaces the whole body.
-- `In Review` is set by you when the PR opens, with a comment carrying the PR URL. The
-  PR links itself to the issue, so seeing the link is not seeing a state change: the
-  status automation is a per-team setting and it is off here (PR #33 linked, REB-80
-  stayed `In Progress`). Move it yourself. From there to the merge the card keeps
+- When the PR opens, comment the PR URL. Since 2026-09-16 the team's automation moves
+  the state on PR events: the PR opening puts the card in `In Progress` (an `In Review`
+  set before that fires is overwritten: REB-247, PR #161) and the merge sets `Done`.
+  Nothing sets `In Review` by hand since. From the PR to the merge the card keeps
   following the PR (§ Commenting): the review, a red run, a reshaped PR.
-- `Done` takes a closing comment shaped as the `linear-content` skill says (`Evidence:`
-  with run ids, sha, what you exercised and what came back). No evidence, no `Done`.
+- The closing comment shaped as the `linear-content` skill says (`Evidence:` with run
+  ids, sha, what you exercised and what came back) is written before or right after the
+  merge, because `Done` will not wait for it. A card that closes with no evidence under
+  it is a card closed by a robot, not by you.
 - Won't-do is `Canceled` (one `l`), with the reason.
 
 `save_issue` accepts `state`; `get_issue` echoes it as `status`. Same field.

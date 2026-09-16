@@ -53,6 +53,7 @@ row here, in the PR that ships the release or in one of its own.
 | `Monorepo` | `Indexing and SEO v1 - what a crawler sees` | Lorenzo | In Progress |
 | `Monorepo` | `Monorepo hygiene v1 - CI cost, licence and the English rule` | Lorenzo | Completed, 2026-09-10 |
 | `Monorepo` | `Rebrand v2 - orbiters leaves the code` | Lorenzo | Completed, 2026-09-16 (opened 2026-09-15) |
+| `Monorepo` | `Code audit v1 - what five read-only reviewers found on the trunk` | Lorenzo | In Progress, opened 2026-09-16 |
 
 `Monorepo hygiene v1` was where repository-wide work that belongs to no product went
 (CI cost, the licence, this page). It is closed, and nothing has replaced it: a
@@ -180,19 +181,22 @@ are cheap and they are what makes an issue readable in a month, and a card that 
 `In Progress` for a day with nothing under it tells the other agent nothing when they
 are deciding whether to touch the same files.
 
-**When your PR is open.** Move the issue to `In Review`, the status for an issue whose
-PR is open on GitHub, and comment the PR URL on it. The PR links itself to the card
-within seconds; the state does not move, because the team's status automation is off
-(§ Commits and issues), so do this by hand when you open the PR. From here to the merge
-the card keeps following the PR: the review's findings and what you did with them, a CI
-run that went red and why, a push that changed what the PR is. One line each is enough,
-and silence is not.
+**When your PR is open.** Comment the PR URL on the issue. The PR links itself to the
+card within seconds, and since 2026-09-16 the team's automation moves the state too
+(§ Commits and issues): the PR opening puts the card in `In Progress` (an `In Review`
+set before that fires is overwritten, REB-247), and the merge sets `Done` the moment it
+lands. So the evidence that would have closed the card goes in a comment before or right
+after the merge, not in a state change you make. From here to the merge the card keeps
+following the PR: the review's findings and what you did with them, a CI run that went
+red and why, a push that changed what the PR is. One line each is enough, and silence is
+not.
 
 **When you finish.** `Done` means verified on the surface the issue is about, and the
 comment that closes it says how. A green CI check closes a CI issue. A deploy issue
 closes when the deploy has run and a request that exercises the new code came back
-right, never on a 200 from an unchanged path. If you cannot verify it, say so and leave
-it open.
+right, never on a 200 from an unchanged path. If you cannot verify it, say so on the
+card and do not merge yet: a PR that merges closes its issue, so an unverified merge is
+a card closed on nothing.
 
 **Project updates.** Post one whenever something happened that a reader could not infer
 from the issue list: a milestone slipped, a health change (`onTrack`, `atRisk`,
@@ -261,14 +265,22 @@ GitHub account is connected there.
 seconds of `gh pr create`, matching on the `orb-80` in the branch name rather than on
 the exact branch Linear suggests, so any branch carrying the id is enough.
 
-**The state did not move, and that is a different mechanism.** Status changes are the
-team's own pull request automation (Linear: Settings, Team, Workflow), configured per
-team, and it is not configured here: REB-80 was still `In Progress` with the PR open
-and linked, and the five PRs merged the same day closed nothing. So reference the issue
-in the commit body when the commit is the work (`REB-9 covers the real fix`), treat
-that reference as a pointer, and move the state yourself with the evidence in a
-comment. Turn the automation on, or watch a merge close its own issue, and this
-paragraph plus the two skills that repeat it can drop the manual step, with the date.
+**The state moves on PR events since 2026-09-16, and that is a different mechanism.**
+Status changes are the team's own pull request automation (Linear: Settings, Team,
+Workflow), configured per team. It was off until 2026-09-16 (REB-80 stayed `In
+Progress` with PR #33 open and linked, and the five PRs merged on 2026-09-10 closed
+nothing) and it is on since: REB-247 read `In Review` by hand at 17:30:40, `In Progress`
+at 17:30:43 when PR #161 (opened 17:30:32) was seen, and `Done` at 17:46:42 when it
+merged. So a PR opening on a branch that carries the id moves the card to `In
+Progress`, and the merge moves it to `Done`; nothing sets `In Review` by hand since,
+and a card with a PR open reads `In Progress`. What still needs a hand: the `In
+Progress` move before the branch exists (with the neighbour scan), every comment
+(the closing evidence goes in before or right after the merge, since the state will not
+wait for it), `Canceled`, and the `In production` comment when a tag ships. Reference
+the issue in the commit body when the commit is the work (`REB-9 covers the real fix`)
+and treat that reference as a pointer. The setting was turned on from the team's
+workflow settings on 2026-09-16, not through this repository; the `docs/design/DECISIONS.md`
+row for it is still to be written by whoever turned it on.
 
 ## API details worth knowing before you waste a call
 

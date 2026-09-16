@@ -243,6 +243,10 @@ jobs:
                   echo "::error::Could not read container states for ${COMPOSE_PROJECT}."
                   exit 1
                 }
+                if [ -z "${states}" ]; then
+                  echo "::error::Compose knows no containers for ${COMPOSE_PROJECT}: the stack is not running under that project name."
+                  exit 1
+                fi
                 not_running=""
                 while IFS="$(printf '\t')" read -r service state labels; do
                   [ -z "${service}" ] && continue

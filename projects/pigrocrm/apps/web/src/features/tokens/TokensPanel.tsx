@@ -267,11 +267,14 @@ export function TokensPanel() {
               questo token e crearne uno nuovo.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex gap-2">
-            <Input readOnly value={issued?.token ?? ''} className="font-mono text-xs" />
-            <Button variant="outline" size="icon" aria-label="Copia il token" onClick={copyIssued}>
-              <Copy className="size-4" />
-            </Button>
+          <div className="space-y-2">
+            <Label htmlFor="token-issued">Token</Label>
+            <div className="flex gap-2">
+              <Input id="token-issued" readOnly value={issued?.token ?? ''} className="font-mono text-xs" />
+              <Button variant="outline" size="icon" aria-label="Copia il token" onClick={copyIssued}>
+                <Copy className="size-4" />
+              </Button>
+            </div>
           </div>
           <DialogFooter>
             <Button onClick={() => setIssued(null)}>

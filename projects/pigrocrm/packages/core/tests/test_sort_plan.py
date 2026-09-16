@@ -164,23 +164,28 @@ def ordered_corpus(db_engine: Engine) -> Iterator[Engine]:
     cannot run inside the savepoint the `db_session` fixture holds open, and a planner with
     no statistics costs a 20 000-row table as though it held ten.
 
-    A plain `VACUUM` on each table before the insert, not only `VACUUM (ANALYZE)` after
-    it, is REB-90's fix, in the shape ORB-9 gave `customers_at_reference_scale`: `ANALYZE`
-    alone updates the statistics, but `relpages` reflects the table's real physical size,
-    and a `VACUUM` run only after this fixture's own insert reclaims only the dead pages
-    this corpus's own rows leave once it is itself deleted -- it does nothing about
-    whatever dead pages were already there when the insert began. In a whole-directory run
-    the tables arrive carrying the debris of whatever ran before (`test_search_plan.py`
-    deletes 50 000 rows per table on its way out, more than twice this file's own corpus,
-    and re-vacuums for exactly this reason), and `relpages` of the composite indexes would
-    then be costed on pages this corpus never wrote: the planner picks the narrower
-    single-column index under an `Incremental Sort` and the assertions below fail on a
-    plan the production data would never produce. Vacuuming first is what makes each
-    table's physical size, and so every index's cost estimate, a property of this
-    fixture's own corpus alone.
+    A plain `VACUUM` on each table before the insert, then a `REINDEX TABLE`, is REB-90's
+    fix, extending the shape ORB-9 gave `customers_at_reference_scale`. `VACUUM` alone is
+    not enough here the way it was there: `VACUUM` (without `FULL`) truncates a heap's
+    trailing *empty* pages back to the operating system, which is what fixed the plain
+    `Seq Scan` cost `customers_at_reference_scale` measures, but it never does the
+    equivalent for a B-tree -- an index's emptied pages are marked reusable, not returned,
+    so `relpages` for a composite index keeps whatever high-water mark the largest corpus
+    that ever filled it left behind, `VACUUM` or not (checked directly: fifty thousand
+    rows into a fresh index cost it 139 pages, and deleting every row and vacuuming
+    dropped the *table* to zero pages while the index stayed at 139; inserting twenty
+    thousand fresh rows on top left the index still reporting 139 rather than the fresh
+    build's 57). `REINDEX TABLE` is what actually discards the old pages: rebuilt from
+    nothing on the table this fixture finds -- empty, thanks to the `VACUUM` beside it --
+    it costs nothing worth measuring here, and what `build_corpus` inserts afterwards
+    grows it back only as far as this corpus's own twenty thousand rows need. Between the
+    two, this is what makes each table's physical size, and each of its indexes' cost
+    estimate, a property of this fixture's own corpus alone rather than of whatever
+    corpus (`test_search_plan.py`'s fifty thousand rows, more than twice this file's own)
+    last filled the same tables in the same run.
 
-    Both `VACUUM`s run on an `AUTOCOMMIT` connection because `VACUUM` cannot run inside a
-    transaction block at all.
+    Both run on an `AUTOCOMMIT` connection because neither `VACUUM` nor `REINDEX` can run
+    inside a transaction block at all.
     """
     # Each table should be empty of live rows here -- nothing before this fixture in the
     # session commits into these four tables and survives its own teardown -- but that is
@@ -196,6 +201,7 @@ def ordered_corpus(db_engine: Engine) -> Iterator[Engine]:
                 "fixture's corpus would not be measured at its own scale"
             )
             connection.execute(text(f"VACUUM {table}"))
+            connection.execute(text(f"REINDEX TABLE {table}"))
     factory = session_factory(db_engine)
     with factory() as session:
         pre_existing_stages = set(session.scalars(select(PipelineStage.id)).all())

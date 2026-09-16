@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -103,23 +103,31 @@ describe('robots.txt (REB-109)', () => {
     expect(nginx).toMatch(/location = \/robots\.txt \{ try_files \/robots\.txt =404; \}/)
   })
 
-  it('names the sitemap and disallows the noindex pages, nothing else', () => {
+  it('names the sitemap and disallows nothing a visitor can reach', () => {
     const decision = route('/robots.txt')
     expect(decision.kind).toBe('generated')
     if (decision.kind !== 'generated') throw new Error('unreachable')
     expect(decision.contentType).toBe('text/plain; charset=utf-8')
     expect(decision).toMatchObject({
-      content: `User-agent: *\nDisallow: /pitch\nSitemap: ${SITE_HOST}/sitemap.xml\n`,
+      content: `User-agent: *\nSitemap: ${SITE_HOST}/sitemap.xml\n`,
     })
   })
 
   it('is written into the build output by the plugin\'s own writeBundle hook', () => {
     const dir = mkdtempSync(join(tmpdir(), 'website-robots-'))
-    const plugin = pathMapPlugin()
-    if (typeof plugin.writeBundle !== 'function') throw new Error('writeBundle is not a plain function')
-    plugin.writeBundle.call({} as never, { dir } as never, {} as never)
-    const builtPath = join(dir, 'robots.txt')
-    expect(existsSync(builtPath)).toBe(true)
-    expect(readFileSync(builtPath, 'utf-8')).toContain(`Sitemap: ${SITE_HOST}/sitemap.xml`)
+    try {
+      const plugin = pathMapPlugin()
+      if (typeof plugin.writeBundle !== 'function') throw new Error('writeBundle is not a plain function')
+      plugin.writeBundle.call({} as never, { dir } as never, {} as never)
+      expect(readFileSync(join(dir, 'robots.txt'), 'utf-8')).toContain(`Sitemap: ${SITE_HOST}/sitemap.xml`)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('throws rather than silently skipping the write when the build has no output directory', () => {
+    const { writeBundle } = pathMapPlugin()
+    if (typeof writeBundle !== 'function') throw new Error('writeBundle is not a plain function')
+    expect(() => writeBundle.call({} as never, {} as never, {} as never)).toThrow(/output directory/)
   })
 })

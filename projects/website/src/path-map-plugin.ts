@@ -21,8 +21,7 @@ import type { Plugin } from 'vite'
 /** The host every absolute address in this module points at: this file's own
  *  robots.txt, the sitemap it names (REB-110), and every page's canonical and
  *  og:url (REB-111). One constant, so a rebrand (REB-193 already moved it once from
- *  joinorbiters.com) is one line here instead of four scattered heads and a nginx
- *  vhost. */
+ *  joinorbiters.com) is one line here instead of one per consumer. */
 export const SITE_HOST = 'https://letsrebase.com'
 
 /** `location = <path> { try_files <file> =404; }`, one line each in nginx.conf. */
@@ -35,13 +34,6 @@ export const PAGES: Readonly<Record<string, string>> = {
   '/termini': '/termini.html',
 }
 
-/** Pages excluded from indexing, kept as one explicit list beside `PAGES` so
- *  robots.txt's `Disallow` and (REB-110) the sitemap's exclusion read the same set
- *  instead of each hand-listing `/pitch` on its own. `/pitch` carries
- *  `<meta name="robots" content="noindex">` (`src/pitch.html:8`); a build script has
- *  no rendered head to read, so this is the list it consults instead. */
-export const NOINDEX: Readonly<Record<string, true>> = { '/pitch': true }
-
 /** `location = <path> { return 301 <to>; }`. nginx's `return` drops the query string
  *  and so does this. `/orbiters` is the community page's name before REB-212 moved it
  *  to `/community`; kept so a bookmark or an inbound link still lands. */
@@ -49,14 +41,21 @@ export const REDIRECTS: Readonly<Record<string, string>> = { '/orbiters': '/comm
 
 /** Paths nginx serves via `try_files`, exactly like `PAGES`, whose file this plugin
  *  writes at build time instead of Vite building it from an HTML input named in
- *  `vite.config.ts`: robots.txt (REB-109), naming the sitemap, and derived from
- *  `NOINDEX` for its `Disallow` lines. A page added to `PAGES` needs no edit here. */
+ *  `vite.config.ts`: robots.txt (REB-109), naming the sitemap. A page added to
+ *  `PAGES` needs no edit here. */
 export const GENERATED_PATHS = ['/robots.txt'] as const
 type GeneratedPath = (typeof GENERATED_PATHS)[number]
 
+/** No `Disallow` line: `/pitch` is the one page a visitor reaches that this site
+ *  would rather a crawler skipped, and it already says so with its own
+ *  `<meta name="robots" content="noindex">` (`src/pitch.html:8`). Blocking the crawl
+ *  in robots.txt too would stop a crawler from ever reaching that tag, and Google's
+ *  own guidance is that a page blocked from crawling can still be indexed by an
+ *  inbound link with no snippet, worse than the noindex outcome it has today
+ *  (developers.google.com/search/docs/crawling-indexing/block-indexing). So robots.txt
+ *  disallows nothing a visitor can reach, exactly what REB-109 asked for. */
 function robotsTxt(): string {
-  const disallow = Object.keys(NOINDEX).map((path) => `Disallow: ${path}`).join('\n')
-  return `User-agent: *\n${disallow}\nSitemap: ${SITE_HOST}/sitemap.xml\n`
+  return `User-agent: *\nSitemap: ${SITE_HOST}/sitemap.xml\n`
 }
 
 /** The content and `Content-Type` for one of `GENERATED_PATHS`, computed fresh on
@@ -174,10 +173,11 @@ export function pathMapPlugin(): Plugin {
     // GENERATED_PATHS have no HTML input in vite.config.ts for Vite to build, so this
     // writes them straight into the build's output directory once the rest of it
     // exists. `writeBundle` over `generateBundle`: a plain file write needs none of
-    // Rollup's asset bookkeeping, and it runs once whether or not `write` is false.
+    // Rollup's asset bookkeeping, and this hook runs only at the end of a real
+    // `bundle.write()`, exactly when there is an output directory to write into.
     writeBundle(options) {
       const dir = options.dir
-      if (!dir) return
+      if (!dir) throw new Error('website-path-map: the build has no output directory, so robots.txt cannot be written')
       for (const pathname of GENERATED_PATHS) {
         writeFileSync(join(dir, pathname.slice(1)), generate(pathname).content)
       }

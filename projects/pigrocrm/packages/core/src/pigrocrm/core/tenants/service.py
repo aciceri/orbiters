@@ -5,9 +5,11 @@ Everything a space needs is what a fresh installation needs, done in-process: th
 Alembic migrations production runs at boot, the same `UserService.create` that
 `createadmin` calls. The one thing that is new is the order, and what happens when a
 step fails after the registry row exists -- the database is dropped and the row taken
-back, so a name is never held by a space that does not work.
+back only once the drop actually succeeded, so a name is never held by a space that
+does not work, and never freed onto one that still does (REB-230).
 """
 
+import logging
 from pathlib import Path
 
 from alembic import command
@@ -36,6 +38,8 @@ from pigrocrm.core.tenants.schemas import (
     TenantSignup,
     validate_slug,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def default_alembic_ini() -> Path:
@@ -120,7 +124,8 @@ class TenantService:
 
     def provision(self, data: TenantSignup) -> TenantRead:
         """The registry row first, so the unique index decides who gets the name; then
-        the database, its schema, its admin. Any failure after the row undoes the row."""
+        the database, its schema, its admin. Any failure after the row undoes the row,
+        once the database it created is actually gone (see `_undo`)."""
         reason = self._reason(data.slug)
         if reason is not None:
             raise ValidationFailed("tenant", "slug", reason)
@@ -171,8 +176,30 @@ class TenantService:
         return TenantRead.model_validate(tenant)
 
     def _undo(self, tenant: Tenant, url: URL) -> None:
+        """Undoes a provisioning that failed halfway: the database first, and the
+        registry row only once the database is actually gone.
+
+        The old `finally` deleted the row whether or not `drop_database` succeeded, so
+        a `DROP DATABASE` that failed -- `ObjectInUse`, raised when a connection
+        appears between the `pg_terminate_backend` in `drop_database` and the drop
+        itself, which a concurrent request for the same slug can cause -- still freed
+        the name onto a database that survived, already migrated, already holding
+        whatever the failed attempt wrote. The next signup for that slug would find
+        `create_database_if_missing` answer `False` and inherit the previous attempt's
+        admin along with it (REB-230). A failed drop is logged, with its cause, for an
+        operator to clear by hand, and re-raised instead: the row stays, so the slug
+        stays taken until an operator clears it, rather than handed to somebody else.
+        """
         try:
             drop_database(self.settings, url)
-        finally:
-            self.session.delete(tenant)
-            self.session.commit()
+        except Exception:
+            logger.exception(
+                "failed to drop database %r while undoing provisioning for tenant "
+                "%r; keeping the registry row so the slug stays taken until an "
+                "operator clears the database by hand",
+                tenant.db_name,
+                tenant.slug,
+            )
+            raise
+        self.session.delete(tenant)
+        self.session.commit()

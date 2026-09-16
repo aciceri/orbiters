@@ -506,7 +506,7 @@ test.describe('the path map, as production serves it', () => {
   // and the nginx block out of its config; only a server answers whether the two meet,
   // and the same `location /assets/` block serves this card and the hashed bundles.
   test('the share card is served from /assets, as a PNG', async ({ request }) => {
-    const response = await request.get('/assets/share-card-1.png')
+    const response = await request.get('/assets/share-card-2.png')
     expect(response.status()).toBe(200)
     expect(response.headers()['content-type']).toBe('image/png')
   })

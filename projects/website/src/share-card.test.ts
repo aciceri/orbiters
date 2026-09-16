@@ -27,7 +27,7 @@ const PAGES = [
  *  WhatsApp cache a card per URL for days, so a card redrawn under its old name goes on
  *  sharing as the old card. This constant, the generator's and the six heads move
  *  together. */
-const CARD_FILE = 'share-card-1.png'
+const CARD_FILE = 'share-card-2.png'
 const CARD_PATH = `/assets/${CARD_FILE}`
 const CARD_URL = `${SITE_HOST}${CARD_PATH}`
 const CARD_ON_DISK = join(__dirname, 'public', 'assets', CARD_FILE)
@@ -110,6 +110,16 @@ describe('the card itself', () => {
 
   it('is the file the generator writes, under the name the heads ask for', () => {
     expect(generator).toContain(`export const CARD_FILE = '${CARD_FILE}'`)
+  })
+
+  it('never types the old name back into the generator', () => {
+    // REB-205: the card drew `Orbiters` as text long after the rename, because the
+    // wordmark it draws was never checked against the copy rule the rest of the site
+    // follows. This reads the generator's own source, the same `generator` the hex
+    // guard below reads, so it catches the word coming back as a string literal in
+    // `share-card.js`; the brand file it now reads at runtime is pinned separately, by
+    // `landing-style.test.ts`, which holds every SVG's geometry and fill to the palette.
+    expect(generator).not.toContain('Orbiters')
   })
 
   it('draws the four tiles in the order the shared mark declares', () => {

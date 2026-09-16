@@ -61,12 +61,26 @@ describe.each(Object.entries(configs))('%s', (_label, conf) => {
     expect(bodySizeBytes(directive[1] ?? '')).toBeLessThanOrEqual(1024 * 1024)
   })
 
-  it('raises the limit for /api/documents/ to at least the application ceiling', () => {
-    const block = conf.match(/location \^~ \/api\/documents\/ \{([\s\S]*?)\n {4}\}/)
-    expect(block, 'no location ^~ /api/documents/ block').toBeTruthy()
+  it('raises the limit for every /api/documents/ location to at least the application ceiling', () => {
+    const blocks = [...conf.matchAll(/location [^\n]*api\/documents[^\n]*\{([\s\S]*?)\n {4}\}/g)]
+    expect(blocks.length, 'no location matching api/documents').toBeGreaterThan(0)
+    for (const block of blocks) {
+      const directive = block[1]?.match(/^\s*client_max_body_size\s+(\S+);/m)
+      expect(directive, `no client_max_body_size in ${block[0].slice(0, 60)}`).toBeTruthy()
+      if (!directive) throw new Error('unreachable: truthy assertion above already failed')
+      expect(bodySizeBytes(directive[1] ?? '')).toBeGreaterThanOrEqual(DIMENSIONE_MAX_BYTES)
+    }
+  })
+
+  it('covers a space\'s own /<slug>/api/documents/ too, not only the bare path', () => {
+    // A logged-in session always runs under its space's prefix (lib/tenant.ts prepends
+    // it to every API call, and /app/ redirects there on the host vhosts), so a limit
+    // that only covers the bare path covers no real upload at all.
+    const block = conf.match(/location [^\n]*a-z0-9[^\n]*api\/documents[^\n]*\{([\s\S]*?)\n {4}\}/)
+    expect(block, 'no location matching a slug-prefixed api/documents path').toBeTruthy()
     if (!block) throw new Error('unreachable: truthy assertion above already failed')
-    const directive = block[1]?.match(/client_max_body_size\s+(\S+);/)
-    expect(directive, 'no client_max_body_size inside /api/documents/').toBeTruthy()
+    const directive = block[1]?.match(/^\s*client_max_body_size\s+(\S+);/m)
+    expect(directive, 'no client_max_body_size for the prefixed upload path').toBeTruthy()
     if (!directive) throw new Error('unreachable: truthy assertion above already failed')
     expect(bodySizeBytes(directive[1] ?? '')).toBeGreaterThanOrEqual(DIMENSIONE_MAX_BYTES)
   })

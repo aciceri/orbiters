@@ -100,10 +100,11 @@ token filled in once it exists. An admin sees and revokes their own tokens only.
 - `main.py` mounts the MCP transport at `/api/hub/mcp` and enters its lifespan in the
   app's own, so the SDK's session manager runs for the life of the process.
 
-  **Correction, 2026-09-16 (REB-245).** `main.py` mounts nothing: `apps/api` may
-  not import `apps/mcp` (`projects/hub/apps/api/ruff.toml`). `rebase_mcp.http:app`
-  runs as its own `mcp` compose service and its own uvicorn process; the host vhost
-  proxies `/api/hub/mcp` there directly.
+  **Correction, 2026-09-16 (REB-245).** `main.py` does not mount the MCP transport,
+  and enters no lifespan of its own for it: `apps/api` may not import `apps/mcp`
+  (`projects/hub/apps/api/ruff.toml`). `rebase_mcp.http:app` runs as its own `mcp`
+  compose service and its own uvicorn process; the host vhost proxies `/api/hub/mcp`
+  there directly.
 
 ### 3.3 MCP
 
@@ -153,5 +154,5 @@ OAuth and the claude.ai connectors (the CRM's reasoning, unchanged). Tokens for 
 A token that opens PigroCRM. Expiry on tokens. A separate `mcp` service.
 
 **Correction, 2026-09-16 (REB-245).** "A separate `mcp` service" shipped anyway,
-because `apps/api` may not import `apps/mcp` (`projects/hub/AGENTS.md`); that last
-line of this list is superseded, not out of scope.
+because `apps/api` may not import `apps/mcp` (`projects/hub/AGENTS.md`); that item,
+and only it, is superseded rather than out of scope.

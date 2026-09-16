@@ -78,10 +78,11 @@
       "run": "pnpm --filter web test",
       "when": [
         "projects/pigrocrm/apps/web/**",
+        "projects/pigrocrm/deploy/nginx/pigro.letsrebase.conf",
         "pnpm-lock.yaml",
         "pnpm-workspace.yaml"
       ],
-      "why": "vitest, jsdom, no services. Also the step that writes src/routeTree.gen.ts, which the typecheck below needs and which nothing else generates."
+      "why": "vitest, jsdom, no services. Also the step that writes src/routeTree.gen.ts, which the typecheck below needs and which nothing else generates. The vhost path is here, not under apps/web, because src/test/robots.test.ts (REB-107) reads it directly."
     },
     {
       "id": "pigrocrm-web-build",

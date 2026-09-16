@@ -18,7 +18,20 @@ const html = readFileSync(join(__dirname, '..', '..', 'index.html'), 'utf-8')
 
 describe('the CRM host stays out of search results', () => {
   it('sends X-Robots-Tag on every response, including the root redirect that carries the slug', () => {
-    expect(vhost).toMatch(/add_header X-Robots-Tag "noindex, nofollow, noarchive" always;/)
+    // Pinned to the server-level prologue, not "anywhere in the file": nginx does not
+    // inherit `add_header` into a location block that declares its own, so the header
+    // only reaches every response (including `location = /` and its 302 carrying the
+    // root slug) if it sits before the first `location` -- moving it into, say,
+    // `location = /robots.txt` would still match a looser regex here while leaving the
+    // root redirect with no header at all.
+    const serverLevel = vhost.slice(0, vhost.indexOf('\n    location '))
+    expect(serverLevel).toMatch(/add_header X-Robots-Tag "noindex, nofollow, noarchive" always;/)
+    // A second `add_header` directive anywhere in a location block would drop the
+    // server-level one for that block and every other directive nginx would
+    // otherwise inherit into it, silently un-doing the line above for that response.
+    // Matched at line start (after indentation) so a comment mentioning the
+    // directive by name, like the one above, is not itself counted as one.
+    expect(vhost.match(/^\s*add_header\b/gm)).toHaveLength(1)
   })
 
   it('serves its own robots.txt disallowing everything, rather than letting a crawler get a 404', () => {

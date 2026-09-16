@@ -123,6 +123,18 @@ describe('community.html', () => {
     expect(privacy).toMatch(/href="\/(?:community)?">letsrebase\.com</)
   })
 
+  it('keeps the Privacy link outside #note, so a validation error never removes it (REB-94)', () => {
+    // Every path through community.js's say() replaces #note's whole textContent
+    // (community.js:139-140): the first empty-field refusal, a 422, a network failure
+    // and success all did that, and until REB-94 the Privacy link lived inside #note
+    // and vanished with it on every one of them, shrinking .box and re-centring the
+    // whole card. It now lives in the static paragraph beside it, which say() never
+    // touches.
+    const noteRegion = html.match(/<p class="note" id="note"[\s\S]*?<\/p>/)?.[0] ?? ''
+    expect(noteRegion).not.toMatch(/href="\/privacy"/)
+    expect(html).toMatch(/<a href="\/privacy">privacy<\/a>/)
+  })
+
   it('no longer signs itself as a PigroCRM project, and offers no login', () => {
     // Until 2026-09-09 a footer said "Un progetto PigroCRM" and linked "Accedi" to
     // /app/. Since the split the site is Orbiters first and the login belongs to the

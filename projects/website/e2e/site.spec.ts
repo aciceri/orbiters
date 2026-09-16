@@ -462,6 +462,27 @@ test.describe('a visitor from a campaign', () => {
     })
   }
 
+  // REB-247: community.html has a door into the hub too (`/hub/aziende`, "Raccontacelo"),
+  // but community.js never called carryUtm, so a campaign landing on `/community`
+  // reached that click with nothing. One door rather than the several the loop above
+  // checks, and no guide door to look for, so its own test rather than a third path in
+  // that loop.
+  test('/community carries the UTM keys onto its one door into the hub too', async ({ page }) => {
+    await page.goto('/community?utm_source=linkedin&utm_campaign=orbita&utm_id=42&gclid=nope', { waitUntil: 'networkidle' })
+    const doors = await page.locator('a[href^="/hub/"]').evaluateAll((links) => links.map((a) => a.getAttribute('href')))
+    expect(doors.length).toBeGreaterThan(0)
+    for (const href of doors) {
+      const url = new URL(href!, 'https://letsrebase.com')
+      expect(url.searchParams.get('utm_source'), href!).toBe('linkedin')
+      expect(url.searchParams.get('utm_campaign'), href!).toBe('orbita')
+      expect(url.searchParams.get('utm_id'), href!).toBe('42')
+      expect(url.searchParams.has('gclid'), href!).toBe(false)
+      expect(url.searchParams.get('da'), href!).toBe('community')
+    }
+    expect(await page.evaluate(() => sessionStorage.getItem('orbiters.da'))).toBe('community')
+    expect(await page.evaluate(() => sessionStorage.getItem('orbiters.utm'))).toBe('utm_source=linkedin&utm_campaign=orbita&utm_id=42')
+  })
+
   test('/ without a campaign carries no UTM, only the page', async ({ page }) => {
     await page.goto('/', { waitUntil: 'networkidle' })
     const doors = await page.locator('a[href^="/hub/"]').evaluateAll((links) => links.map((a) => a.getAttribute('href')))

@@ -119,10 +119,14 @@ export interface paths {
          *     deliberately: `PATCH /api/users/{id}` (`UserService.update`) is for an
          *     administrator changing someone else's account, but this is a person changing
          *     their own weekly-digest preference, and the mail's own opt-out link (spec
-         *     2026-09-16 §3.6) must work whatever role received it. Same existence check as
-         *     `me` just above, and the same 401 rather than `UserService.update_own_digest`'s
-         *     own `NotFound` -- a session whose user row is gone is "not authenticated," not
-         *     "not found," here as everywhere else on this router.
+         *     2026-09-16 §3.6) must work whatever role received it.
+         *
+         *     The row is loaded once, by the service. `update_own_digest` already refuses an
+         *     actor with no id and an id with no row, both as `NotFound`, so a check here would
+         *     be the same query asked twice and a second place deciding who exists. What stays
+         *     the router's own is the *answer*: a session whose user row is gone is "not
+         *     authenticated," not "not found," here as everywhere else on this router, so the
+         *     domain error is translated to the same 401 `me` just above gives.
          */
         patch: operations["update_me_api_auth_me_patch"];
         trace?: never;

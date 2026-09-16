@@ -6,38 +6,66 @@ import './site-controls.css'
 /**
  * One question per screen, the shape Typeform and Tally made familiar: a progress bar,
  * the question large, one control, Enter to go on, Back always there, a review at the
- * end. The engine knows nothing about what is asked -- a step is a render function,
- * a validator and a name for the review -- so the two wizards share every keystroke
- * and differ only in their steps.
+ * end. The engine knows nothing about what is asked -- a screen is a title and the
+ * fields it holds, a field is a render function, a validator and a name for the
+ * review -- so the two wizards share every keystroke and differ only in their fields.
+ *
+ * A field is the question: one answer, one row in the review, in the member area and
+ * on the edit page. A screen is what the wizard shows at once: today always one field,
+ * since grouping several onto one screen is REB-120/121's job, not this file's.
  */
-export interface Step<T> {
+export interface Field<T> {
   id: string
-  /** The question, as a sentence to the person. */
-  title: string
+  /** The question, as a sentence: the review row, the profile row and the edit
+   *  page's own heading all show this text. */
+  label: string
   hint?: string
-  /** `true` for a step whose empty answer is fine; the review says «—» for it. */
+  /** `true` for a field whose empty answer is fine; the review says «—» for it. */
   optional?: boolean
-  render: (props: StepRenderProps<T>) => ReactNode
+  render: (props: FieldRenderProps<T>) => ReactNode
   /** A sentence when the answer cannot go on, `null` when it can. Runs on «Avanti» and
    *  on Enter, never on every keystroke: nobody wants to be told they are wrong while
    *  they are still typing. */
   validate: (value: T) => string | null
-  /** What the review shows for this step. */
+  /** What the review shows for this field. */
   summary: (value: T) => string
 }
 
-export interface StepRenderProps<T> {
+export interface FieldRenderProps<T> {
   value: T
   set: (patch: Partial<T>) => void
-  /** Hands the step's own submit (a multi-line control, a file picker) to the engine. */
+  /** Hands the field's own submit (a multi-line control, a file picker) to the engine. */
   next: () => void
   error: string | null
   autoFocus: boolean
+  /** The id the error paragraph will carry while `error` is set, already computed so
+   *  the field's own control can wire `aria-describedby` to it -- combined with a
+   *  describedby of its own, as the LinkedIn field does with its prefix span -- and
+   *  `aria-invalid` from `error !== null`. Point a control at it only while `error` is
+   *  set: a reference to an id that is not on the page is worse than none. */
+  errorId: string
+}
+
+/** One screen the wizard walks: its own title and hint, and the fields it validates
+ *  together before moving on. */
+export interface Screen<T> {
+  id: string
+  title: string
+  hint?: string
+  fields: Field<T>[]
+}
+
+/** Wraps every field of `fields` in its own single-field screen, in the given order:
+ *  the shape every screen has until REB-120/121 group some of them onto fewer
+ *  screens. A field's `label` becomes that screen's `title`, and its `hint` the
+ *  screen's own, so a one-field screen looks exactly as it did before the split. */
+export function screensFromFields<T>(fields: Field<T>[]): Screen<T>[] {
+  return fields.map((field) => ({ id: field.id, title: field.label, hint: field.hint, fields: [field] }))
 }
 
 export function Wizard<T>({
   title,
-  steps,
+  screens,
   value,
   set,
   onSubmit,
@@ -50,70 +78,99 @@ export function Wizard<T>({
   intro,
 }: {
   title: string
-  steps: Step<T>[]
+  screens: Screen<T>[]
   value: T
   set: (patch: Partial<T>) => void
   onSubmit: () => void
   submitting: boolean
-  /** An error from the server, shown on the review screen; when it names a step by id
-   *  the engine jumps back to that step and shows it there. */
-  submitError: { message: string; step?: string } | null
+  /** An error from the server, shown on the review screen; when it names a field by id
+   *  the engine finds that field's screen, jumps back to it and shows the message
+   *  under that field's own control. An id that names no field (REB-243: `cognome`,
+   *  say, which has no field of its own) never suppresses the review's own alert --
+   *  the one moment a person is most likely to abandon is a submit that answers with
+   *  silence. */
+  submitError: { message: string; field?: string } | null
   submitLabel: string
-  /** Called with the step on screen and how many there are, whenever it changes: the
-   *  first one on mount, the review as `steps.length`, a jump back on a server error
+  /** Called with the screen on screen and how many there are, whenever it changes: the
+   *  first one on mount, the review as `screens.length`, a jump back on a server error
    *  too. Memoise it, or it fires on every render. */
   onStep?: (index: number, total: number) => void
-  /** Where to start: the step a draft was left at (`wizard/draft.ts`), clamped to the
+  /** Where to start: the screen a draft was left at (`wizard/draft.ts`), clamped to the
    *  review, so a draft written by a longer version of the form still opens. */
   initialIndex?: number
-  /** Every step change, the first one included, for whoever keeps the draft. */
+  /** Every screen change, the first one included, for whoever keeps the draft. */
   onIndexChange?: (index: number) => void
   /** Shown above the first question only: what this is and how long it takes, for the
    *  person who arrived from an ad and is asked their name before anything else. */
   intro?: ReactNode
 }) {
-  const [index, setIndex] = useState(() => Math.min(Math.max(0, initialIndex), steps.length))
-  const [error, setError] = useState<string | null>(null)
-  const review = index === steps.length
-  const step = steps[index]
-  const [handled, setHandled] = useState<string | null>(null)
+  const [index, setIndex] = useState(() => Math.min(Math.max(0, initialIndex), screens.length))
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [focusId, setFocusId] = useState<string | null>(null)
+  const review = index === screens.length
+  const screen = screens[index]
+  const fields = screens.flatMap((candidate) => candidate.fields)
+  const [handled, setHandled] = useState<{ message: string; field?: string } | null>(null)
 
   useEffect(() => {
-    onStep?.(index, steps.length)
-  }, [index, steps.length, onStep])
+    onStep?.(index, screens.length)
+  }, [index, screens.length, onStep])
   useEffect(() => {
     onIndexChange?.(index)
   }, [index, onIndexChange])
 
-  // A server error that names a step sends the person back to it, once per error. State
-  // adjusted during render, the way React asks for "state that follows a prop", rather
-  // than in an effect that would paint the review first and jump a frame later.
-  if (submitError?.step && handled !== submitError.message) {
-    const at = steps.findIndex((candidate) => candidate.id === submitError.step)
+  // A server error that names a field sends the person back to its screen, once per
+  // error. Keyed on the error object itself, not its text: `submit()` makes a fresh
+  // object every attempt, so a second refusal with the same words (the address is
+  // still taken, say) still gets handled rather than silently matching the first
+  // one's `handled` and never jumping again. State adjusted during render, the way
+  // React asks for "state that follows a prop", rather than in an effect that would
+  // paint the review first and jump a frame later. An id that names no field is left
+  // alone here: the review's own alert below shows it instead (REB-243).
+  if (submitError?.field && handled !== submitError) {
+    const at = screens.findIndex((candidate) => candidate.fields.some((field) => field.id === submitError.field))
     if (at >= 0) {
-      setHandled(submitError.message)
+      setHandled(submitError)
       setIndex(at)
-      setError(submitError.message)
+      setErrors({ [submitError.field]: submitError.message })
+      setFocusId(submitError.field)
     }
   }
+  // Whether the review's own alert should show the message: the error carries no
+  // field id, or one that matches nothing here (REB-243).
+  const reviewError = submitError && !fields.some((field) => field.id === submitError.field)
 
   function next() {
-    if (!step) return
-    const problem = step.validate(value)
-    if (problem) {
-      setError(problem)
+    if (!screen) return
+    const problems: Record<string, string> = {}
+    for (const field of screen.fields) {
+      const problem = field.validate(value)
+      if (problem) problems[field.id] = problem
+    }
+    const firstFailed = screen.fields.find((field) => problems[field.id] !== undefined)
+    if (firstFailed) {
+      setErrors(problems)
+      setFocusId(firstFailed.id)
       return
     }
-    setError(null)
+    setErrors({})
+    setFocusId(null)
     setIndex((current) => current + 1)
   }
 
   function back() {
-    setError(null)
+    setErrors({})
+    setFocusId(null)
     setIndex((current) => Math.max(0, current - 1))
   }
 
-  const progress = Math.round((Math.min(index, steps.length) / steps.length) * 100)
+  function editField(fieldId: string) {
+    setErrors({})
+    setFocusId(null)
+    setIndex(screens.findIndex((candidate) => candidate.fields.some((field) => field.id === fieldId)))
+  }
+
+  const progress = Math.round((Math.min(index, screens.length) / screens.length) * 100)
 
   return (
     <div
@@ -139,7 +196,7 @@ export function Wizard<T>({
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span aria-hidden="true">{title}</span>
           <span aria-live="polite">
-            {review ? 'Riepilogo' : `${index + 1} di ${steps.length}`}
+            {review ? 'Riepilogo' : `${index + 1} di ${screens.length}`}
           </span>
         </div>
         <div
@@ -168,12 +225,12 @@ export function Wizard<T>({
             </p>
           </div>
           <dl className="divide-y rounded-2xl border bg-card">
-            {steps.map((candidate, at) => (
+            {fields.map((field) => (
               <div
-                key={candidate.id}
+                key={field.id}
                 className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:items-start sm:gap-4"
               >
-                <dt className="text-muted-foreground sm:w-40 sm:shrink-0">{candidate.title}</dt>
+                <dt className="text-muted-foreground sm:w-40 sm:shrink-0">{field.label}</dt>
                 {/* axe's definition-list rule runs only-dlitems, which flattens this row's
                     role-less wrapping div and then rejects any direct child that is not a
                     dt or a dd (a button, a span, even a stray text node); it never descends
@@ -181,15 +238,12 @@ export function Wizard<T>({
                     dt/dd. Nesting it here keeps the row spacing and wrap identical (REB-96). */}
                 <dd className="flex flex-col gap-1 sm:min-w-0 sm:flex-1 sm:flex-row sm:items-start sm:gap-4">
                   <span className="break-words font-medium sm:min-w-0 sm:flex-1">
-                    {candidate.summary(value) || '—'}
+                    {field.summary(value) || '—'}
                   </span>
                   <button
                     type="button"
                     className="mt-1 self-start text-xs text-muted-foreground underline-offset-2 hover:underline sm:mt-0 sm:shrink-0"
-                    onClick={() => {
-                      setError(null)
-                      setIndex(at)
-                    }}
+                    onClick={() => editField(field.id)}
                   >
                     Modifica
                   </button>
@@ -197,9 +251,9 @@ export function Wizard<T>({
               </div>
             ))}
           </dl>
-          {submitError && !submitError.step && (
+          {reviewError && (
             <p role="alert" className="text-sm text-destructive">
-              {submitError.message}
+              {submitError!.message}
             </p>
           )}
           <div className="flex items-center justify-between">
@@ -211,25 +265,42 @@ export function Wizard<T>({
             </Button>
           </div>
         </section>
-      ) : step ? (
-        <section key={step.id} className="space-y-6" aria-labelledby={`step-${step.id}`}>
+      ) : screen ? (
+        <section key={screen.id} className="space-y-6" aria-labelledby={`screen-${screen.id}`}>
           <div>
-            <h2 id={`step-${step.id}`} className="text-2xl font-semibold tracking-tight">
-              {step.title}
-              {step.optional && (
+            <h2 id={`screen-${screen.id}`} className="text-2xl font-semibold tracking-tight">
+              {screen.title}
+              {screen.fields.every((field) => field.optional) && (
                 <span className="ml-2 text-base font-normal text-muted-foreground">
                   (facoltativo)
                 </span>
               )}
             </h2>
-            {step.hint && <p className="mt-1 text-sm text-muted-foreground">{step.hint}</p>}
+            {screen.hint && <p className="mt-1 text-sm text-muted-foreground">{screen.hint}</p>}
           </div>
-          <div>{step.render({ value, set, next, error, autoFocus: true })}</div>
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
+          {screen.fields.map((field) => {
+            const error = errors[field.id] ?? null
+            const errorId = `${field.id}-error`
+            return (
+              <div key={`${field.id}:${error ? 'invalid' : 'valid'}`} className="space-y-2">
+                <div>
+                  {field.render({
+                    value,
+                    set,
+                    next,
+                    error,
+                    autoFocus: focusId ? focusId === field.id : field.id === screen.fields[0]!.id,
+                    errorId,
+                  })}
+                </div>
+                {error && (
+                  <p role="alert" id={errorId} className="text-sm text-destructive">
+                    {error}
+                  </p>
+                )}
+              </div>
+            )
+          })}
           <div className="flex items-center justify-between">
             <Button
               type="button"
@@ -244,7 +315,7 @@ export function Wizard<T>({
                 Invio ↵ per continuare
               </span>
               <Button type="button" onClick={next}>
-                {index === steps.length - 1 ? 'Rivedi' : 'Avanti'}
+                {index === screens.length - 1 ? 'Rivedi' : 'Avanti'}
               </Button>
             </div>
           </div>

@@ -10,7 +10,7 @@ import {
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Modifica, editSteps } from './Modifica'
+import { editFields, Modifica } from './Modifica'
 
 function answer(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -57,13 +57,13 @@ function mount() {
 
 afterEach(() => vi.restoreAllMocks())
 
-describe('the edit steps', () => {
+describe('the edit fields', () => {
   const base = { ...PROFILE, linkedin_url: '', cv: null }
 
   it('leave the email out and make the CV optional when we already hold one', () => {
-    const steps = editSteps(true)
-    expect(steps.map((step) => step.id)).not.toContain('email')
-    const cv = steps.find((step) => step.id === 'cv')!
+    const fields = editFields(true)
+    expect(fields.map((field) => field.id)).not.toContain('email')
+    const cv = fields.find((field) => field.id === 'cv')!
     expect(cv.optional).toBe(true)
     expect(cv.validate(base as never)).toBeNull()
     const png = new File(['x'], 'cv.png', { type: 'image/png' })
@@ -71,9 +71,9 @@ describe('the edit steps', () => {
   })
 
   it('ask for the CV without demanding it when there is none to keep, and say so', () => {
-    const steps = editSteps(false)
-    expect(steps.map((step) => step.id)).not.toContain('email')
-    const cv = steps.find((step) => step.id === 'cv')!
+    const fields = editFields(false)
+    expect(fields.map((field) => field.id)).not.toContain('email')
+    const cv = fields.find((field) => field.id === 'cv')!
     // Optional here too since the wizard stopped demanding a PDF: requiring it on this
     // page would be the same wall one step later, in front of somebody who came to
     // change their rate.
@@ -85,7 +85,7 @@ describe('the edit steps', () => {
   })
 
   it('keep the wizard’s rules for everything else', () => {
-    const linkedin = editSteps(true).find((step) => step.id === 'linkedin_url')!
+    const linkedin = editFields(true).find((field) => field.id === 'linkedin_url')!
     expect(linkedin.validate({ ...base, linkedin_url: 'https://twitter.com/ada' } as never)).not.toBeNull()
   })
 })

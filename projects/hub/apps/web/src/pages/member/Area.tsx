@@ -6,7 +6,7 @@ import { member } from '@/lib/api'
 import { formatBytes } from '@/lib/format'
 import { GUIDE } from '@/lib/perks'
 import { toApplication, useMember, useMemberLogout } from '@/lib/member'
-import { FREELANCER_STEPS } from '@/pages/FreelancerWizard'
+import { FREELANCER_FIELDS } from '@/pages/FreelancerWizard'
 
 const PIGROCRM_URL = 'https://pigro.letsrebase.com/app/registrati'
 
@@ -22,7 +22,7 @@ export function Area() {
   if (!me.data) return null
   const profile = me.data
   const value = toApplication(profile)
-  const steps = FREELANCER_STEPS.filter((step) => step.id !== 'email' && step.id !== 'cv')
+  const fields = FREELANCER_FIELDS.filter((field) => field.id !== 'email' && field.id !== 'cv')
 
   return (
     <div className="mx-auto max-w-2xl space-y-10">
@@ -69,10 +69,10 @@ export function Area() {
 
       <section aria-label="Quello che ci hai mandato">
         <dl className="divide-y rounded-2xl border bg-card">
-          {steps.map((step) => (
-            <div key={step.id} className="flex items-start gap-4 px-4 py-3 text-sm">
-              <dt className="w-40 shrink-0 text-muted-foreground">{step.title}</dt>
-              <dd className="min-w-0 flex-1 break-words font-medium">{step.summary(value) || '—'}</dd>
+          {fields.map((field) => (
+            <div key={field.id} className="flex items-start gap-4 px-4 py-3 text-sm">
+              <dt className="w-40 shrink-0 text-muted-foreground">{field.label}</dt>
+              <dd className="min-w-0 flex-1 break-words font-medium">{field.summary(value) || '—'}</dd>
             </div>
           ))}
           <div className="flex items-start gap-4 px-4 py-3 text-sm">

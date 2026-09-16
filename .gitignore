@@ -29,7 +29,7 @@ test-results/
 
 # Storage locale dei documenti (LocalFileStorage)
 var/
-# Postgres data when PIGROCRM_DATA_DIR is left at its default
+# Postgres data if an installation points PIGROCRM_DATA_DIR inside the checkout
 data/
 
 # Playwright MCP snapshots and console logs written while I look at pages

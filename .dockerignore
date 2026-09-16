@@ -39,9 +39,9 @@
 **/.tanstack/
 **/*.tsbuildinfo
 
-# Runtime state that lives beside the checkout when PIGROCRM_DATA_DIR and
-# PIGROCRM_DOCUMENTS_DIR are left at their defaults. Never wanted in an image, and
-# large.
+# Runtime state that lives beside the checkout: PIGROCRM_DOCUMENTS_DIR's default, and
+# either directory when an installation points it inside the checkout. Never wanted
+# in an image, and large.
 data/
 var/
 

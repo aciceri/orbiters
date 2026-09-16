@@ -1156,3 +1156,56 @@ def test_a_pec_too_long_for_fpr12_is_refused_by_the_pre_check_like_the_writer() 
             _invoice([_line(1, "Consulenza", "1.000000", "100.000000", "100.00")], cliente=cliente)
         )
     assert writer.value.details == pre.value.details
+
+
+# --- REB-227: PECDestinatario and Email must have the shape FPR12 requires --------
+
+
+def test_a_pec_pasted_from_a_mail_client_is_refused_by_the_pre_check() -> None:
+    """`EmailType` requires a plain `local@domain` address; a name and angle brackets
+    pasted along with the address are not a code point outside the Latin range and
+    used to pass `_check_latin` unchecked, so `issue` would consume a register number
+    for a value the SdI can never route. Refused here instead, by the same field."""
+    cliente = _cliente(codice_sdi=None, pec="Studio Rossi <pec@studiorossi.it>")
+    with pytest.raises(ValidationFailed) as pre:
+        check_party_exportable(cliente, "customer")
+    assert pre.value.details["field"] == "pec"
+    assert pre.value.details["reason"].startswith("il valore non ha la forma richiesta")
+    with pytest.raises(ValidationFailed) as writer:
+        FatturaPAExporter().to_bytes(
+            _invoice([_line(1, "Consulenza", "1.000000", "100.000000", "100.00")], cliente=cliente)
+        )
+    assert writer.value.details == pre.value.details
+
+
+def test_a_well_formed_pec_passes_the_pre_check_and_is_written() -> None:
+    """The counterpart to the malformed case: `EmailType`'s pattern does not refuse an
+    ordinary address, and the value reaches `PECDestinatario` unchanged."""
+    cliente = _cliente(codice_sdi=None, pec="acme@pec.it")
+    check_party_exportable(cliente, "customer")
+    xml = FatturaPAExporter().to_bytes(
+        _invoice([_line(1, "Consulenza", "1.000000", "100.000000", "100.00")], cliente=cliente)
+    )
+    assert_valid(xml)
+    root = etree.fromstring(xml)
+    assert root.findtext(".//PECDestinatario") == "acme@pec.it"
+
+
+def test_an_issuer_email_shorter_than_the_schema_floor_is_refused_by_the_pre_check() -> None:
+    """`ContattiTrasmittente/Email` is `EmailContattiType`, which sets `minLength` to 7
+    where `PECDestinatario`'s `EmailType` sets none; `a@b.it` is six characters, matches
+    the address pattern outright, and used to pass `_check_latin` on width and pattern
+    alone. Refused here, before the register number, and by the writer if it is not."""
+    emittente = EMITTENTE.model_copy(update={"email": "a@b.it"})
+    with pytest.raises(ValidationFailed) as pre:
+        check_party_exportable(emittente, "emitter_profile")
+    assert pre.value.details["field"] == "email"
+    assert pre.value.details["reason"].startswith("il valore ha meno dei 7 caratteri")
+    with pytest.raises(ValidationFailed) as writer:
+        FatturaPAExporter().to_bytes(
+            _invoice(
+                [_line(1, "Consulenza", "1.000000", "100.000000", "100.00")],
+                emittente=emittente,
+            )
+        )
+    assert writer.value.details == pre.value.details

@@ -90,6 +90,9 @@ _CAUSALE_MAX = 200
 _RIFERIMENTO_NORMATIVO_MAX = 100
 _UNITA_MISURA_MAX = 10
 _EMAIL_MAX = 256
+# `EmailContattiType`'s own `minLength` (REB-227): `ContattiTrasmittente/Email` carries
+# it, `PECDestinatario`'s `EmailType` does not.
+_EMAIL_MIN = 7
 _TELEFONO_MAX = 12
 
 # `xs:pattern` restrictions the schema applies. `.fullmatch` at every call site, never
@@ -100,6 +103,16 @@ _NAZIONE_RE = re.compile(r"[A-Z]{2}")
 _IBAN_RE = re.compile(r"[A-Z]{2}\d{2}[A-Za-z0-9]{11,30}")
 _CODICE_DESTINATARIO_RE = re.compile(r"[A-Z0-9]{7}")
 _TIPO_PAGAMENTO_RE = re.compile(r"(TP|MP)\d{2}")
+# `EmailType`'s own pattern (REB-227), translated from the vendored XSD's
+# `xs:pattern` verbatim: a proper `local@domain` shape, not merely "contains an @".
+# `EmailContattiType`'s own pattern (`.+@.+[.]+.+`) is looser and adds nothing a value
+# matching this one would not already satisfy, so both `PECDestinatario` and
+# `ContattiTrasmittente/Email` are checked against this single pattern.
+_EMAIL_RE = re.compile(
+    r"([!#-'*+/-9=?A-Z^-~-]+(\.[!#-'*+/-9=?A-Z^-~-]+)*"
+    r"|\"(\[\]!#-[^-~ \t]|(\\[\t -~]))+\")"
+    r"@([!#-'*+/-9=?A-Z^-~-]+(\.[!#-'*+/-9=?A-Z^-~-]+)*|\[[\t -Z^-~]*\])"
+)
 # The schema's `String*LatinType` family restricts every one of them to
 # `[\p{IsBasicLatin}\p{IsLatin-1Supplement}]`, i.e. Unicode code points U+0000-U+00FF
 # only (confirmed against the vendored XSD's own `String80LatinType`,
@@ -360,17 +373,18 @@ def _check_text(
     entity: str,
     field: str,
     max_length: int | None = None,
+    min_length: int | None = None,
     pattern: re.Pattern[str] | None = None,
 ) -> str:
     """The text rules of the schema's string types, applied once for everybody.
 
     Returns the value as the writer will emit it: representable in XML 1.0, spelled by
-    `latinise`, within `max_length`, inside the Latin range, and matching `pattern`
-    where the type carries one narrower than the range. `_text` calls it on the way
-    into the document; `_check_latin` and `check_document_text_exportable` call it
-    before a register number is spent. One function, so a pre-check cannot be laxer
-    than the writer and a refusal reads the same wherever it comes from (ORB-56,
-    ORB-140).
+    `latinise`, within `max_length` and at least `min_length` where the type carries
+    one, inside the Latin range, and matching `pattern` where the type carries one
+    narrower than the range. `_text` calls it on the way into the document;
+    `_check_latin` and `check_document_text_exportable` call it before a register
+    number is spent. One function, so a pre-check cannot be laxer than the writer
+    and a refusal reads the same wherever it comes from (ORB-56, ORB-140).
 
     `escape_xml` substitutes nothing (see its docstring): it refuses a code point XML
     1.0 cannot represent, which `_LATIN_RE` alone would let through, since U+0001 is
@@ -391,6 +405,13 @@ def _check_text(
             field,
             f"il valore supera i {max_length} caratteri ammessi da FPR12 per {tag}",
             expected=f"al massimo {max_length} caratteri",
+        )
+    if min_length is not None and len(value) < min_length:
+        raise ValidationFailed(
+            entity,
+            field,
+            f"il valore ha meno dei {min_length} caratteri richiesti da FPR12 per {tag}",
+            expected=f"almeno {min_length} caratteri",
         )
     if not _LATIN_RE.fullmatch(value):
         raise ValidationFailed(entity, field, _latin_message(tag), expected="solo caratteri latini")
@@ -420,21 +441,47 @@ def _check_latin(party: PartySnapshot, entity: str) -> None:
     (ORB-38), so a London address one character too long is refused here, by the field
     the user can shorten, rather than by the writer after the number is spent.
     """
-    campi: list[tuple[str, str, str, int]] = [
-        ("ragione_sociale", "Denominazione", party.ragione_sociale, _DENOMINAZIONE_MAX),
-        ("indirizzo", "Indirizzo", _indirizzo_xml(party), _INDIRIZZO_MAX),
-        ("comune", "Comune", party.comune, _COMUNE_MAX),
+    campi: list[tuple[str, str, str, int, re.Pattern[str] | None, int | None]] = [
+        ("ragione_sociale", "Denominazione", party.ragione_sociale, _DENOMINAZIONE_MAX, None, None),
+        ("indirizzo", "Indirizzo", _indirizzo_xml(party), _INDIRIZZO_MAX, None, None),
+        ("comune", "Comune", party.comune, _COMUNE_MAX, None, None),
     ]
     # `Nazione`, `CAP`, `Provincia` and `CodiceDestinatario` carry patterns narrower than
     # the Latin set and are already checked above; `IdCodice` and `CodiceFiscale` come out
     # of the normalisers as alphanumerics. What is left is the one free-text contact each
-    # role contributes, and `RECIPIENT_ENTITY`/`ISSUER_ENTITY` say which.
+    # role contributes, and `RECIPIENT_ENTITY`/`ISSUER_ENTITY` say which. `_EMAIL_RE` and
+    # `_EMAIL_MIN` (REB-227) apply only when the writer would actually emit the field --
+    # the same `.strip()` truthy test `_dati_trasmissione` guards each `_text` call with
+    # -- so a customer with no PEC, or an issuer with no email, is not refused for a
+    # contact the writer would simply omit.
     if entity == RECIPIENT_ENTITY:
-        campi.append(("pec", "PECDestinatario", party.pec or "", _EMAIL_MAX))
+        pec = party.pec or ""
+        campi.append(
+            ("pec", "PECDestinatario", pec, _EMAIL_MAX, _EMAIL_RE if pec.strip() else None, None)
+        )
     elif entity == ISSUER_ENTITY:
-        campi.append(("email", "Email", party.email or "", _EMAIL_MAX))
-    for field, tag, value, max_length in campi:
-        _check_text(value, tag, entity=entity, field=field, max_length=max_length)
+        email = party.email or ""
+        ha_email = bool(email.strip())
+        campi.append(
+            (
+                "email",
+                "Email",
+                email,
+                _EMAIL_MAX,
+                _EMAIL_RE if ha_email else None,
+                _EMAIL_MIN if ha_email else None,
+            )
+        )
+    for field, tag, value, max_length, pattern, min_length in campi:
+        _check_text(
+            value,
+            tag,
+            entity=entity,
+            field=field,
+            max_length=max_length,
+            min_length=min_length,
+            pattern=pattern,
+        )
 
 
 class _LineText(Protocol):
@@ -606,18 +653,26 @@ class FatturaPAExporter:
         entity: str,
         field: str,
         max_length: int | None = None,
+        min_length: int | None = None,
         pattern: re.Pattern[str] | None = None,
     ) -> etree._Element:
         """Append `<tag>value</tag>`, with `value` as the node's text and nothing else.
 
         `_check_text` is the whole rule: it refuses what XML 1.0 cannot represent,
-        spells the typographic punctuation and applies the width, the Latin range and
-        the pattern, the same call the pre-checks make before a number is spent. The
-        serialiser is the single escaping pass, which is why no escaper is applied here
-        and why one applied earlier would be a defect rather than extra safety.
+        spells the typographic punctuation and applies the width, the length floor
+        where the type carries one, the Latin range and the pattern, the same call
+        the pre-checks make before a number is spent. The serialiser is the single
+        escaping pass, which is why no escaper is applied here and why one applied
+        earlier would be a defect rather than extra safety.
         """
         value = _check_text(
-            value, tag, entity=entity, field=field, max_length=max_length, pattern=pattern
+            value,
+            tag,
+            entity=entity,
+            field=field,
+            max_length=max_length,
+            min_length=min_length,
+            pattern=pattern,
         )
         element = etree.SubElement(parent, tag)
         element.text = value
@@ -795,6 +850,8 @@ class FatturaPAExporter:
                 entity="emitter_profile",
                 field="email",
                 max_length=_EMAIL_MAX,
+                min_length=_EMAIL_MIN,
+                pattern=_EMAIL_RE,
             )
         if not codice_sdi and (cliente.pec or "").strip():
             self._text(
@@ -804,6 +861,7 @@ class FatturaPAExporter:
                 entity="customer",
                 field="pec",
                 max_length=_EMAIL_MAX,
+                pattern=_EMAIL_RE,
             )
 
     def _cedente(self, header: etree._Element, invoice: InvoiceForExport) -> None:

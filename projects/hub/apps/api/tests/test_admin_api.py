@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from rebase_api.deps import get_http_call
 from rebase_core.admin import AdminService
 from rebase_core.config import Settings, get_settings
+from rebase_core.http import MAX_BODY_BYTES
 from rebase_core.perks import PerkService
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
@@ -575,6 +576,10 @@ def test_when_the_crm_refuses_or_falls_over_the_answer_is_a_502_sentence(
     garbled = client.get("/api/hub/pigro/istanze")
     assert garbled.status_code == 502, garbled.text
     assert garbled.json()["detail"] == "Pigro ha risposto qualcosa che non è un elenco."
+    pigro.body = b"[" + b"x" * MAX_BODY_BYTES  # what the seam's own cap would truncate to
+    too_long = client.get("/api/hub/pigro/istanze")
+    assert too_long.status_code == 502, too_long.text
+    assert too_long.json()["detail"] == "Pigro ha risposto qualcosa di troppo lungo."
     # A refused connection, a DNS miss or a timeout: the seam raises, and that is the most
     # likely failure of all, so it too is a 502 sentence rather than a traceback.
     pigro.raises = OSError("connection refused")

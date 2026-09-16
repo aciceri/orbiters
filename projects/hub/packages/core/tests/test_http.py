@@ -62,16 +62,17 @@ def test_an_http_error_is_a_status_not_an_exception(monkeypatch: pytest.MonkeyPa
 
 
 class _Redirecting(BaseHTTPRequestHandler):
-    """Answers `/lookup` with a 302 to `/altrove` on itself, and anything else with a
-    plain 200. A client that followed the redirect would re-send whatever headers it
-    carried, including a bearer, to wherever `Location` points."""
+    """Answers `/lookup` with `code` (default 302) to `/altrove` on itself, and
+    anything else with a plain 200. A client that followed the redirect would re-send
+    whatever headers it carried, including a bearer, to wherever `Location` points."""
 
     seen: list[tuple[str, str, str | None]] = []
+    code = 302
 
     def do_GET(self) -> None:  # noqa: N802 - the name http.server dispatches on
         _Redirecting.seen.append((self.command, self.path, self.headers.get("Authorization")))
         if self.path == "/lookup":
-            self.send_response(302)
+            self.send_response(_Redirecting.code)
             self.send_header("Location", "/altrove")
             self.send_header("Content-Length", "0")
             self.end_headers()
@@ -90,6 +91,7 @@ class _Redirecting(BaseHTTPRequestHandler):
 @pytest.fixture
 def redirecting_server() -> Iterator[str]:
     _Redirecting.seen = []
+    _Redirecting.code = 302
     server = HTTPServer(("127.0.0.1", 0), _Redirecting)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -100,16 +102,19 @@ def redirecting_server() -> Iterator[str]:
         server.server_close()
 
 
+@pytest.mark.parametrize("code", [301, 302, 303, 307, 308])
 def test_a_redirect_is_not_followed_and_the_bearer_stays_where_it_was_sent(
-    redirecting_server: str,
+    redirecting_server: str, code: int
 ) -> None:
-    """The registry read and the mail both carry a bearer no third party may see. A
-    3xx from either endpoint must come back as a status, not send that bearer on to
-    whatever host `Location` names (REB-242)."""
+    """The registry read and the mail both carry a bearer no third party may see. Every
+    redirect status `HTTPRedirectHandler` knows must come back as that status, not send
+    the bearer on to whatever host `Location` names (REB-242): a fix that only covered
+    302 would still leak it on a 301 or a 308."""
+    _Redirecting.code = code
     status, _ = urllib_call(
         "GET", f"{redirecting_server}/lookup", {"Authorization": "Bearer secret"}, b""
     )
-    assert status == 302
+    assert status == code
     # Exactly one request reached the server; nothing went to `/altrove`.
     assert _Redirecting.seen == [("GET", "/lookup", "Bearer secret")]
 

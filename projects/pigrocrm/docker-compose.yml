@@ -76,10 +76,9 @@ services:
     # No default, on purpose (docs/adding-a-project.md §7, the hub's own compose file
     # does the same): a `.env` that forgets PIGROCRM_DATA_DIR must fail the stack here,
     # loudly, rather than bring Postgres up on an empty relative directory with the
-    # health check answering 200 and the real register unmounted. Both live `.env`
-    # files already carry the key. A build never mounts it, but compose interpolates
-    # the whole file before building, so `docker compose build` needs a value too: CI
-    # and preflight pass a throwaway one (REB-258).
+    # health check answering 200 and the real register unmounted. A build never mounts
+    # it, but compose interpolates the whole file before building, so `docker compose
+    # build` needs a value too: CI and preflight pass a throwaway one (REB-258).
     volumes:
       - ${PIGROCRM_DATA_DIR:?set it in .env, to this stack's own directory outside the repository}:/var/lib/postgresql/data
     ports:
@@ -103,8 +102,9 @@ services:
     environment: *api-environment
     # Where `PIGROCRM_STORAGE_BACKEND=local` writes documents (config.py's
     # `storage_local_root`, ./var/documents under the image's WORKDIR /app). On the
-    # host, like the database above, so a rebuilt container keeps every PDF -- and
-    # written `../../` for the same reason as the database volume above.
+    # host, like the database above, so a rebuilt container keeps every PDF -- written
+    # `../../` because compose resolves a relative volume against the directory of
+    # this file, two levels below the repository root.
     volumes:
       - ${PIGROCRM_DOCUMENTS_DIR:-../../var/documents}:/app/var/documents
 

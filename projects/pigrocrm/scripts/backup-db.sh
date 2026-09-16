@@ -4,7 +4,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 set -a; . ./.env; set +a
-DEST="${PIGROCRM_BACKUP_DIR:-$(dirname "${PIGROCRM_DATA_DIR:-./data/postgres}")/backups}"
+DEST="${PIGROCRM_BACKUP_DIR:-$(dirname "${PIGROCRM_DATA_DIR:?manca PIGROCRM_DATA_DIR nel .env}")/backups}"
 mkdir -p "$DEST"
 FILE="$DEST/pigrocrm-$(date +%Y%m%d-%H%M%S).sql"
 docker exec pigrocrm-db pg_dumpall -U "${POSTGRES_USER:-pigrocrm}" > "$FILE"

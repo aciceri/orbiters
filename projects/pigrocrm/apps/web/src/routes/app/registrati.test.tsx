@@ -206,23 +206,26 @@ describe('the signup wizard', () => {
 
   it('lets the person submit anyway when the availability probe throws (REB-236)', async () => {
     answers({ '/api/tenants/membro': NOBODY })
-    GET.mockRejectedValueOnce(new Error('network down'))
+    GET.mockRejectedValue(new Error('network down'))
     const user = userEvent.setup()
     render(<SignupPage />)
     await throughStepOne(user, 'bob@studio.it')
     await user.type(await screen.findByLabelText('Come si chiama il tuo spazio?'), 'Ada Lovelace')
     // The generic Italian fallback, never the "still checking" ellipsis that used to
-    // hang forever, and the button is not held hostage by an answer that never came:
-    // POST /api/tenants/ validates the slug again on the server.
+    // hang forever, alongside the address it is about, and the button is not held
+    // hostage by an answer that never came: POST /api/tenants/ validates the slug
+    // again on the server.
     await waitFor(() =>
-      expect(screen.getByRole('status')).toHaveTextContent(/Si è verificato un errore imprevisto/),
+      expect(screen.getByRole('status')).toHaveTextContent(
+        /\/ada-lovelace: Si è verificato un errore imprevisto/,
+      ),
     )
     expect(screen.getByRole('button', { name: 'Crea lo spazio' })).toBeEnabled()
   })
 
   it('lets the person submit anyway when the availability probe answers a server error (REB-236)', async () => {
     answers({ '/api/tenants/membro': NOBODY })
-    GET.mockResolvedValueOnce({
+    GET.mockResolvedValue({
       error: { detail: 'Il servizio non risponde, riprova.' },
       response: { status: 503 },
     })
@@ -230,10 +233,13 @@ describe('the signup wizard', () => {
     render(<SignupPage />)
     await throughStepOne(user, 'bob@studio.it')
     await user.type(await screen.findByLabelText('Come si chiama il tuo spazio?'), 'Ada Lovelace')
-    // The API's own sentence, not a generic one, and the field is not marked invalid:
-    // a failed probe is not proof the slug itself is a problem.
+    // The API's own sentence, not a generic one, alongside the address, and the
+    // field is not marked invalid: a failed probe is not proof the slug itself is a
+    // problem.
     await waitFor(() =>
-      expect(screen.getByRole('status')).toHaveTextContent(/Il servizio non risponde/),
+      expect(screen.getByRole('status')).toHaveTextContent(
+        /\/ada-lovelace: Il servizio non risponde/,
+      ),
     )
     expect(screen.getByRole('button', { name: 'Crea lo spazio' })).toBeEnabled()
   })

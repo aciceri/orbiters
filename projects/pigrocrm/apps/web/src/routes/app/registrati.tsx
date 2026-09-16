@@ -80,8 +80,8 @@ export function SignupPage({ go = (url) => window.location.assign(url) }: { go?:
           }
           // The probe has its own rate limit (REB-228), separate from the create
           // request's: a throttled check must not leave the wizard stuck on
-          // "checking" forever with no explanation, so this always drops back to
-          // idle, and a 429 specifically says why on the same alert `onCreate` uses.
+          // "checking" forever with no explanation, so a 429 drops back to idle and
+          // says why on the same alert `onCreate` uses.
           if (response.status === 429) {
             setAvailability({ state: 'idle' })
             setError(toProblem(apiError, response.status).detail)
@@ -296,7 +296,7 @@ export function SignupPage({ go = (url) => window.location.assign(url) }: { go?:
                 <p id="slug-hint" className="text-muted-foreground text-sm" role="status">
                   {problem ??
                     (current?.state === 'failed'
-                      ? current.reason
+                      ? `${spaceHost()}/${slug}: ${current.reason}`
                       : slug === ''
                         ? 'L’indirizzo lo ricaviamo dal nome.'
                         : isFree

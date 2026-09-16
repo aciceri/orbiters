@@ -57,6 +57,7 @@ def _invoice(
     totale: str = "1220.00",
     data_emissione: date | None = None,
     data_scadenza: date | None = None,
+    data_incasso: date | None = None,
     deal_id: UUID | None = None,
     anno: int | None = None,
     numero: int | None = None,
@@ -81,6 +82,7 @@ def _invoice(
         totale=Decimal(totale),
         data_emissione=data_emissione or today_local(),
         data_scadenza=data_scadenza,
+        data_incasso=data_incasso,
         anno=anno,
         numero=numero,
         tipo_documento="TD01",
@@ -473,3 +475,67 @@ def test_unpaid_for_customer_honours_its_limit(db_session: Session, customer: Cu
             data_scadenza=today_local() + timedelta(days=day),
         )
     assert len(InvoiceRepository(db_session).unpaid_for_customer(customer.id, limit=2)) == 2
+
+
+# --- the week's reads (spec 2026-09-16 §3.1, §3.2) -----------------------------------
+
+
+def test_the_week_reads_split_issued_collected_and_due(
+    db_session: Session, customer: Customer
+) -> None:
+    """The three lists and two sums §3.2 adds for the weekly report's «Emesse questa
+    settimana», «Incassate questa settimana» and «in scadenza nei prossimi sette giorni»
+    sections (§3.1).
+
+    Each read is attributed to its own date -- `data_emissione`, `data_incasso`,
+    `data_scadenza` -- not to when the row was written, and none of the five is a fourth
+    definition of "issued" or "receivable": the two `list_*_in_periodo` and both sums
+    share `_issued_filter()` with `count_emesse_in_periodo`, and `list_in_scadenza` shares
+    `_receivable_filter()` with `sum_da_incassare`, exactly as this file's other tests
+    require.
+
+    The fourth invoice, annulled but issued inside the window, is the negative case: the
+    issued filter must exclude it by construction, which the length of
+    `list_emesse_in_periodo`'s result and the untouched sum both prove without a
+    separate assertion.
+    """
+    _invoice(
+        db_session,
+        customer,
+        totale="1000.00",
+        data_emissione=date(2026, 9, 8),
+        stato_pagamento="incassato",
+        data_incasso=date(2026, 9, 10),
+    )
+    _invoice(
+        db_session,
+        customer,
+        totale="500.00",
+        data_emissione=date(2026, 9, 1),
+        data_scadenza=date(2026, 9, 12),
+    )
+    _invoice(
+        db_session,
+        customer,
+        totale="300.00",
+        data_emissione=date(2026, 9, 15),
+        data_scadenza=date(2026, 10, 15),
+    )
+    _invoice(
+        db_session,
+        customer,
+        totale="999.00",
+        data_emissione=date(2026, 9, 9),
+        stato="annullata",
+    )
+
+    repo = InvoiceRepository(db_session)
+    week = (date(2026, 9, 7), date(2026, 9, 13))
+    assert [i.totale for i in repo.list_emesse_in_periodo(*week)] == [Decimal("1000.00")]
+    assert [i.totale for i in repo.list_incassate_in_periodo(*week)] == [Decimal("1000.00")]
+    assert [i.totale for i in repo.list_in_scadenza(date(2026, 9, 7), date(2026, 9, 14))] == [
+        Decimal("500.00")
+    ]
+    assert repo.sum_emesse_in_periodo(*week) == Decimal("1000.00")
+    assert repo.sum_incassate_in_periodo(*week) == Decimal("1000.00")
+    assert repo.sum_emesse_in_periodo(date(2026, 9, 1), date(2026, 9, 30)) == Decimal("1800.00")

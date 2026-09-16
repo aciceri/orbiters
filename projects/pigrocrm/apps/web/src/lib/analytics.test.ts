@@ -38,6 +38,7 @@ describe('the funnel table', () => {
     ['POST', '/api/customers', 'cliente_creato'],
     ['POST', '/api/deals', 'deal_creato'],
     ['POST', '/api/documents', 'documento_creato'],
+    ['POST', '/api/documents/from-template', 'documento_creato'],
     ['POST', '/api/time-entries', 'ore_registrate'],
     ['POST', '/api/invoices/inv-1/issue', 'fattura_emessa'],
     ['POST', '/api/tokens', 'assistente_collegato'],
@@ -69,16 +70,19 @@ describe('the funnel table', () => {
 
   it('leaves out everything the table does not name', async () => {
     // A read, an update, a nested write, a sibling route and a wrong method on a
-    // listed path: none of them is an activation step. The two invoice siblings
-    // (`/artifacts`, `/confirm`) pin that only `/issue` matches: a lax trailing
-    // segment would double-count `fattura_emessa` on every emission.
+    // listed path: none of them is an activation step. The invoice siblings
+    // (`/artifacts`, `/confirm`) and the document siblings (`/restore`,
+    // `/versions`) pin that only the listed routes match: a lax trailing segment
+    // would double-count their event on every action a document or invoice takes
+    // after it already exists.
     await answered('GET', '/api/customers', 200)
     await answered('PUT', '/api/customers/c1', 200)
     await answered('POST', '/api/deals/d1/stage', 200)
-    await answered('POST', '/api/documents/from-template', 201)
     await answered('POST', '/api/invoices/import', 201)
     await answered('POST', '/api/invoices/inv-1/artifacts', 201)
     await answered('POST', '/api/invoices/inv-1/confirm', 200)
+    await answered('POST', '/api/documents/doc-1/restore', 200)
+    await answered('POST', '/api/documents/doc-1/versions', 201)
     await answered('POST', '/api/emitter', 200)
     await answered('POST', '/api/auth/login', 200)
     await answered('POST', '/api/auth/logout', 200)

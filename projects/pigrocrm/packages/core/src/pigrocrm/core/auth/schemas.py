@@ -54,12 +54,22 @@ class UserUpdate(BaseModel):
     nome: SafeStr | None = Field(default=None, max_length=NOME_MAX_LENGTH)
     ruolo: Role | None = None
     attivo: bool | None = None
+    digest_settimanale: bool | None = None
     tariffa_oraria_default: Decimal | None = Field(
         default=None, max_digits=FACTOR_MAX_DIGITS, decimal_places=FACTOR_DECIMAL_PLACES, ge=0
     )
     costo_orario_default: Decimal | None = Field(
         default=None, max_digits=FACTOR_MAX_DIGITS, decimal_places=FACTOR_DECIMAL_PLACES, ge=0
     )
+
+
+class MeUpdate(BaseModel):
+    """The one field a person may change about their own account with no admin role
+    required -- see `UserService.update_own_digest`. Deliberately its own schema
+    rather than a reuse of `UserUpdate`: `PATCH /api/auth/me` must never grow a
+    second field that only `update`'s `actor.require_admin` was meant to gate."""
+
+    digest_settimanale: bool
 
 
 class UserRead(BaseModel):
@@ -70,6 +80,7 @@ class UserRead(BaseModel):
     nome: str
     ruolo: Role
     attivo: bool
+    digest_settimanale: bool
     tariffa_oraria_default: Decimal | None
     costo_orario_default: Decimal | None
     created_at: datetime

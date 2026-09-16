@@ -167,7 +167,10 @@ commit would otherwise ship the red code. The price is one full run per release.
 The mechanism lives in `.github/workflows/_deploy-compose.yml` and is shared. What a
 project writes is a caller, `deploy-<name>.yml`, with one job per environment, each
 naming four things: the GitHub environment, the compose directory, the compose project
-name, and a health URL. Copy `deploy-pigrocrm.yml`; it is deliberately short.
+name, and a health URL. A stack with more than one process worth probing (REB-246)
+also names an `extra-health-url`, curled the same way alongside the first; optional,
+and empty by default for every project that has only the one. Copy
+`deploy-pigrocrm.yml`; it is deliberately short.
 
 The preview trigger is `workflow_run` on CI, not `push`, because the deploy refuses an
 unverified commit and waiting for CI on a billed runner cost more than the deploy

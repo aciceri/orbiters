@@ -2,8 +2,9 @@
 
 Reads a personal token from `REBASE_MCP_TOKEN` and resolves it once, before the
 first message: a process nobody has a token for does not start (REB-213). The HTTP
-transport is `rebase_mcp.http`, served by the hub API; this one is for a developer's
-client and for a shell on the host.
+transport is `rebase_mcp.http`, served by its own `mcp` compose service and proxied
+at `/api/hub/mcp` on the host (`apps/api` may not import `apps/mcp`); this one is
+for a developer's client and for a shell on the host.
 """
 
 import os

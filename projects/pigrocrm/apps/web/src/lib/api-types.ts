@@ -113,7 +113,22 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Me
+         * @description The one write on this router with no `actor.require_admin` behind it,
+         *     deliberately: `PATCH /api/users/{id}` (`UserService.update`) is for an
+         *     administrator changing someone else's account, but this is a person changing
+         *     their own weekly-digest preference, and the mail's own opt-out link (spec
+         *     2026-09-16 §3.6) must work whatever role received it.
+         *
+         *     The row is loaded once, by the service. `update_own_digest` already refuses an
+         *     actor with no id and an id with no row, both as `NotFound`, so a check here would
+         *     be the same query asked twice and a second place deciding who exists. What stays
+         *     the router's own is the *answer*: a session whose user row is gone is "not
+         *     authenticated," not "not found," here as everywhere else on this router, so the
+         *     domain error is translated to the same 401 `me` just above gives.
+         */
+        patch: operations["update_me_api_auth_me_patch"];
         trace?: never;
     };
     "/api/customers": {
@@ -5142,6 +5157,17 @@ export interface components {
             password: string;
         };
         /**
+         * MeUpdate
+         * @description The one field a person may change about their own account with no admin role
+         *     required -- see `UserService.update_own_digest`. Deliberately its own schema
+         *     rather than a reuse of `UserUpdate`: `PATCH /api/auth/me` must never grow a
+         *     second field that only `update`'s `actor.require_admin` was meant to gate.
+         */
+        MeUpdate: {
+            /** Digest Settimanale */
+            digest_settimanale: boolean;
+        };
+        /**
          * MemberAnswer
          * @description What the signup learns about an address before the person has an account: whether
          *     the Orbiters hub knows them as a community member, their two names if so, and how
@@ -6432,6 +6458,8 @@ export interface components {
             ruolo: "admin" | "collaboratore" | "readonly";
             /** Attivo */
             attivo: boolean;
+            /** Digest Settimanale */
+            digest_settimanale: boolean;
             /** Tariffa Oraria Default */
             tariffa_oraria_default: string | null;
             /** Costo Orario Default */
@@ -6450,6 +6478,8 @@ export interface components {
             ruolo?: ("admin" | "collaboratore" | "readonly") | null;
             /** Attivo */
             attivo?: boolean | null;
+            /** Digest Settimanale */
+            digest_settimanale?: boolean | null;
             /** Tariffa Oraria Default */
             tariffa_oraria_default?: number | string | null;
             /** Costo Orario Default */
@@ -7156,6 +7186,138 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRead"];
+                };
+            };
+            /** @description Non autenticato: il cookie di sessione è assente, scaduto o non valido, oppure l'utente non è più attivo. Il client deve trattarlo come sessione terminata (ritentare /api/auth/refresh e poi reindirizzare al login), non come un errore da ripetere. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        detail: string;
+                    };
+                };
+            };
+            /** @description Permesso negato: l'actor non ha il ruolo richiesto. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Type */
+                        type: string;
+                        /** Title */
+                        title: string;
+                        /** Status */
+                        status: number;
+                        /** Detail */
+                        detail: string;
+                        /** Code */
+                        code: string;
+                        /** Instance */
+                        instance: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description La risorsa richiesta non esiste o è stata rimossa. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Type */
+                        type: string;
+                        /** Title */
+                        title: string;
+                        /** Status */
+                        status: number;
+                        /** Detail */
+                        detail: string;
+                        /** Code */
+                        code: string;
+                        /** Instance */
+                        instance: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description La richiesta è in conflitto con lo stato attuale della risorsa. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Type */
+                        type: string;
+                        /** Title */
+                        title: string;
+                        /** Status */
+                        status: number;
+                        /** Detail */
+                        detail: string;
+                        /** Code */
+                        code: string;
+                        /** Instance */
+                        instance: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Una regola di dominio non è stata rispettata (application/problem+json), oppure il corpo, i parametri o il path della richiesta non hanno la forma attesa e non hanno mai raggiunto l'endpoint (application/json). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Type */
+                        type: string;
+                        /** Title */
+                        title: string;
+                        /** Status */
+                        status: number;
+                        /** Detail */
+                        detail: string;
+                        /** Code */
+                        code: string;
+                        /** Instance */
+                        instance: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_me_api_auth_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

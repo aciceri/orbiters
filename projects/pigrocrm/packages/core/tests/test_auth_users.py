@@ -434,3 +434,52 @@ def test_an_unverified_passwordless_admin_cannot_create_users_until_the_first_li
         service.create(UserCreate(email="c@x.it", password="lunghissima1", nome="C"), actor).email
         == "c@x.it"
     )
+
+
+def test_update_own_digest_needs_no_admin(db_session: Session) -> None:
+    """Spec 2026-09-16 §3.6: the weekly digest's own opt-out link must work for
+    whoever received the mail, not only for an administrator of the space -- unlike
+    `update`, which raises `PermissionDenied` for a non-admin actor via
+    `actor.require_admin`, `update_own_digest` takes no such check."""
+    from pigrocrm.core.auth.repository import UserRepository
+
+    service = UserService(db_session)
+    collab = service.create(
+        UserCreate(
+            email="collab@x.it", password="lunghissima1", nome="Collab", ruolo="collaboratore"
+        ),
+        Actor.system(),
+    )
+    actor = Actor(id=collab.id, type="user", role="collaboratore")
+
+    updated = service.update_own_digest(actor, False)
+
+    assert updated.digest_settimanale is False
+    row = UserRepository(db_session).get(collab.id)
+    assert row is not None and row.digest_settimanale is False
+
+
+def test_setting_the_digest_to_what_it_already_is_records_nothing(db_session: Session) -> None:
+    """A switch is a control people click twice. The timeline records what changed, so a
+    `PATCH` that changes nothing has nothing to say on it -- `update` draws the same line
+    with its `delta`, and this is that line for a single field."""
+    from pigrocrm.core.activities.repository import ActivityRepository
+
+    service = UserService(db_session)
+    user = service.create(
+        UserCreate(email="switch@x.it", password="lunghissima1", nome="Switch"),
+        Actor.system(),
+    )
+    actor = Actor(id=user.id, type="user", role="admin")
+    attivita = ActivityRepository(db_session)
+
+    service.update_own_digest(actor, False)
+    dopo_il_cambio = len(attivita.timeline("user", user.id, limit=50))
+
+    assert service.update_own_digest(actor, False).digest_settimanale is False
+
+    assert len(attivita.timeline("user", user.id, limit=50)) == dopo_il_cambio
+    # The one that did change something is still on the timeline, with the new value.
+    ultima = attivita.timeline("user", user.id, limit=50)[0]
+    assert ultima.kind == "updated"
+    assert ultima.payload == {"digest_settimanale": False}

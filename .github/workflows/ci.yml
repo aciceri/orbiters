@@ -345,15 +345,22 @@ jobs:
         projects/pigrocrm/apps/api/tests
         projects/pigrocrm/apps/mcp/tests
       # `slow` builds a fifty-thousand-row corpus, so a PR does not pay for it and the
-      # trunk does. `planner` is a different thing and is deselected on both: it asserts
-      # which plan Postgres picks, the winning plan sits within a few percent of the
-      # loser at this row count, and a hosted runner picks the other one.
+      # trunk does. `planner` is a different thing, deselected on this job's own filter
+      # below: it asserts which plan Postgres picks, the winning plan sits within a few
+      # percent of the loser at this row count, and a hosted runner picks the other one.
       # `test_trgm_escape.py`'s case (ORB-9) failed on the trunk run of the merge commit
       # for exactly that reason, on code that had passed the same assertion on the devbox
       # minutes earlier; its fix stopped costing the plan on whatever bloat the rest of
       # the suite happened to leave behind, so it no longer carries the marker.
-      # `test_sort_plan.py` still does, for its own sort-plan assertions, and stays in
-      # preflight, which runs on one known machine.
+      # `test_sort_plan.py` (REB-90) no longer carries the marker either, and no test in
+      # the repository currently does; `planner` stays registered and deselected here for
+      # whichever assertion needs it next. Worth being exact about what changed: the job
+      # below (`pigrocrm-py-corpus`) selects on `slow` alone, with no `and not planner`,
+      # so `test_sort_plan.py` -- `slow` and, until REB-90, also `planner` -- ran there on
+      # the hosted runner throughout, which is how 34294151175 was able to fail on one at
+      # all. Dropping the marker changed no CI selection; it retired the preflight lane
+      # (`pigrocrm-py-planner`) that duplicated the corpus job's own coverage of this file
+      # on a single known machine, once nothing was left for that lane to select.
       #
       # `slow` is not skipped on the trunk, it moved: the job below runs it in
       # parallel with this one. Measured 2026-09-09, the two are 10m and 12m of a

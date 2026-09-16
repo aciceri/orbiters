@@ -34,7 +34,7 @@ import { chromium } from '@playwright/test'
 const here = dirname(fileURLToPath(import.meta.url))
 const brand = join(here, '..', '..', '..', 'shared', 'brand')
 /** Bumped on every redraw: see the note above about what the platforms cache. */
-export const CARD_FILE = 'share-card-1.png'
+export const CARD_FILE = 'share-card-2.png'
 const out = process.argv[2] ?? join(here, '..', 'src', 'public', 'assets', CARD_FILE)
 
 export const WIDTH = 1200
@@ -53,6 +53,11 @@ function palette() {
 
 function markup() {
   const { ink, gold, melon } = palette()
+  // The paper cut, for this dark ground: the same outlines `wordmark.svg` draws for a
+  // light one, generated together by `shared/brand/tools/build-wordmark.py` and never
+  // hand-edited. Read at build time, never restated as a string of text here, so the
+  // card draws the one word the brand owns rather than a font-rendered guess at it.
+  const wordmark = readFileSync(join(brand, 'wordmark-paper.svg'), 'utf-8')
   const font = readFileSync(join(brand, 'fonts', 'outfit-variable-latin.woff2')).toString('base64')
   // The mark on the ink ground, which is where the four tiles need the treatment
   // `pitch.css` already gives them in its dark slides: the two Prussian Blue tiles are
@@ -100,7 +105,11 @@ function markup() {
           44px 44px 0 #ffffff;
         margin-bottom: 44px;
       }
-      .wordmark { font-size: 128px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; }
+      /* The SVG carries no width or height of its own (README: the same file is the
+         18px header chip and a 1584px cover), so the box here is what sizes it; the
+         line-box the text version used to fill. */
+      .wordmark { height: 128px; }
+      .wordmark svg { display: block; height: 100%; width: auto; }
       /* One line, never two: the claim is a sentence and a card that breaks it after
          «da» reads as a layout accident. At this size it measures about 640px of the
          1008px the padding leaves. */
@@ -110,7 +119,7 @@ function markup() {
   </head>
   <body>
     <div class="glyph"></div>
-    <p class="wordmark">Orbiters</p>
+    <div class="wordmark">${wordmark}</div>
     <p class="claim">freelance, ma non da soli</p>
     <p class="foot">letsrebase.com</p>
   </body>

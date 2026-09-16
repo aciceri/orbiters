@@ -222,12 +222,13 @@ tested on a branch and is proven on the trunk instead.
   twice and a neighbour in `Backlog` or `Todo` is linked rather than rediscovered. What
   the scan found, or that it found nothing, goes on the card first, in the same call
   that moves it. While working: the card never lags the work; a comment at every turn a
-  reader could not infer (a finding, a change of scope, a wait), `In Review` the moment
-  the PR opens, one line for the review and for a red run, and `Done` only with the
-  evidence. A card that has read `In Progress` all day with nothing under it is the
-  other agent's only view of your work (`docs/tracker.md` § The loop).
-- `In Review` is a status on the team, and it is where an issue sits while its PR
-  is open on GitHub.
+  reader could not infer (a finding, a change of scope, a wait), the PR URL the moment
+  the PR opens, one line for the review and for a red run, and the closing evidence in a
+  comment before or right after the merge. A card that has read `In Progress` all day
+  with nothing under it is the other agent's only view of your work (`docs/tracker.md`
+  § The loop).
+- `In Review` is a status on the team, and nothing sets it by hand since 2026-09-16: a
+  card whose PR is open reads `In Progress`, because the automation below puts it there.
 - **A project update is written whenever something changed that the issue list
   alone does not show**: a milestone slipped, a health change, a decision, a
   release. An update that only restates the board is noise.
@@ -236,8 +237,8 @@ tested on a branch and is proven on the trunk instead.
   the issue id **does** link itself: PR #33 attached to REB-80 within 25 seconds.
   Moving a state is a separate mechanism, the team's own pull request automation in
   Linear's workflow settings, and since 2026-09-16 it is **on**: a PR opening on a
-  branch that carries the id moves the card to `In Progress` (a hand-set `In Review` is
-  overwritten seconds later), and the merge moves it to `Done` (REB-247: `In Review` at
+  branch that carries the id moves the card to `In Progress` (an `In Review` set before
+  that fires is overwritten), and the merge moves it to `Done` (REB-247: `In Review` at
   17:30:40, `In Progress` at 17:30:43, `Done` at 17:46:42 as PR #161 merged). What stays
   by hand: the `In Progress` move before the branch exists, with the neighbour scan on
   the card; every comment, the closing evidence included, written before or right after

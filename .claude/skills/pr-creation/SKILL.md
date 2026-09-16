@@ -206,14 +206,15 @@ waits and the person hears why; a PR without its card is not the smaller harm.
    the same comment when you push it.
 5. **Merge with a merge commit**, the repository's shape:
    `gh pr merge <n> --merge --delete-branch`. Never squash a two-commit PR whose second
-   commit is the review: the history is the record.
+   commit is the review: the history is the record. Then, right away, the
+   `**Merged:**` comment on the card with the run ids, the commit sha, the test counts
+   and what you opened and saw: the automation sets `Done` at the merge without waiting
+   for it, and a card that closes with nothing under it was closed by a robot.
 6. **Clean up**: `git worktree remove ../<repo>-orb<N>`, `git worktree prune`.
-7. **The evidence goes on the card at the merge**: run ids, commit sha, the test counts,
-   what you opened and saw, in a `**Merged:**` comment written before or right after
-   `gh pr merge`, because the automation closes the card without waiting for it.
-   Preview deploys on the green trunk run; **production moves only
-   on a tag** (`docs/design/DECISIONS.md`, 2026-09-09) and only when asked, and when it
-   does, the card gets its `**In production:**` comment with the tag and what answered.
+7. **Production is a separate step.** Preview deploys on the green trunk run;
+   **production moves only on a tag** (`docs/design/DECISIONS.md`, 2026-09-09) and only
+   when asked, and when it does, the card gets its `**In production:**` comment with the
+   tag and what answered.
 
 ## What never goes in a PR
 

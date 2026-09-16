@@ -157,10 +157,10 @@ not learn it from here. What that section leaves to the caller:
   `patch: [{ "op": "append", "text": "\n\n**Adjacent.** ..." }]`, because `description`
   on an update replaces the whole body.
 - When the PR opens, comment the PR URL. Since 2026-09-16 the team's automation moves
-  the state on PR events: the card reads `In Progress` while the PR is open (a hand-set
-  `In Review` is overwritten within seconds) and `Done` when it merges (REB-247, PR
-  #161). Do not fight it. From the PR to the merge the card keeps following the PR
-  (§ Commenting): the review, a red run, a reshaped PR.
+  the state on PR events: the PR opening puts the card in `In Progress` (an `In Review`
+  set before that fires is overwritten: REB-247, PR #161) and the merge sets `Done`.
+  Nothing sets `In Review` by hand since. From the PR to the merge the card keeps
+  following the PR (§ Commenting): the review, a red run, a reshaped PR.
 - The closing comment shaped as the `linear-content` skill says (`Evidence:` with run
   ids, sha, what you exercised and what came back) is written before or right after the
   merge, because `Done` will not wait for it. A card that closes with no evidence under

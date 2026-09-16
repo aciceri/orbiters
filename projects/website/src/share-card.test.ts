@@ -112,11 +112,13 @@ describe('the card itself', () => {
     expect(generator).toContain(`export const CARD_FILE = '${CARD_FILE}'`)
   })
 
-  it('never draws the old name', () => {
+  it('never types the old name back into the generator', () => {
     // REB-205: the card drew `Orbiters` as text long after the rename, because the
     // wordmark it draws was never checked against the copy rule the rest of the site
-    // follows. The generator now reads the brand's own outlines instead of spelling
-    // the word out, so this string cannot reappear without somebody typing it back in.
+    // follows. This reads the generator's own source, the same `generator` the hex
+    // guard below reads, so it catches the word coming back as a string literal in
+    // `share-card.js`; the brand file it now reads at runtime is pinned separately, by
+    // `landing-style.test.ts`, which holds every SVG's geometry and fill to the palette.
     expect(generator).not.toContain('Orbiters')
   })
 

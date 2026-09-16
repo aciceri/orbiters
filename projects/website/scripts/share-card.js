@@ -1,6 +1,6 @@
 /**
  * Draws the image a link to this site shares with, and writes it to
- * `src/public/assets/share-card.png` (ORB-112).
+ * `src/public/assets/share-card-<N>.png` (ORB-112).
  *
  * Not part of the build, and run by hand: the card is a static asset committed to the
  * repository, as the card asked, so a visitor's share never waits on a render and the
@@ -11,9 +11,9 @@
  * **The file name carries a number, and a redraw takes the next one.** LinkedIn, Facebook
  * and WhatsApp cache what they scraped per URL for days, so a card redrawn under its old
  * name keeps sharing as the old card long after it shipped, on exactly the surfaces this
- * exists for. A new name is one line here, one constant in `share-card.test.ts` and six
- * heads, and it is the whole of the cache invalidation. The rename of the copy to Rebase
- * (ORB-194) is the next one due.
+ * heads, and it is the whole of the cache invalidation. The rename of the copy to
+ * Rebase (ORB-194) shipped in the heads and the markup; the wordmark itself moved off
+ * plain text and onto the brand's own outlines in REB-205.
  *
  * A path given as the first argument is rendered there instead, so the committed file
  * can be compared with what this produces today without being overwritten.

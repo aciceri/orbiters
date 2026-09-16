@@ -40,6 +40,16 @@ on:
         description: URL curled on the host until it answers 200, from inside the host.
         type: string
         required: true
+      extra-health-url:
+        description: >-
+          A second URL curled the same way as health-url, alongside it, until it
+          too answers 200: a stack with more than one service worth probing
+          (REB-246) names it here instead of the reusable workflow growing a
+          second required input every caller would have to supply. Empty by
+          default, which is today's behaviour for every caller that omits it.
+        type: string
+        required: false
+        default: ''
       url:
         description: Public URL, shown on the environment in the Actions UI.
         type: string
@@ -195,27 +205,60 @@ jobs:
 
       - name: Check the deployed code answers
         # A deploy that reports success without asking the server anything reports
-        # success when the container failed to start.
+        # success when the container failed to start. `docker compose ps` alone is not
+        # enough either: it says the stack is up, not that every service in it is
+        # running, so a crashed container that no health URL happens to reach still
+        # reported success (REB-246). This step curls health-url, and extra-health-url
+        # too when a caller sets it, then asserts every service compose knows about is
+        # `running`, whatever either URL says.
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           HEALTH_URL: ${{ inputs.health-url }}
+          EXTRA_HEALTH_URL: ${{ inputs.extra-health-url }}
           COMPOSE_PROJECT: ${{ inputs.compose-project }}
         run: |
           ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "HEALTH_URL='${HEALTH_URL}' COMPOSE_PROJECT='${COMPOSE_PROJECT}' bash -s" <<'SSH'
+            "HEALTH_URL='${HEALTH_URL}' EXTRA_HEALTH_URL='${EXTRA_HEALTH_URL}' COMPOSE_PROJECT='${COMPOSE_PROJECT}' bash -s" <<'SSH'
             set -uo pipefail
             for attempt in $(seq 1 30); do
               code=$(curl -s -o /dev/null -w '%{http_code}' "${HEALTH_URL}" || true)
-              if [ "$code" = 200 ]; then
+              extra_code=200
+              if [ -n "${EXTRA_HEALTH_URL}" ]; then
+                extra_code=$(curl -s -o /dev/null -w '%{http_code}' "${EXTRA_HEALTH_URL}" || true)
+              fi
+              if [ "$code" = 200 ] && [ "$extra_code" = 200 ]; then
                 echo "${HEALTH_URL} -> 200"
-                docker compose -p "${COMPOSE_PROJECT}" ps --format 'table {{.Name}}\t{{.Status}}'
+                [ -n "${EXTRA_HEALTH_URL}" ] && echo "${EXTRA_HEALTH_URL} -> 200"
+                docker compose -p "${COMPOSE_PROJECT}" ps -a --format 'table {{.Name}}\t{{.Status}}'
+                # `-a`, or an exited container (started, died, stayed dead) is absent from
+                # the list entirely rather than reported as not running (REB-246 review).
+                # The oneoff filter excludes a `docker compose run` leftover, which `-a`
+                # also surfaces and which is not part of the stack's own service set.
+                ps_json=$(docker compose -p "${COMPOSE_PROJECT}" ps -a --format json) || {
+                  echo "::error::Could not read container states for ${COMPOSE_PROJECT}."
+                  exit 1
+                }
+                not_running=$(printf '%s\n' "${ps_json}" \
+                  | jq -s -r '[.[] | select(.Labels | test("com.docker.compose.oneoff=True") | not) | select(.State != "running")] | map("\(.Service): \(.State)") | join(", ")') || {
+                  echo "::error::Could not read container states for ${COMPOSE_PROJECT} (is jq installed on this host?)."
+                  exit 1
+                }
+                if [ -n "$not_running" ]; then
+                  echo "::error::Service(s) not running for ${COMPOSE_PROJECT}: ${not_running}"
+                  docker compose -p "${COMPOSE_PROJECT}" logs --tail 50
+                  exit 1
+                fi
                 exit 0
               fi
               sleep 5
             done
-            echo "::error::${HEALTH_URL} did not answer 200 within 150 seconds (last: ${code})."
-            docker compose -p "${COMPOSE_PROJECT}" ps --format 'table {{.Name}}\t{{.Status}}' || true
+            if [ -n "${EXTRA_HEALTH_URL}" ]; then
+              echo "::error::${HEALTH_URL} (${code}) or ${EXTRA_HEALTH_URL} (${extra_code}) did not answer 200 within 150 seconds."
+            else
+              echo "::error::${HEALTH_URL} did not answer 200 within 150 seconds (last: ${code})."
+            fi
+            docker compose -p "${COMPOSE_PROJECT}" ps -a --format 'table {{.Name}}\t{{.Status}}' || true
             docker compose -p "${COMPOSE_PROJECT}" logs --tail 50 || true
             exit 1
           SSH

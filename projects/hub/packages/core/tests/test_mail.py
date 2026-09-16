@@ -129,9 +129,16 @@ def _common(mail: Mail) -> None:
     assert mail.subject == "La tua area su rebase è aperta"
     assert "PigroCRM, gratis" in mail.text and "I primi passi da freelance" in mail.text
     assert "disponibili dopo il login" in mail.text
-    assert "https://www.linkedin.com/company/joinorbiters" in mail.text
-    assert "Forward Deployed Engineer" in mail.text
-    assert mail.html is not None and "Privacy" in mail.html and "border-radius" not in mail.html
+    assert "https://www.linkedin.com/company/letsrebase" in mail.text
+    assert "joinorbiters" not in mail.text
+    # The dated sentence ("Oggi pomeriggio esce il post...") is a one-off promise that
+    # would date itself on every later send; `welcome_mail` has no argument for one.
+    assert "Oggi pomeriggio" not in mail.text
+    assert mail.html is not None
+    assert "https://www.linkedin.com/company/letsrebase" in mail.html
+    assert "joinorbiters" not in mail.html
+    assert "Oggi pomeriggio" not in mail.html
+    assert "Privacy" in mail.html and "border-radius" not in mail.html
     for colour in ("#f1f2f3", "#011936", "#ed254e", "#e5133e"):
         assert colour in mail.html, colour
 

@@ -236,7 +236,7 @@ def magic_link_mail(to: str, link: str, minutes: int) -> Mail:
     )
 
 
-LINKEDIN_PAGE = "https://www.linkedin.com/company/joinorbiters"
+LINKEDIN_PAGE = "https://www.linkedin.com/company/letsrebase"
 PIGROCRM_LINE = (
     "PigroCRM, gratis: preventivo, contratto, fattura, ore, con i dati fiscali già giusti."
 )
@@ -297,15 +297,10 @@ def welcome_mail(
         '<ul style="margin:8px 0 0 0;padding:0 0 0 22px;">'
         f"<li {li}>{e(PIGROCRM_LINE)}</li><li>{e(GUIDE_LINE)}</li></ul>"
     )
-    linkedin_text = (
-        "Un'altra cosa: segui la pagina LinkedIn di rebase, "
-        f"{LINKEDIN_PAGE}. Oggi pomeriggio esce il post con le prime job post per "
-        "Forward Deployed Engineer.\n"
-    )
+    linkedin_text = f"Un'altra cosa: segui la pagina LinkedIn di rebase, {LINKEDIN_PAGE}.\n"
     linkedin_html = (
         f"<p {paragraph}>Un'altra cosa: segui "
-        f"{_quiet_link(LINKEDIN_PAGE, 'la pagina LinkedIn di rebase')}. Oggi pomeriggio "
-        "esce il post con le prime job post per Forward Deployed Engineer.</p>"
+        f"{_quiet_link(LINKEDIN_PAGE, 'la pagina LinkedIn di rebase')}.</p>"
     )
     safe_accedi = e(accedi_link, quote=True)
     enter_text = (

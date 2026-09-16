@@ -174,19 +174,27 @@ export function Wizard<T>({
                 className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:items-start sm:gap-4"
               >
                 <dt className="text-muted-foreground sm:w-40 sm:shrink-0">{candidate.title}</dt>
-                <dd className="break-words font-medium sm:min-w-0 sm:flex-1">
-                  {candidate.summary(value) || '—'}
+                {/* The "Modifica" control lives inside the dd, as a second flex child next
+                    to the summary text, rather than as a third sibling of dt/dd: axe's
+                    definition-list rule flattens this row's wrapping div and rejects a
+                    button found among its direct children (a div > button is not a valid
+                    dt/dd group), but it never looks inside a dd itself. Nesting it here
+                    keeps the row spacing and wrap identical (REB-96). */}
+                <dd className="flex flex-col gap-1 sm:min-w-0 sm:flex-1 sm:flex-row sm:items-start sm:gap-4">
+                  <span className="break-words font-medium sm:min-w-0 sm:flex-1">
+                    {candidate.summary(value) || '—'}
+                  </span>
+                  <button
+                    type="button"
+                    className="mt-1 self-start text-xs text-muted-foreground underline-offset-2 hover:underline sm:mt-0 sm:shrink-0"
+                    onClick={() => {
+                      setError(null)
+                      setIndex(at)
+                    }}
+                  >
+                    Modifica
+                  </button>
                 </dd>
-                <button
-                  type="button"
-                  className="mt-1 self-start text-xs text-muted-foreground underline-offset-2 hover:underline sm:mt-0 sm:shrink-0"
-                  onClick={() => {
-                    setError(null)
-                    setIndex(at)
-                  }}
-                >
-                  Modifica
-                </button>
               </div>
             ))}
           </dl>

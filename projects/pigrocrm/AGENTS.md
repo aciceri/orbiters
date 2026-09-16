@@ -68,6 +68,11 @@ pnpm --filter web dev
 `docker compose` runs from this directory, and its build context is the repository
 root two levels up, because that is where the lockfiles are.
 
+Two jobs run themselves once deployed, each one line in the deploy user's crontab:
+`pigrocrm gmail-sync` every fifteen minutes and `pigrocrm digest` every Monday at 08:00
+Europe/Rome. Neither is a process this repository starts on its own; the runbook is
+`docs/superpowers/notes/2026-09-09-gmail-cron-runbook.md`.
+
 ## Things that will cost you an afternoon if you do not know them
 
 **The document renderer shells out to Pandoc and Typst.** Roughly thirty tests fail

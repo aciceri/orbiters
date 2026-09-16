@@ -359,6 +359,11 @@ _CREDENZIALI: dict[Method, str] = {
     ("MagicLinkService", "enter"): "e' il passo di login via mail, non un'operazione",
     ("UserService", "create"): "creare utenti e' amministrazione dell'account",
     ("UserService", "update"): "cambiare ruoli e' amministrazione dell'account",
+    ("UserService", "update_own_digest"): (
+        "e' la preferenza di una persona sulla mail che riceve il lunedi' (REB-221), "
+        "scelta dal suo profilo: un agente non decide che cosa arriva nella casella di "
+        "chi lo ha collegato"
+    ),
     ("UserService", "list"): "l'anagrafica utenti non serve a nessun tool",
     ("UserService", "authenticate"): "e' il passo di login, non un'operazione",
 }
@@ -470,6 +475,12 @@ _BYTE: dict[Method, str] = {
 #    survive being asked why, and the only way to keep that true is to delete the ones
 #    that do not the moment the tool is written.
 _COPERTE_O_UMANE: dict[Method, str] = {
+    ("DigestService", "build"): (
+        "compone il resoconto settimanale che `pigrocrm digest` manda per mail il lunedi' "
+        "(REB-221): ogni numero che contiene e' gia' un tool o una resource (i tre "
+        "cruscotti, le fatture, le ore, la pipeline), e un agente che vuole la settimana "
+        "la legge da li' invece di ricevere una pagina di prosa"
+    ),
     ("AnalyticsService", "economic_overview"): (
         "la scheda economica della dashboard porta con se' la stima fiscale calcolata su "
         "incassato e proiettato: valgono le ragioni di `get_fiscal_estimate`, che non e' "

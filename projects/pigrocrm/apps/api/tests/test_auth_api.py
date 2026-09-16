@@ -9,6 +9,7 @@ from pigrocrm.core.actor import Actor
 from pigrocrm.core.auth.schemas import UserCreate, UserUpdate
 from pigrocrm.core.auth.service import UserService
 from pigrocrm.core.config import Settings, get_settings
+from pigrocrm.core.errors import NotFound
 from pigrocrm_api.deps import ACCESS_COOKIE, REFRESH_COOKIE, get_session
 from pigrocrm_api.main import create_app
 from pigrocrm_api.ratelimit import REQUESTS_PER_MINUTE
@@ -149,6 +150,46 @@ def test_me_returns_the_current_user(logged_in: TestClient) -> None:
     body = logged_in.get("/api/auth/me").json()
     assert body["email"] == "admin@pigro.it"
     assert body["ruolo"] == "admin"
+
+
+def test_update_me_requires_authentication(client: TestClient) -> None:
+    response = client.patch("/api/auth/me", json={"digest_settimanale": False})
+    assert response.status_code == 401
+
+
+def test_a_non_admin_can_switch_off_their_own_weekly_report(
+    collaborator_client: TestClient,
+) -> None:
+    """Spec 2026-09-16 §3.6: the mail's own opt-out link must work for whoever
+    received it -- `PATCH /api/auth/me` (`UserService.update_own_digest`) takes no
+    `actor.require_admin`, unlike `PATCH /api/users/{id}`, which a `collaboratore`
+    cannot call at all."""
+    response = collaborator_client.patch("/api/auth/me", json={"digest_settimanale": False})
+    assert response.status_code == 200
+    assert response.json()["digest_settimanale"] is False
+
+    assert collaborator_client.get("/api/auth/me").json()["digest_settimanale"] is False
+
+
+def test_update_me_is_401_when_the_session_outlives_the_row(
+    logged_in: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The service owns the row, the router owns the answer.
+
+    `update_own_digest` loads the caller itself and raises `NotFound` when there is no
+    row behind the token -- which every other endpoint of this API renders as a 404. On
+    *this* router it means «not authenticated», exactly as `GET /me` answers it, and
+    that translation is what this endpoint is left holding.
+    """
+
+    def sparito(self: UserService, actor: Actor, value: bool) -> None:
+        raise NotFound("user", "sparito")
+
+    monkeypatch.setattr(UserService, "update_own_digest", sparito)
+
+    response = logged_in.patch("/api/auth/me", json={"digest_settimanale": False})
+
+    assert response.status_code == 401
 
 
 def test_logout_clears_the_cookies(logged_in: TestClient) -> None:

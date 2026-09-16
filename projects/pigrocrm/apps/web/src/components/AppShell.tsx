@@ -17,6 +17,7 @@ import {
   Rocket,
   Search,
   Settings,
+  UserRound,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -117,9 +118,15 @@ const GROUPS = [
  * `SETTINGS_TABS`, so the sidebar cannot drift from the page that renders them.
  *
  * Its own constant, separate from `GROUPS`, because it behaves differently in two ways:
- * it is admin-only (every service behind these tabs calls `actor.require_admin` on every
- * write), and in the collapsed rail it becomes a single icon link -- thirteen icons for
+ * this whole group is shown in the sidebar to an admin only (below, `groups = isAdmin ?
+ * ...`), and in the collapsed rail it becomes a single icon link -- fourteen icons for
  * the tabs of one page would be a rail of settings and nothing else.
+ *
+ * Every service behind these tabs calls `actor.require_admin` on every write except
+ * one: `profilo` (`ProfilePanel`) is a person's own preferences, and `SettingsLayout`
+ * exempts that one tab from the page's own admin gate so a non-admin who opens it
+ * directly -- from the weekly digest's opt-out link, spec 2026-09-16 §3.6 -- can reach
+ * it even though this sidebar link stays admin-only, same as the rest of the group.
  */
 /**
  * One literal path per settings tab. `satisfies Record<SettingsTabValue, ...>` is what
@@ -128,6 +135,7 @@ const GROUPS = [
  * paths in the place that can typecheck them.
  */
 const SETTINGS_PATHS = {
+  profilo: '/app/impostazioni/profilo',
   spazio: '/app/impostazioni/spazio',
   campi: '/app/impostazioni/campi',
   pipeline: '/app/impostazioni/pipeline',
@@ -485,6 +493,19 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              {/* «Profilo», for every role and with no gate on it: the sidebar's whole
+                  «Impostazioni» group is admin-only, so without this entry a
+                  collaborator had no way of reaching their own profile tab from inside
+                  the app at all -- the weekly report's opt-out link (spec 2026-09-16
+                  §3.6) was the only door to it. One menu item, above the admin's own
+                  entry, because it is the one thing here that belongs to the person
+                  rather than to the space. */}
+              <DropdownMenuItem asChild>
+                <Link to="/app/impostazioni/profilo">
+                  <UserRound className="size-4" />
+                  Profilo
+                </Link>
+              </DropdownMenuItem>
               {isAdmin && (
                 <DropdownMenuItem asChild>
                   <Link to="/app/impostazioni/spazio">

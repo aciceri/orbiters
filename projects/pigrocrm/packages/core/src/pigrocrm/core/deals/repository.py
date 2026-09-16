@@ -58,6 +58,28 @@ class DealRepository:
         ).all()
         return {row[0]: row[1] for row in rows}
 
+    def names(self, deal_ids: Collection[UUID]) -> dict[UUID, str]:
+        """The `nome` of each given deal, in one query.
+
+        The sibling of `customer_names` above, for rows that arrive naming a deal by id
+        and nothing else. Its caller is the weekly report (spec 2026-09-16 §3.1, section
+        6): `activities.stage_changed` carries the two stage names in its payload but only
+        `entity_id` for the deal, so a report listing ten movements would otherwise cost
+        ten `get()` calls -- the N+1 this repository already refuses for a page of labels.
+
+        No `deleted_at` filter, like `customer_names`: an activity outlives the row it
+        describes, and a deal archived after it moved still moved. A caller that wants to
+        drop those rows can do it on the missing key -- a hard-deleted deal is simply
+        absent from the answer -- which is a decision about the *list*, not about the
+        lookup.
+
+        An empty input short-circuits: `IN ()` is a query with no possible rows.
+        """
+        if not deal_ids:
+            return {}
+        rows = self.session.execute(select(Deal.id, Deal.nome).where(Deal.id.in_(deal_ids))).all()
+        return {row[0]: row[1] for row in rows}
+
     def add(self, deal: Deal) -> Deal:
         self.session.add(deal)
         self.session.flush()

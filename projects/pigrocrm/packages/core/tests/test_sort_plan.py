@@ -69,14 +69,23 @@ from pigrocrm.core.people.repository import PersonRepository
 from pigrocrm.core.people.schemas import PERSON_SORTS, PersonListQuery
 from pigrocrm.core.pipeline.models import PipelineStage
 
-# `planner` as well as `slow`: every assertion in this file is about which plan Postgres
-# chooses, and that is a property of the machine it runs on. It passed two trunk runs and
-# then failed a third on a commit that touched no Python at all (34294151175, the four
-# `customers`/`ragione_sociale` cases), on a hosted runner with two cores and different
-# memory settings from the box where the margins were measured. CI deselects `planner`;
-# preflight runs it, on one known machine, which is the only place the answer means
-# anything. ORB-9 covers the family.
-pytestmark = [pytest.mark.slow, pytest.mark.planner]
+# `slow`: this file builds a twenty-thousand-row corpus across four tables, minutes and
+# not seconds. No longer `planner`: that marker meant the plan depended on which machine
+# ran it, and `ordered_corpus`'s pre-insert `VACUUM` (REB-90, the same fix ORB-9 gave
+# `test_trgm_escape.py`'s `customers_at_reference_scale`) is what removes the dependency.
+# It passed two trunk runs and then failed a third on a commit that touched no Python at
+# all (34294151175, the four `customers`/`ragione_sociale` cases), on a hosted runner with
+# two cores and different memory settings from the box where the margins were measured --
+# but the corpus this file built that day carried whatever dead pages the rest of the
+# suite had left in `customers` and `people`, exactly the mechanism ORB-9 named for the
+# same four columns in a different file. Vacuuming each table before this corpus is
+# inserted, not only after, is what makes the composite indexes' `relpages` -- and so the
+# cost estimate every assertion below reads a plan from -- a property of this fixture's
+# own twenty thousand rows alone, the same claim `customers_at_reference_scale` makes for
+# its five hundred. If a plan choice still flips on some other machine with a corpus this
+# clean, that is new evidence for reopening this file, not a reason to guess the marker
+# back on by feel.
+pytestmark = pytest.mark.slow
 
 # Twenty thousand rows per ordered table. See the module docstring for why this is not the
 # 50 000 of `test_search_plan.py`, and `test_the_assertion_fails_without_the_index` for the
@@ -155,16 +164,38 @@ def ordered_corpus(db_engine: Engine) -> Iterator[Engine]:
     cannot run inside the savepoint the `db_session` fixture holds open, and a planner with
     no statistics costs a 20 000-row table as though it held ten.
 
-    Plain `ANALYZE` would be enough for the *statistics* -- see the module docstring on why
-    a B-tree is not a GIN index -- but the corpus is only fresh when this module runs alone.
-    In a whole-directory run the tables arrive carrying the dead tuples of whatever ran
-    before (`test_search_plan.py` deletes 50 000 rows per table), and `relpages` of the
-    composite indexes are then costed on pages this corpus never wrote: the planner picks
-    the narrower single-column index under an `Incremental Sort` and the assertions below
-    fail on a plan the production data would never produce. `VACUUM (ANALYZE)` reclaims
-    them first. It runs on an `AUTOCOMMIT` connection because `VACUUM` cannot run inside a
+    A plain `VACUUM` on each table before the insert, not only `VACUUM (ANALYZE)` after
+    it, is REB-90's fix, in the shape ORB-9 gave `customers_at_reference_scale`: `ANALYZE`
+    alone updates the statistics, but `relpages` reflects the table's real physical size,
+    and a `VACUUM` run only after this fixture's own insert reclaims only the dead pages
+    this corpus's own rows leave once it is itself deleted -- it does nothing about
+    whatever dead pages were already there when the insert began. In a whole-directory run
+    the tables arrive carrying the debris of whatever ran before (`test_search_plan.py`
+    deletes 50 000 rows per table on its way out, more than twice this file's own corpus,
+    and re-vacuums for exactly this reason), and `relpages` of the composite indexes would
+    then be costed on pages this corpus never wrote: the planner picks the narrower
+    single-column index under an `Incremental Sort` and the assertions below fail on a
+    plan the production data would never produce. Vacuuming first is what makes each
+    table's physical size, and so every index's cost estimate, a property of this
+    fixture's own corpus alone.
+
+    Both `VACUUM`s run on an `AUTOCOMMIT` connection because `VACUUM` cannot run inside a
     transaction block at all.
     """
+    # Each table should be empty of live rows here -- nothing before this fixture in the
+    # session commits into these four tables and survives its own teardown -- but that is
+    # a claim about every other file sharing this container, not something this fixture
+    # controls, so it is checked rather than assumed: the failure this fixture exists to
+    # prevent is exactly a plan silently costed on a corpus that turned out not to be this
+    # module's alone.
+    with db_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        for table in _ORDERED_TABLES:
+            live = connection.execute(text(f"SELECT count(*) FROM {table}")).scalar_one()
+            assert live == 0, (
+                f"{live} committed rows survived an earlier test in {table}; this "
+                "fixture's corpus would not be measured at its own scale"
+            )
+            connection.execute(text(f"VACUUM {table}"))
     factory = session_factory(db_engine)
     with factory() as session:
         pre_existing_stages = set(session.scalars(select(PipelineStage.id)).all())

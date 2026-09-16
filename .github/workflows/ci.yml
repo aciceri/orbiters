@@ -341,8 +341,10 @@ jobs:
       # for exactly that reason, on code that had passed the same assertion on the devbox
       # minutes earlier; its fix stopped costing the plan on whatever bloat the rest of
       # the suite happened to leave behind, so it no longer carries the marker.
-      # `test_sort_plan.py` still does, for its own sort-plan assertions, and stays in
-      # preflight, which runs on one known machine.
+      # `test_sort_plan.py` (REB-90) followed the same fix in the same shape: a
+      # pre-insert `VACUUM` in its own corpus fixture, so it no longer carries the
+      # marker either and no test in the repository currently does. `planner` stays
+      # registered and deselected here for whichever assertion needs it next.
       #
       # `slow` is not skipped on the trunk, it moved: the job below runs it in
       # parallel with this one. Measured 2026-09-09, the two are 10m and 12m of a

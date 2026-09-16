@@ -483,16 +483,21 @@ def test_unpaid_for_customer_honours_its_limit(db_session: Session, customer: Cu
 def test_the_week_reads_split_issued_collected_and_due(
     db_session: Session, customer: Customer
 ) -> None:
-    """The three lists and two sums §3.2 adds for the weekly report's «Emesse questa
-    settimana», «Incassate questa settimana» and «in scadenza nei prossimi sette giorni»
-    sections (§3.1).
+    """The four lists and the sum §3.2 adds for the weekly report's «Da incassare»,
+    «Emesse questa settimana», «Incassate questa settimana» and «in scadenza nei prossimi
+    sette giorni» sections (§3.1).
 
     Each read is attributed to its own date -- `data_emissione`, `data_incasso`,
     `data_scadenza` -- not to when the row was written, and none of the five is a fourth
-    definition of "issued" or "receivable": the two `list_*_in_periodo` and both sums
-    share `_issued_filter()` with `count_emesse_in_periodo`, and `list_in_scadenza` shares
-    `_receivable_filter()` with `sum_da_incassare`, exactly as this file's other tests
-    require.
+    definition of "issued" or "receivable": the two `list_*_in_periodo` and the sum share
+    `_issued_filter()` with `count_emesse_in_periodo`, and `list_scadute` and
+    `list_in_scadenza` share `_receivable_filter()` with `sum_da_incassare`, exactly as
+    this file's other tests require.
+
+    `list_scadute` is asked twice, on the due date and on the day before it: it takes the
+    day rather than reading the clock, and its `<=` is deliberately not
+    `_overdue_predicate()`'s `<` -- an invoice due on the day given is money the weekly
+    report has to name, with no days of delay.
 
     The fourth invoice, annulled but issued inside the window, is the negative case: the
     issued filter must exclude it by construction, which the length of
@@ -536,6 +541,7 @@ def test_the_week_reads_split_issued_collected_and_due(
     assert [i.totale for i in repo.list_in_scadenza(date(2026, 9, 7), date(2026, 9, 14))] == [
         Decimal("500.00")
     ]
+    assert [i.totale for i in repo.list_scadute(date(2026, 9, 12))] == [Decimal("500.00")]
+    assert repo.list_scadute(date(2026, 9, 11)) == []
     assert repo.sum_emesse_in_periodo(*week) == Decimal("1000.00")
-    assert repo.sum_incassate_in_periodo(*week) == Decimal("1000.00")
     assert repo.sum_emesse_in_periodo(date(2026, 9, 1), date(2026, 9, 30)) == Decimal("1800.00")

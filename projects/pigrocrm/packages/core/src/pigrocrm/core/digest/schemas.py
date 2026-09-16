@@ -53,6 +53,11 @@ class DigestInvoice(BaseModel):
     data: date
     stato: str
     stato_pagamento: str
+    # `trasmessa_esternamente_il is not None`: the document has been deposited with the
+    # user's own intermediary. Carried as a bool and not as the date, because the only
+    # thing the report does with it is print the word «trasmessa» (§3.1 item 3) -- and
+    # `stato` cannot say it, holding as it does the register's own two state machines.
+    trasmessa: bool = False
     # Only «scadute» fills this in. `None` and not `0` everywhere else: zero days late is
     # a thing an invoice can be (due today), and it is not what an issued invoice is.
     giorni_di_ritardo: int | None = None

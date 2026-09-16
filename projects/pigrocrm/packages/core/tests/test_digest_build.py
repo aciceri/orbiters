@@ -12,10 +12,9 @@ So the fixture commits on the engine and removes exactly what it wrote, and ever
 here goes through a session of its own.
 
 The week is derived from `today_local()` rather than written down as four literals.
-`scadute` come from `SollecitiService`, whose whole predicate is relative to *today*, and
-an overdue invoice pinned to a fixed calendar day stops being overdue the day somebody
-re-reads it. The two pure week helpers are the one thing tested against literals, because
-they are the one thing that has no clock in it.
+`scadute` is «due on or before today», so an overdue invoice pinned to a fixed calendar
+day stops being overdue the day somebody re-reads it. The two pure week helpers are the
+one thing tested against literals, because they are the one thing that has no clock in it.
 """
 
 from __future__ import annotations
@@ -48,6 +47,7 @@ from pigrocrm.core.digest.service import (
     week_containing,
 )
 from pigrocrm.core.documents.models import Document
+from pigrocrm.core.gmail.models import PaymentReminder
 from pigrocrm.core.invoices.models import Invoice
 from pigrocrm.core.pipeline.models import PipelineStage
 from pigrocrm.core.timetracking.models import TimeEntry
@@ -275,6 +275,43 @@ def corpus(db_engine: Engine) -> Iterator[Corpus]:
             session.execute(delete(PipelineStage).where(PipelineStage.nome.like(f"{_PREFIX} %")))
             session.execute(delete(User).where(User.nome == "Digestore"))
             session.commit()
+
+
+def _fattura_in_piu(
+    engine: Engine, *, numero: int, totale: str, data_emissione: date, data_scadenza: date
+) -> UUID:
+    """One more unpaid, issued invoice on the corpus's customer, committed.
+
+    On that customer deliberately: the fixture's teardown deletes by `customer_id`, so a
+    row added here leaves with the rest of the corpus -- and `payment_reminders` hangs off
+    `invoices.id` with `ON DELETE CASCADE`, so the reminders of the test below go too.
+    """
+    with session_factory(engine)() as session:
+        customer_id = session.execute(
+            select(Customer.id).where(Customer.ragione_sociale == f"{_PREFIX} Cliente")
+        ).scalar_one()
+        importo = Decimal(totale)
+        invoice = Invoice(
+            customer_id=customer_id,
+            tipo="fattura",
+            stato="emessa",
+            stato_pagamento="da_incassare",
+            anno=2026,
+            numero=numero,
+            imponibile=importo,
+            imposta=Decimal("0.00"),
+            bollo=Decimal("0.00"),
+            totale=importo,
+            data_emissione=data_emissione,
+            data_scadenza=data_scadenza,
+            data_incasso=None,
+            tipo_documento="TD01",
+            divisa="EUR",
+            custom_fields={},
+        )
+        session.add(invoice)
+        session.commit()
+        return invoice.id
 
 
 def _build(engine: Engine, settimana: tuple[date, date]) -> WeeklyDigest:
@@ -510,15 +547,103 @@ def test_a_week_keeps_its_movements_however_many_came_after_it(corpus: Corpus) -
     assert [m.quando for m in digest.deal_mossi] == [corpus.da + timedelta(days=2)]
 
 
+def test_an_invoice_that_fell_due_inside_the_week_is_money_to_collect(corpus: Corpus) -> None:
+    """The one «Da incassare» most needs to name, and the one it used to lose.
+
+    `scadute` was `SollecitiService.candidates`, whose predicate is «overdue by more than
+    `solleciti_grace_days`» -- seven days by default -- because chasing the day after the
+    due date is aggressive. That is a property of a *reminder*. An invoice that fell due
+    on the last day of the reported week is at most seven days late on the Monday the
+    report goes out, so it was inside the grace period every single time and never
+    appeared at all: the report said nothing about the money that had just come due.
+
+    The due date is `corpus.a`, the last day of the week, precisely because that is the
+    worst case: whatever day this test runs, `a` is between one and seven days back.
+    """
+    fattura = _fattura_in_piu(
+        corpus.engine,
+        numero=10,
+        totale="900.00",
+        data_emissione=corpus.da - timedelta(days=20),
+        data_scadenza=corpus.a,
+    )
+    ritardo = (today_local(SETTINGS) - corpus.a).days
+    # The grace period the old source applied, and the proof this row was inside it.
+    assert 1 <= ritardo <= SETTINGS.solleciti_grace_days
+
+    digest = _build(corpus.engine, (corpus.da, corpus.a))
+
+    righe = {riga.invoice_id: riga for riga in digest.scadute}
+    assert fattura in righe
+    assert righe[fattura].giorni_di_ritardo == ritardo
+    assert righe[fattura].importo == Decimal("900.00")
+    assert righe[fattura].cliente == f"{_PREFIX} Cliente"
+    assert righe[fattura].stato_pagamento == "da_incassare"
+    # Worst first: the corpus's thirty-day invoice comes before this week's own.
+    assert [riga.giorni_di_ritardo for riga in digest.scadute] == [30, ritardo]
+
+
+def test_an_invoice_due_today_is_scaduta_with_no_days_of_delay(corpus: Corpus) -> None:
+    """Due today is due today: `list_scadute` is `<=` and not `_overdue_predicate()`'s
+    `<`, so the invoice appears with zero days of delay rather than being left out of the
+    section until tomorrow.
+
+    Today is also inside the «in scadenza» window on the Monday the cron runs -- that
+    window opens on `a + 1`, which *is* today -- so this is the row that proves the two
+    halves still name one invoice once.
+    """
+    oggi = today_local(SETTINGS)
+    fattura = _fattura_in_piu(
+        corpus.engine,
+        numero=11,
+        totale="700.00",
+        data_emissione=oggi - timedelta(days=30),
+        data_scadenza=oggi,
+    )
+
+    digest = _build(corpus.engine, (corpus.da, corpus.a))
+
+    righe = {riga.invoice_id: riga for riga in digest.scadute}
+    assert righe[fattura].giorni_di_ritardo == 0
+    assert corpus.a + timedelta(days=1) <= oggi <= corpus.a + timedelta(days=IN_SCADENZA_GIORNI)
+    assert fattura not in [riga.invoice_id for riga in digest.in_scadenza]
+
+
+def test_an_invoice_chased_to_the_ceiling_is_still_owed(corpus: Corpus) -> None:
+    """`SollecitiService.candidates` also drops an invoice with `solleciti_max_reminders`
+    rows and one chased inside `solleciti_min_interval_days`: there is no further reminder
+    to prepare, and nothing to prepare one from today. Neither says the money arrived.
+
+    Three reminders, all sent today, is both conditions at once on the corpus's own
+    thirty-day invoice -- and it still has to be the first line of «Da incassare».
+    """
+    with session_factory(corpus.engine)() as session:
+        scaduta = session.execute(
+            select(Invoice.id).where(Invoice.anno == 2026, Invoice.numero == 3)
+        ).scalar_one()
+        for sequence in range(1, SETTINGS.solleciti_max_reminders + 1):
+            session.add(
+                PaymentReminder(invoice_id=scaduta, sequence=sequence, sent_at=datetime.now(UTC))
+            )
+        session.commit()
+
+    digest = _build(corpus.engine, (corpus.da, corpus.a))
+
+    righe = {riga.invoice_id: riga for riga in digest.scadute}
+    assert scaduta in righe
+    assert righe[scaduta].giorni_di_ritardo == 30
+    assert righe[scaduta].importo == Decimal("800.00")
+
+
 def test_an_invoice_that_is_already_overdue_is_not_also_in_scadenza(corpus: Corpus) -> None:
     """The two halves of «Da incassare» never name the same invoice.
 
-    `scadute` is «overdue today» and `in_scadenza` is «due in the seven days after the
-    week», so for the week the cron sends the second window is in the future and the two
-    cannot meet. For a week recomputed with `--data` they do: the window of a week two
-    months ago has since gone by, and the invoice due inside it is overdue today. Here it
-    is the corpus's own overdue invoice, and the week is chosen so that its due date falls
-    inside the «in scadenza» window that opens the day after.
+    `scadute` is «due on or before today» and `in_scadenza` is «due in the seven days
+    after the week», and the two windows meet: on the Monday the cron runs they share
+    exactly today, and for a week recomputed with `--data` the whole of the second one has
+    since gone by and lies inside the first. Here it is the corpus's own overdue invoice,
+    and the week is chosen so that its due date falls inside the «in scadenza» window that
+    opens the day after.
     """
     oggi = today_local(SETTINGS)
     settimana = week_containing(oggi - timedelta(days=IN_SCADENZA_GIORNI + 30))

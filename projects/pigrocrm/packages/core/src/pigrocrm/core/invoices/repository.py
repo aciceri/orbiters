@@ -360,6 +360,40 @@ class InvoiceRepository:
         )
         return list(self.session.execute(stmt).scalars())
 
+    def list_scadute(self, oggi: date) -> list[Invoice]:
+        """Receivables due on or before `oggi`, worst first: the «scadute» half of §3.1's
+        «Da incassare» (spec 2026-09-16).
+
+        Not `SollecitiService.candidates`, which the weekly report used to read: that list
+        answers «which invoices may I legitimately chase», so it drops anything inside the
+        grace period, anything chased in the last few days and anything already at the
+        reminder ceiling. Those are properties of a reminder, not of a debt, and a report
+        that took them for the debt left out money that is owed today.
+
+        `oggi` is a parameter rather than a `today_local()` read here, unlike
+        `_overdue_predicate()` above: the report resolves the space's own settings and
+        therefore its own timezone, and a repository reading the platform's default would
+        answer a different day for exactly the installation whose zone differs.
+
+        `<=` and not `_overdue_predicate()`'s `<`, which is the second reason this is its
+        own predicate: an invoice due today is money the report names -- it prints «0
+        giorni di ritardo» -- while «scaduto» on the dashboard means strictly past its
+        date, and a shared helper would have to pick one of the two meanings for both.
+
+        Ascending `data_scadenza`: the oldest debt first, which is the order somebody works
+        the list in and the order `list_in_scadenza` beside it already answers in.
+        """
+        stmt = (
+            select(Invoice)
+            .where(
+                *_receivable_filter(),
+                Invoice.data_scadenza.is_not(None),
+                Invoice.data_scadenza <= oggi,
+            )
+            .order_by(Invoice.data_scadenza, Invoice.numero)
+        )
+        return list(self.session.execute(stmt).scalars())
+
     def list_in_scadenza(self, da: date, a: date) -> list[Invoice]:
         """Receivables due within the window, soonest first: the «in scadenza nei prossimi
         sette giorni» half of §3.1's «Da incassare» section, once the caller passes that
@@ -391,21 +425,6 @@ class InvoiceRepository:
         total = self.session.execute(
             select(func.coalesce(func.sum(Invoice.totale), 0)).where(
                 *_issued_filter(), Invoice.data_emissione >= da, Invoice.data_emissione <= a
-            )
-        ).scalar_one()
-        return round_money(Decimal(total))
-
-    def sum_incassate_in_periodo(self, da: date, a: date) -> Decimal:
-        """`Σ totale` over `list_incassate_in_periodo`'s own predicate: the total beside
-        «Incassate questa settimana» (spec 2026-09-16 §3.1, §3.2).
-        """
-        total = self.session.execute(
-            select(func.coalesce(func.sum(Invoice.totale), 0)).where(
-                *_issued_filter(),
-                Invoice.stato_pagamento == "incassato",
-                Invoice.data_incasso.is_not(None),
-                Invoice.data_incasso >= da,
-                Invoice.data_incasso <= a,
             )
         ).scalar_one()
         return round_money(Decimal(total))

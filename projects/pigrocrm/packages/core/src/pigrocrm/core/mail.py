@@ -410,6 +410,31 @@ def _da_digest(url: str) -> str:
     return f"{url}{'&' if '?' in url else '?'}da=digest"
 
 
+# `StatoPagamento`'s collected value (`invoices/schemas.py`). Written out rather than
+# imported: this module renders, and a mail that imported the register's literals would
+# make the register's types part of the mail's contract.
+INCASSATO = "incassato"
+
+
+def _stato_leggibile(inv: DigestInvoice) -> str:
+    """The word §3.1 item 3 asks for: «emessa, trasmessa, incassata».
+
+    `inv.stato` alone cannot say it. For every row of «Emesse questa settimana» it is the
+    constant `"emessa"` -- the section's own predicate is `stato = 'emessa'` -- so printing
+    it was printing the heading again. What varies is the *payment* state, which is the
+    other column, and whether the document has been transmitted, which is a third.
+
+    In that order: collected is the end of the story whether or not the document was ever
+    transmitted, so it wins, and «trasmessa» is only worth saying about an invoice nobody
+    has paid yet.
+    """
+    if inv.stato_pagamento == INCASSATO:
+        return "incassata"
+    if inv.trasmessa:
+        return "trasmessa"
+    return inv.stato
+
+
 def _invoice_line(inv: DigestInvoice, extra: str = "") -> str:
     """The four things every invoice row shows -- numero, cliente, importo, data --
     plus whichever one extra fact the section is about (§3.1 item 3: «Numero, cliente,
@@ -507,14 +532,18 @@ def digest_mail(to: str, digest: WeeklyDigest, *, public_url: str) -> Mail:
             _row(
                 f"{_ore_it(digest.ore_non_fatturate)} ore fatturabili non fatturate — "
                 f"{euro(digest.valore_maturato)} maturati",
-                url=link("/app/ore?fatturato=false"),
+                # `/app/ore` bare: the page declares no `validateSearch`, so a
+                # `?fatturato=false` would be dropped on arrival and the link would
+                # promise a filtered list the reader never gets. Only `da=digest`
+                # survives, and that one `link()` adds to every link the report hands out.
+                url=link("/app/ore"),
                 label="Vai alle ore",
             )
         )
     sezione("Da emettere", righe_emettere)
 
     # 3. Emesse questa settimana, col totale del mese accanto a quello precedente.
-    righe_emesse = [_row(_invoice_line(inv, inv.stato)) for inv in digest.emesse]
+    righe_emesse = [_row(_invoice_line(inv, _stato_leggibile(inv))) for inv in digest.emesse]
     if digest.emesse:
         totali = (
             f"Totale mese: {euro(digest.totale_mese_corrente)} "

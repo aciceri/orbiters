@@ -3,7 +3,9 @@
 Spec 2026-09-16 §3.2: `build` calls services and repositories that already own their
 numbers and copies the answers into `WeeklyDigest`. The only sums in the whole report are
 `InvoiceRepository`'s own -- `sum_emesse_in_periodo` twice with two windows for the two
-months -- and they are that repository's, not this module's. The discipline is the one
+months -- and they are that repository's, not this module's. The one arithmetic left here
+is `giorni_di_ritardo`, `(today - scadenza).days`, which is not a figure but the same
+subtraction `SollecitiService` prints on the same invoices. The discipline is the one
 `core/dashboard/` is held to by an AST scan, and it matters more here than there: a mail
 is read once, quickly, by somebody who will not go and check, so a figure that disagrees
 with the screen is a figure that costs trust and is never noticed again.
@@ -31,7 +33,7 @@ from pigrocrm.core.activities.repository import ActivityRepository
 from pigrocrm.core.actor import Actor
 from pigrocrm.core.config import Settings
 from pigrocrm.core.dashboard.service import DashboardService
-from pigrocrm.core.db import current_week, month_bounds
+from pigrocrm.core.db import current_week, month_bounds, today_local
 from pigrocrm.core.deals.repository import DealRepository
 from pigrocrm.core.digest.schemas import (
     DigestDealMove,
@@ -42,19 +44,20 @@ from pigrocrm.core.digest.schemas import (
     WeeklyDigest,
 )
 from pigrocrm.core.documents.repository import DocumentRepository
-from pigrocrm.core.gmail.solleciti import CHASEABLE_STATO, SollecitiService
 from pigrocrm.core.invoices.models import Invoice
 from pigrocrm.core.invoices.naming import numero_completo
 from pigrocrm.core.invoices.repository import InvoiceRepository
-from pigrocrm.core.invoices.schemas import StatoPagamento
 from pigrocrm.core.timetracking.repository import TimeEntryRepository
 
 # §3.1: «quelle in scadenza nei prossimi sette giorni», counted from the day *after* the
-# closed week. That is enough to keep the two halves of «Da incassare» apart for the week
-# the cron sends -- its window is in the future, where nothing is overdue yet -- and not
-# enough for a week recomputed with `--data`: a window that has since gone by holds
-# invoices that are overdue *today*, which is the day `SollecitiService` reasons about. So
-# `build` also subtracts the `scadute` by id below; this constant is only the width.
+# closed week -- this constant is only the width of that window.
+#
+# It does not, on its own, keep the two halves of «Da incassare» apart. `scadute` is
+# «due on or before today» and this window opens on `a + 1`, which for the Monday the
+# cron runs *is* today: an invoice due that day belongs to both, and for a week
+# recomputed with `--data` the whole window has since gone by and every invoice in it is
+# overdue. So `build` subtracts the `scadute` by id below, and the overdue half wins --
+# it carries the days of delay, which is the fact somebody acts on.
 IN_SCADENZA_GIORNI = 7
 
 # How many stage changes are read *inside* the week's window. Two hundred is far more than
@@ -66,17 +69,6 @@ _MOVIMENTI_LETTI = 200
 
 # The same ceiling the commercial dashboard puts on the same list.
 _OFFERTE_MOSTRATE = 20
-
-# What `SollecitiService` guarantees about every candidate it returns, written down here
-# because `SollecitoCandidate` does not carry the two columns and the mail prints them.
-# Its query is `tipo = 'fattura' AND stato = 'emessa' AND stato_pagamento <> 'incassato'`,
-# and `StatoPagamento` has exactly two values, so an unpaid one is `da_incassare`.
-#
-# Annotated with the register's own type rather than left a bare `str`: `StatoPagamento`
-# is a `Literal`, not an enum, so there is no member to import -- but with the annotation
-# `mypy` checks this value against the closed set the column is written from, which is the
-# whole of what an enum member would have bought here.
-_SCADUTA_STATO_PAGAMENTO: StatoPagamento = "da_incassare"
 
 # `activities.stage_changed` writes `{"from": <nome>, "to": <nome>}` -- the stage *names*,
 # not their ids (`deals/service.py::move_stage`). So the destination needs no second query
@@ -144,8 +136,8 @@ class DigestService:
 
         `settimana` is passed in and never computed here, so the command, a resend and a
         test all build the same report for the same seven days. `actor` is the space's
-        owner, resolved by the caller (§3.3); every read below takes it and none of them
-        needs more than a read right.
+        owner, resolved by the caller (§3.3), and the operational dashboard is the one read
+        that asks for it; nothing below needs more than a read right.
 
         The dashboard call is first because it opens the snapshot the rest of the method
         reads inside -- see the module docstring. Everything after it is a copy.
@@ -155,42 +147,47 @@ class DigestService:
         # 1. The snapshot, and with it the backlog and the signals (§3.1 sections 2, 7).
         operativa = DashboardService(self.session).get_operational_dashboard(actor)
 
-        # 2. «Da incassare», the overdue half. Already worst first, and left in that order:
-        #    `SollecitiService` sorts repliers last and the most overdue first, which is the
-        #    order somebody works the list in.
-        solleciti = SollecitiService(self.session, settings=self.settings)
-        scadute = [
-            DigestInvoice(
-                invoice_id=candidate.invoice_id,
-                numero=candidate.numero,
-                cliente=candidate.cliente,
-                importo=candidate.importo,
-                data=candidate.data_scadenza,
-                stato=CHASEABLE_STATO,
-                stato_pagamento=_SCADUTA_STATO_PAGAMENTO,
-                giorni_di_ritardo=candidate.giorni_di_ritardo,
-            )
-            for candidate in solleciti.candidates(actor)
-        ]
-
-        # 3. The register: the three lists and the two month totals.
+        # 2. The register: the four lists and the two month totals.
+        #
+        #    `scadute` is «every unpaid, issued invoice due on or before today», read from
+        #    the register itself. It was `SollecitiService.candidates` until the branch
+        #    review: that list answers «which invoices may I legitimately chase», so it
+        #    drops anything inside the seven-day grace period, anything chased in the last
+        #    few days and anything already at the reminder ceiling -- and the invoices it
+        #    dropped are the ones that fell due *inside the reported week*, which is the
+        #    money the report exists to name.
+        oggi = today_local(self.settings)
         invoices = InvoiceRepository(self.session)
+        scadute_rows = invoices.list_scadute(oggi)
         emesse_rows = invoices.list_emesse_in_periodo(da, a)
         incassate_rows = invoices.list_incassate_in_periodo(da, a)
         in_scadenza_rows = invoices.list_in_scadenza(
             a + timedelta(days=1), a + timedelta(days=IN_SCADENZA_GIORNI)
         )
-        # One invoice, one line. `scadute` is «overdue today» and `in_scadenza` is «due in
-        # the seven days after the week», and for a week recomputed with `--data` those two
-        # windows overlap: the same invoice would be printed twice in one section, once
-        # with its days of delay and once as though it were still coming.
-        scadute_ids = {riga.invoice_id for riga in scadute}
+        # One invoice, one line. The two windows meet on the day the cron runs -- `a + 1`
+        # is today -- and overlap entirely for a week recomputed with `--data`, whose
+        # «in scadenza» window has since gone by. The overdue half wins: it is the same
+        # row, and it carries the days of delay instead of «in scadenza».
+        scadute_ids = {row.id for row in scadute_rows}
         in_scadenza_rows = [row for row in in_scadenza_rows if row.id not in scadute_ids]
-        # One lookup for all three lists, after the rows are chosen: a label query per row
+        # One lookup for all four lists, after the rows are chosen: a label query per row
         # is the N+1 `customer_names` exists to prevent.
         nomi = invoices.customer_names(
-            {row.customer_id for row in (*emesse_rows, *incassate_rows, *in_scadenza_rows)}
+            {
+                row.customer_id
+                for row in (*scadute_rows, *emesse_rows, *incassate_rows, *in_scadenza_rows)
+            }
         )
+        # The lateness expression is `SollecitiService.candidates`' own, copied rather than
+        # imported so that a list of debts and a list of chaseable invoices stay free to
+        # diverge: `(today - scadenza).days`, over the clock's day in the emitter's zone.
+        # The `is not None` guard is `list_scadute`'s own `WHERE` restated -- the column is
+        # nullable and `mypy` reads it as such.
+        scadute = [
+            self._riga(row, nomi, scadenza, giorni_di_ritardo=(oggi - scadenza).days)
+            for row in scadute_rows
+            if (scadenza := row.data_scadenza) is not None
+        ]
         mese_da, mese_a = month_bounds(a.year, a.month)
         # The last day of the previous month is the day before this one's first, which is
         # the only way to name it without a calendar branch on January.
@@ -276,13 +273,22 @@ class DigestService:
             ],
         )
 
-    def _riga(self, invoice: Invoice, nomi: dict[UUID, str], data: date | None) -> DigestInvoice:
+    def _riga(
+        self,
+        invoice: Invoice,
+        nomi: dict[UUID, str],
+        data: date | None,
+        *,
+        giorni_di_ritardo: int | None = None,
+    ) -> DigestInvoice:
         """One register row as a mail line.
 
         `data` is passed in rather than picked here: which of three dates a section is
         about is the section's business, and a method that decided for itself would need to
         know which list it was building -- exactly the branch `DigestInvoice`'s single
-        shape exists to avoid.
+        shape exists to avoid. `giorni_di_ritardo` is passed the same way and for the same
+        reason, and only «Da incassare» passes it: zero days late is a thing an invoice can
+        be, so `None` and `0` are two different statements about a row.
 
         The fallbacks are the columns' own nullability and not defensive padding:
         `anno`/`numero` are `NULL` on a draft and `data_emissione` on anything unissued,
@@ -307,6 +313,12 @@ class DigestService:
             data=giorno,
             stato=invoice.stato,
             stato_pagamento=invoice.stato_pagamento,
+            # `trasmessa_esternamente_il` is the day the document was deposited with the
+            # user's own intermediary: the register's whole notion of «trasmessa», and a
+            # date rather than a state because `stato` already carries two state machines.
+            # The mail prints the word, so it needs the fact and not the day.
+            trasmessa=invoice.trasmessa_esternamente_il is not None,
+            giorni_di_ritardo=giorni_di_ritardo,
         )
 
     def _movimenti(self, deals: DealRepository, da: date, a: date) -> list[DigestDealMove]:

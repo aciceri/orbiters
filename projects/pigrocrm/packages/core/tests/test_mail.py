@@ -133,7 +133,11 @@ def _invoice(
     importo: Decimal = Decimal("0"),
     data: date = date(2026, 9, 8),
     stato: str = "emessa",
-    stato_pagamento: str = "aperta",
+    # `StatoPagamento`'s own two values, and this is the one an issued invoice carries
+    # until somebody pays it. Not a word of its own: the mail now reads this column to
+    # decide the state it prints, so a value the register cannot hold would test nothing.
+    stato_pagamento: str = "da_incassare",
+    trasmessa: bool = False,
     giorni_di_ritardo: int | None = None,
 ) -> DigestInvoice:
     return DigestInvoice(
@@ -144,6 +148,7 @@ def _invoice(
         data=data,
         stato=stato,
         stato_pagamento=stato_pagamento,
+        trasmessa=trasmessa,
         giorni_di_ritardo=giorni_di_ritardo,
     )
 
@@ -272,20 +277,35 @@ def test_only_sections_with_rows_appear_and_every_link_says_da_digest() -> None:
     assert "2026/1" in mail.text and "2026/1" in mail.html
 
 
-def test_an_issued_row_prints_its_state_word_as_it_is() -> None:
-    """§3.1 item 3: «Numero, cliente, importo, stato». The state is the one extra fact
-    «Emesse questa settimana» is about, and it is printed as the register spells it --
-    there is no mapping table here, so a value added to `StatoPagamento`'s neighbour
-    `InvoiceStato` reads in the mail the day it exists rather than the day somebody
-    remembers to extend a dictionary in `mail.py`.
+def test_an_issued_row_prints_the_state_that_tells_the_three_apart() -> None:
+    """§3.1 item 3: «Numero, cliente, importo, stato (emessa, trasmessa, incassata)».
+
+    `stato` alone cannot say it, and printing it was printing the heading twice: the
+    section's own predicate is `stato = 'emessa'`, so every row of it carried that one
+    word whatever had happened to the invoice since. The three words come from three
+    places -- `stato_pagamento`, `trasmessa_esternamente_il` and `stato` -- and this is
+    the test that they do.
     """
-    mail = digest_mail("a@b.it", digest_with(emesse=1), public_url="https://x")
-    assert "2026/1 — Cliente Prova — 0,00 € — mar 8 set — emessa" in mail.text
-    assert mail.html is not None and "mar 8 set — emessa" in mail.html
-    # The value itself, not the word «emessa»: another state reads as itself.
+    emessa = digest_mail("a@b.it", digest_with(emesse=1), public_url="https://x")
+    assert "2026/1 — Cliente Prova — 0,00 € — mar 8 set — emessa" in emessa.text
+    assert emessa.html is not None and "mar 8 set — emessa" in emessa.html
+
+    # Deposited with the user's own intermediary and still unpaid.
     trasmessa = digest_with(emesse=1)
-    trasmessa.emesse[0].stato = "trasmessa"
+    trasmessa.emesse[0].trasmessa = True
     assert "mar 8 set — trasmessa" in digest_mail("a@b.it", trasmessa, public_url="https://x").text
+
+    # Paid. The register's `stato` is still «emessa» -- an invoice is not annulled by
+    # being collected -- so this word can only come from `stato_pagamento`.
+    incassata = digest_with(emesse=1)
+    incassata.emesse[0].stato_pagamento = "incassato"
+    assert incassata.emesse[0].stato == "emessa"
+    assert "mar 8 set — incassata" in digest_mail("a@b.it", incassata, public_url="https://x").text
+    # And paid wins over transmitted: an invoice that was collected was transmitted too,
+    # and «trasmessa» about money already in the bank is the older, smaller fact.
+    incassata.emesse[0].trasmessa = True
+    assert "mar 8 set — incassata" in digest_mail("a@b.it", incassata, public_url="https://x").text
+
     # Only the issued rows: «Incassate questa settimana» is a list of what arrived, and
     # the state of an invoice that has been paid says nothing a reader of that heading
     # does not already know.
@@ -348,3 +368,10 @@ def test_da_emettere_only_appears_with_something_to_bill() -> None:
     mail = digest_mail("a@b.it", digest_with(vinti_da_fatturare=2), public_url="https://x")
     assert "Da emettere" in mail.html and "2 deal vinti da fatturare" in mail.text
     assert "https://x/app/deal/lista?da_fatturare=true&da=digest" in mail.text
+    # The hours link is `/app/ore` bare: `routes/app/ore.tsx` declares no `validateSearch`,
+    # so a `?fatturato=false` would be dropped on arrival and the link would promise a
+    # filtered list nobody ever sees. Only `da=digest` survives the trip.
+    ore = digest_mail("a@b.it", digest_with(ore_non_fatturate=Decimal("8")), public_url="https://x")
+    assert "8 ore fatturabili non fatturate" in ore.text
+    assert "https://x/app/ore?da=digest" in ore.text
+    assert "fatturato=false" not in ore.text

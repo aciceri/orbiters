@@ -81,6 +81,26 @@ describe('Wizard', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1)
   })
 
+  it('renders the review list as dt/dd rows only, the shape the definition-list rule requires', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<Harness onSubmit={() => {}} />)
+
+    await user.type(screen.getByLabelText('Nome'), 'Ada{Enter}')
+    await user.type(screen.getByLabelText('Email'), 'ada@studio.it{Enter}')
+    expect(screen.getByRole('heading', { name: 'Tutto giusto?' })).toBeInTheDocument()
+
+    // axe's only-dlitems check flattens a role-less div directly under a dl and then
+    // rejects any element child of that div that is not a dt or a dd (REB-96): the
+    // "Modifica" button has to live inside the dd, not beside it, or this fails.
+    const dl = container.querySelector('dl')
+    expect(dl).not.toBeNull()
+    for (const row of Array.from(dl!.children)) {
+      for (const child of Array.from(row.children)) {
+        expect(['DT', 'DD']).toContain(child.tagName)
+      }
+    }
+  })
+
   it('carries exactly one level-one heading naming the wizard, on the step screen and on the review', async () => {
     const user = userEvent.setup()
     render(<Harness onSubmit={() => {}} />)

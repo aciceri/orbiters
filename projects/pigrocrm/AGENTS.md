@@ -131,6 +131,26 @@ re-evaluates the environment against the default group selection — which inclu
 `dev` — decides the image's venv is out of date, and downloads mypy and ruff into a
 running production container on every start. That happened once, live.
 
+## Deploying
+
+Through CI only, as every project here (`docs/adding-a-project.md` §7): preview on a
+push to `main` that touched PigroCRM, production on a tag `pigrocrm-v<semver>`, both by
+`.github/workflows/deploy-pigrocrm.yml` calling `_deploy-compose.yml`. The production
+compose project is `pigrocrm`; the preview's is `pigrocrm-preview`.
+
+Each environment's `.env` is `${DEPLOY_PATH}/.env`, the root of that environment's
+checkout and two levels above the compose file: the deploy passes
+`--env-file "${DEPLOY_PATH}/.env"`, never rsyncs a `.env`, and reads nothing beside the
+compose file. It holds the `PIGROCRM_*` and `POSTGRES_*` values and is never in the
+repository. Locally, `docker compose` instead reads `projects/pigrocrm/.env`, beside
+this file, and `uv run uvicorn`/`uv run pytest` read `.env` in the repository root
+(`.env.example`'s own header says the same, in more detail). `PIGROCRM_DATA_DIR` has no
+default in the compose file, so a `.env` that forgets it fails the stack instead of
+mounting an empty directory (REB-258).
+
+Ports, loopback only, from the table in `docs/adding-a-project.md` §7: production web
+8080, Postgres 55432; preview web 8081, Postgres 55434.
+
 ## Namespace
 
 Every environment variable is `PIGROCRM_*`, the CLI is `pigrocrm`, the databases and

@@ -89,9 +89,11 @@ jobs:
       ref: ${{ github.event.workflow_run.head_sha }}
       # The API's probe touches the database (SELECT 1), so a green deploy means
       # Postgres is up and migrated, not only that uvicorn answered. The `url` is the
-      # preview name, behind basic auth, which since 2026-09-10 serves this stack's
-      # `/hub/` the way letsrebase.com serves production's. Ports: §7 of
-      # docs/adding-a-project.md.
+      # preview name, open rather than behind a credential (docs/adding-a-project.md
+      # §7): `X-Robots-Tag: noindex, nofollow, noarchive` keeps it out of search, and
+      # its vhost proxies preview containers only, so a click here cannot walk out
+      # into production data. It has served this stack's `/hub/` since 2026-09-10,
+      # the way letsrebase.com serves production's. Ports: the same section.
       health-url: http://127.0.0.1:8086/health
       url: https://preview.letsrebase.com/hub/
     secrets: inherit

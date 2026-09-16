@@ -414,7 +414,12 @@
         topright: function (u, v) { return (u - 0.35) * 1.3 - v * 0.9 },
         bottomleft: function (u, v) { return (0.65 - u) * 1.3 - (1 - v) * 0.9 },
       }
-      var colours = ['#011936', '#f9dc5c', '#465362', '#ed254e']
+      // Read off :root rather than restated (REB-248): the same tokens field.js
+      // reads for the landing's own canvas.
+      var root = getComputedStyle(document.documentElement)
+      var colours = ['--ink', '--gold', '--quiet', '--melon'].map(function (name) {
+        return root.getPropertyValue(name).trim()
+      })
       var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'))
       slides.forEach(function (slide) {
         var canvas = slide.querySelector('canvas'), ctx = canvas.getContext('2d')

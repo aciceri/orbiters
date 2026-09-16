@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
 
 const TOKENS_CSS = fileURLToPath(import.meta.resolve('@rebase/brand/palette.css'))
-/** The rules the two landing sheets share (grid line, tile, glyph, contrast guard),
- *  prepended after the tokens so neither sheet restates them. */
+/** The rules the landing sheets and the pitch deck share (grid line, tile, glyph,
+ *  contrast guard), prepended after the tokens so no consumer restates them. */
 const SYSTEM_CSS = resolve(__dirname, 'system.css')
 /** The typeface, self-hosted, shared with the application: one @font-face for the
  *  whole brand rather than a copy in each sheet. Prepended rather than @import-ed

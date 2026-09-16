@@ -1209,3 +1209,54 @@ def test_an_issuer_email_shorter_than_the_schema_floor_is_refused_by_the_pre_che
             )
         )
     assert writer.value.details == pre.value.details
+
+
+def test_an_issuer_email_with_no_dot_in_the_domain_is_refused_by_the_pre_check() -> None:
+    """`ContattiTrasmittente/Email` is `EmailContattiType`, not `EmailType`: its own
+    `.+@.+[.]+.+` demands a dot after the `@`, which `EmailType`'s pattern does not, so
+    `_EMAIL_RE` alone would let `info@localhost` through to a document the schema
+    itself refuses. `_EMAIL_CONTATTI_RE` closes that gap."""
+    emittente = EMITTENTE.model_copy(update={"email": "info@localhost"})
+    with pytest.raises(ValidationFailed) as pre:
+        check_party_exportable(emittente, "emitter_profile")
+    assert pre.value.details["field"] == "email"
+    assert pre.value.details["reason"].startswith("il valore non ha la forma richiesta")
+    with pytest.raises(ValidationFailed) as writer:
+        FatturaPAExporter().to_bytes(
+            _invoice(
+                [_line(1, "Consulenza", "1.000000", "100.000000", "100.00")],
+                emittente=emittente,
+            )
+        )
+    assert writer.value.details == pre.value.details
+
+
+def test_a_malformed_pec_on_a_customer_routed_by_sdi_code_is_not_the_documents_problem() -> None:
+    """`_dati_trasmissione` writes `PECDestinatario` only for a customer with no SDI
+    code; one routed by SDI code keeps `pec` as an ordinary contact field the writer
+    never touches, so a value that would fail `EmailType`'s pattern must not refuse an
+    emission the document never carries it in."""
+    cliente = _cliente(codice_sdi="ABCDEFG", pec="Studio Rossi <pec@studiorossi.it>")
+    check_party_exportable(cliente, "customer")
+    xml = FatturaPAExporter().to_bytes(
+        _invoice([_line(1, "Consulenza", "1.000000", "100.000000", "100.00")], cliente=cliente)
+    )
+    assert_valid(xml)
+    root = etree.fromstring(xml)
+    assert root.findtext(".//CodiceDestinatario") == "ABCDEFG"
+    assert root.findtext(".//PECDestinatario") is None
+
+
+def test_a_pec_padded_with_whitespace_is_accepted_and_written_trimmed() -> None:
+    """`EmailType`'s base is `xs:token`, which the SdI whitespace-collapses before the
+    pattern applies; a value the pre-check measures unstripped would refuse padding the
+    document itself tolerates. The pre-check, the writer and the emitted text now all
+    measure the same trimmed value."""
+    cliente = _cliente(codice_sdi=None, pec=" acme@pec.it \n")
+    check_party_exportable(cliente, "customer")
+    xml = FatturaPAExporter().to_bytes(
+        _invoice([_line(1, "Consulenza", "1.000000", "100.000000", "100.00")], cliente=cliente)
+    )
+    assert_valid(xml)
+    root = etree.fromstring(xml)
+    assert root.findtext(".//PECDestinatario") == "acme@pec.it"

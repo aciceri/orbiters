@@ -229,6 +229,38 @@ describe('index.html', () => {
     expect(page).toMatch(/href="\/termini"/)
   })
 
+  it('carries WebSite and Organization structured data, with nothing invented', () => {
+    // REB-113: one block, on this page only (links.test.ts checks the other five carry
+    // none). The legal entity, its VAT number and its contact address are the ones
+    // privacy.html and termini.html already state.
+    const scripts = [...page.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+    expect(scripts).toHaveLength(1)
+    const data = JSON.parse(scripts[0]![1]!)
+    expect(data['@context']).toBe('https://schema.org')
+    expect(data['@graph']).toHaveLength(2)
+    const website = data['@graph'].find((node: { '@type': string }) => node['@type'] === 'WebSite')
+    const organization = data['@graph'].find((node: { '@type': string }) => node['@type'] === 'Organization')
+    // toMatchObject alone would not fail on an extra, invented property (a postal
+    // address, say); the exact key set is checked too, so the "nothing invented" rule
+    // this test's name promises actually holds.
+    expect(Object.keys(website).sort()).toEqual(['@type', 'name', 'url'].sort())
+    expect(website).toMatchObject({ name: 'rebase', url: 'https://letsrebase.com/' })
+    expect(Object.keys(organization).sort()).toEqual(
+      ['@type', 'name', 'legalName', 'url', 'logo', 'vatID', 'email'].sort(),
+    )
+    expect(organization).toMatchObject({
+      name: 'rebase',
+      legalName: 'Humancraft di Ivan Sala',
+      url: 'https://letsrebase.com/',
+      vatID: '14518240966',
+      email: 'ivansala@humancraft.tech',
+    })
+    // The logo is checked against the page's own og:image rather than a second
+    // hardcoded literal, so a future redraw (the numbered file REB-205 already owns)
+    // cannot update one and silently leave the other stale.
+    expect(organization.logo).toBe(meta(page, 'og:image'))
+  })
+
   it('signs its footer with the studio behind the site, never with a fixture', () => {
     // ORB-116: the pre-publication sanitisation swapped this link for «Studio Rossi» at
     // example.com, the suite's stock customer, and website-v0.4.0 shipped it. The studio

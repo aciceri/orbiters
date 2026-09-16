@@ -54,6 +54,33 @@
       three heads, and the Conversions API key appears in no page at all: it is in the
       server's .env, used only by the API. -->
     <script type="module" src="./consent.js"></script>
+    <!-- REB-113: WebSite and Organization structured data, on this page only, the one
+      a search result attaches to. Every value already appears elsewhere on the site:
+      privacy.html and termini.html name the legal entity, its VAT number and its
+      contact address; og:image above already names the share card this points at as
+      a logo. No FAQPage, no Product, no Review: nothing here that is not true anywhere
+      else on the site. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "name": "rebase",
+            "url": "https://letsrebase.com/"
+          },
+          {
+            "@type": "Organization",
+            "name": "rebase",
+            "legalName": "Humancraft di Ivan Sala",
+            "url": "https://letsrebase.com/",
+            "logo": "https://letsrebase.com/assets/share-card-1.png",
+            "vatID": "14518240966",
+            "email": "ivansala@humancraft.tech"
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <!-- The same field as the community page on `/`: fixed behind the whole page, drifting

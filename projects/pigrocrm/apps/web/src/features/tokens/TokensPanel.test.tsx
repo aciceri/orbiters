@@ -74,7 +74,16 @@ beforeEach(() => {
   vi.mocked(toast.success).mockReset()
   vi.mocked(useBlocker).mockClear()
   vi.mocked(useAuth).mockReturnValue({
-    user: { id: 'u1', email: 'admin@pigro.it', nome: 'Admin', ruolo: 'admin', attivo: true },
+    user: {
+      id: 'u1',
+      email: 'admin@pigro.it',
+      nome: 'Admin',
+      ruolo: 'admin',
+      attivo: true,
+      tariffa_oraria_default: null,
+      costo_orario_default: null,
+      created_at: '2026-08-06T10:00:00Z',
+    },
     isLoading: false,
     login: vi.fn(),
     logout: vi.fn(),

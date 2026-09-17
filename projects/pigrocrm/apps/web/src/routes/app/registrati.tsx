@@ -65,11 +65,13 @@ export function SignupPage({ go = (url) => window.location.assign(url) }: { go?:
   useEffect(() => {
     if (screen !== 'name' || slug === '' || localProblem) return
     const asked = slug
+    let stale = false
     const handle = window.setTimeout(() => {
       setAvailability({ state: 'checking', slug: asked })
       void api
         .GET('/api/tenants/{slug}/disponibile', { params: { path: { slug: asked } } })
         .then(({ data, error: apiError, response }) => {
+          if (stale) return
           if (data) {
             setAvailability(
               data.disponibile
@@ -93,11 +95,20 @@ export function SignupPage({ go = (url) => window.location.assign(url) }: { go?:
           // anyway, since POST /api/tenants/ validates the slug again server-side.
           setAvailability({ state: 'failed', slug: asked, reason: toProblem(apiError, response.status).detail })
         })
-        .catch((networkError: unknown) =>
-          setAvailability({ state: 'failed', slug: asked, reason: toProblem(networkError).detail }),
-        )
+        .catch((networkError: unknown) => {
+          if (stale) return
+          setAvailability({ state: 'failed', slug: asked, reason: toProblem(networkError).detail })
+        })
     }, 350)
-    return () => window.clearTimeout(handle)
+    // A response for a slug that is no longer current (superseded by a further edit,
+    // or the effect re-running for any other reason) must never write: `current`
+    // gates on `availability.slug === slug`, so a stale write for a slug nobody is
+    // asking about anymore leaves the hint stuck on the "still checking" ellipsis
+    // with nothing left to retry (REB-265).
+    return () => {
+      stale = true
+      window.clearTimeout(handle)
+    }
   }, [screen, slug, localProblem])
 
   // The name proposes the address until the person edits the address by hand.

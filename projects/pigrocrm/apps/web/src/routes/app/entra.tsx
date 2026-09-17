@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { api, toProblem } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { takeEntraToken } from '@/lib/entra-token'
 import { tenantPrefix } from '@/lib/tenant'
 
 /** Where a fresh session goes: the space's home, or the root's under its own name (the
@@ -22,13 +23,12 @@ async function homeAfterEntry(): Promise<string> {
  * link (spent, expired, made up) shows the API's sentence and the way back to the login,
  * where another one can be asked.
  *
- * The first thing the mount does, before the token is even spent, is drop `t` from the
- * visible URL with `history.replaceState` (REB-229): the mail link is a GET, so without
- * this the token sits in the browser's history and in any `Referer` a link on this page
- * would send, for as long as that history entry exists -- well past the token's own
- * 15-minute, single-use life. `replaceState`, not `pushState`: this page has no back
- * button of its own to preserve, and a second history entry would only let "back" return
- * here.
+ * The token itself never comes from this component's own search params (REB-229):
+ * `main.tsx` already took it out of the URL, before analytics or this route ever ran,
+ * with `lib/entra-token.ts`'s `stripEntraToken`. `EnterRoute` below reads it back with
+ * `takeEntraToken` and falls back to the search param only for whatever reaches this
+ * component without that having happened first (a unit test rendering `EnterPage`
+ * directly, as this file's own tests do).
  *
  * `go` is injectable because jsdom does not let a test spy on `window.location.assign`.
  * The token is spent once per mount, however often the page re-renders.
@@ -50,11 +50,6 @@ export function EnterPage({
   useEffect(() => {
     if (started.current) return
     started.current = true
-    const url = new URL(window.location.href)
-    if (url.searchParams.has('t')) {
-      url.searchParams.delete('t')
-      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
-    }
     void (async () => {
       try {
         await enterWithLink(token)
@@ -92,7 +87,12 @@ export function EnterPage({
 
 function EnterRoute() {
   const { t } = Route.useSearch()
-  return <EnterPage token={t} />
+  // Lazy initialiser: computed once per mount, whatever else re-renders this
+  // component, so `takeEntraToken`'s one-shot read is not repeated. (React's Strict
+  // Mode calls a `useState` initialiser twice in development to check it is pure; the
+  // second call's result is discarded, so this stays a single effective read.)
+  const [token] = useState(() => takeEntraToken() ?? t)
+  return <EnterPage token={token} />
 }
 
 export const Route = createFileRoute('/app/entra')({

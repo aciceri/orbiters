@@ -28,26 +28,33 @@
    (xAvgCharWidth/unitsPerEm) matches Outfit's, then `ascent-override` and
    `descent-override` restate Outfit's own ascent/descent (both /unitsPerEm) against
    that scaled-down em, so the vertical box matches too. Values computed with
-   fontTools against `shared/brand/fonts/outfit-variable-latin.woff2` and
-   `/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf`, Noto Sans being this
-   repository's own `fc-match sans-serif` (Debian, no Arial installed): Outfit's
-   561/1000 em average width over Noto Sans's 577/1000 gives size-adjust 97.23%;
-   Outfit's ascent 1000/1000 and descent 260/1000 (no line gap) divided by that
-   ratio give the two overrides. `local()` never fetches a font, so this costs
-   nothing on a system that has none of the below: `--font-sans` still falls
-   through to its own `ui-sans-serif, system-ui, sans-serif`, exactly as before. */
+   fontTools against `shared/brand/fonts/outfit-variable-latin.woff2`, instanced at
+   weight 300 (`body`'s own `font-weight`, not the variable font's default 100
+   instance: Outfit's `xAvgCharWidth` moves from 555 to 564 between those two, and
+   `body` never renders the lighter one) and
+   `/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf`: Liberation
+   Sans, not Noto Sans, because `local()` matches a font's full name or PostScript
+   name, never its family name alone, and Chrome resolves nothing for `local('Noto
+   Sans')` (its full name is "Noto Sans Regular") -- confirmed by rebuilding and
+   re-running Lighthouse, which reported the pre-fix CLS unchanged until this was
+   fixed. Liberation Sans's full name is "Liberation Sans" (matches its family
+   name), it is designed to be advance-width-compatible with Arial, and it is what
+   `fc-match Arial` resolves to on this box, so calibrating against it also serves
+   an Arial-only reader reasonably well without measuring a font this repository
+   does not have. Outfit's 564/1000 em average width over Liberation Sans's
+   1187/2048 gives size-adjust 97.31%; Outfit's ascent 1000/1000 and descent
+   260/1000 (no line gap, unchanged across weights) divided by that ratio give the
+   two overrides. `local()` never fetches a font, so this costs nothing on a system
+   with neither name installed: `--font-sans` still falls through to its own
+   `ui-sans-serif, system-ui, sans-serif`, exactly as before. */
 @font-face {
   font-family: 'Outfit Fallback';
   src:
-    local('Noto Sans'),
-    local('Arial'),
     local('Liberation Sans'),
-    local('Helvetica Neue'),
-    local('Segoe UI'),
-    local('Roboto');
-  size-adjust: 97.23%;
-  ascent-override: 102.85%;
-  descent-override: 26.74%;
+    local('Arial');
+  size-adjust: 97.31%;
+  ascent-override: 102.76%;
+  descent-override: 26.72%;
   line-gap-override: 0%;
 }
 

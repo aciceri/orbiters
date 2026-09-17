@@ -40,6 +40,8 @@ export function InvoicesTab({ owner, actions }: { owner: InvoiceOwner; actions?:
         <LoadMoreInvoices
           shown={invoices.items.length}
           isFetchingMore={invoices.isFetchingMore}
+          hasError={invoices.loadMoreError}
+          error={invoices.error}
           onLoadMore={invoices.loadMore}
         />
       )}

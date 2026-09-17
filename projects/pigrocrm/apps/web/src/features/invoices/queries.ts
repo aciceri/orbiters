@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import { api, fetchWithRefresh, toProblem, unwrap } from '@/lib/api'
 import type { StatusTone } from '@/components/StatusPill'
 import type { components } from '@/lib/api-types'
@@ -147,6 +148,10 @@ export interface InvoicesListResult {
   /** True once the last loaded page's own `next_cursor` says there is more beyond it. */
   hasMore: boolean
   isFetchingMore: boolean
+  /** True if the *next* page's own fetch failed; the pages already shown are
+   *  unaffected, `error` carries the failure, and `loadMore` can simply be tried
+   *  again. */
+  loadMoreError: boolean
   loadMore: () => void
 }
 
@@ -165,19 +170,28 @@ export interface InvoicesListResult {
  */
 function useInvoicesPaged(filters: InvoicesListFilters): InvoicesListResult {
   const query = useInfiniteQuery({
-    queryKey: queryKeys.invoices(filters),
+    queryKey: queryKeys.invoicesList(filters),
     queryFn: ({ pageParam }) =>
       unwrap(api.GET('/api/invoices', { params: { query: { ...filters, cursor: pageParam } } })),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage: InvoicePage) => lastPage.next_cursor ?? undefined,
   })
+  // Memoized on the page array's own reference, not recomputed on every render: a
+  // fresh `items` array on each render would defeat `DataTable`'s row-model memo
+  // (keyed on `data`'s identity), rebuilding every loaded row on a re-render the
+  // fetched pages had no part in -- opening the type `Select`, pressing a chip.
+  const items = useMemo(
+    () => query.data?.pages.flatMap((page) => page.items) ?? [],
+    [query.data?.pages],
+  )
   return {
-    items: query.data?.pages.flatMap((page) => page.items) ?? [],
+    items,
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,
     hasMore: query.hasNextPage,
     isFetchingMore: query.isFetchingNextPage,
+    loadMoreError: query.isFetchNextPageError,
     loadMore: () => void query.fetchNextPage(),
   }
 }
@@ -263,6 +277,9 @@ function useInvoiceInvalidation() {
   const queryClient = useQueryClient()
   return (invoiceId?: string) => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.invoices() })
+    // `invoicesList` is a distinct key (see `lib/query.ts`), so a new or changed
+    // invoice needs its own invalidation to reach `InvoicesList`/`InvoicesTab`.
+    void queryClient.invalidateQueries({ queryKey: ['invoices-list'] })
     if (invoiceId !== undefined) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.invoice(invoiceId) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.invoiceLines(invoiceId) })

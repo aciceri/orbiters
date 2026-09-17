@@ -147,6 +147,8 @@ export function InvoicesList({ scadute }: { scadute?: boolean }) {
           <LoadMoreInvoices
             shown={invoices.items.length}
             isFetchingMore={invoices.isFetchingMore}
+            hasError={invoices.loadMoreError}
+            error={invoices.error}
             onLoadMore={invoices.loadMore}
           />
         )}

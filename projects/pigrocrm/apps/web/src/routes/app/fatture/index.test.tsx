@@ -238,21 +238,28 @@ describe('the invoice list', () => {
    */
   it('offers "Carica altre" when the page is truncated, and loads the next page on click', async () => {
     mockInvoicesPages(
-      [invoice({ id: 'f1', customer_ragione_sociale: 'ACME S.r.l.' })],
+      [
+        invoice({ id: 'f1', customer_ragione_sociale: 'ACME S.r.l.' }),
+        invoice({ id: 'f1b', customer_ragione_sociale: 'ACME S.r.l.' }),
+      ],
       [invoice({ id: 'f2', customer_ragione_sociale: 'Beta S.r.l.' })],
     )
     renderList()
 
-    expect(await screen.findByRole('cell', { name: 'ACME S.r.l.' })).toBeInTheDocument()
+    expect((await screen.findAllByRole('cell', { name: 'ACME S.r.l.' }))).toHaveLength(2)
     expect(screen.queryByRole('cell', { name: 'Beta S.r.l.' })).not.toBeInTheDocument()
 
     const loadMore = screen.getByRole('button', { name: 'Carica altre' })
-    expect(screen.getByText('Mostrate 1 fatture, ce ne sono altre.')).toBeInTheDocument()
+    expect(screen.getByText('Mostrate 2 fatture, ce ne sono altre.')).toBeInTheDocument()
 
     await userEvent.click(loadMore)
 
     expect(await screen.findByRole('cell', { name: 'Beta S.r.l.' })).toBeInTheDocument()
-    expect(screen.getByRole('cell', { name: 'ACME S.r.l.' })).toBeInTheDocument()
+    expect(screen.getAllByRole('cell', { name: 'ACME S.r.l.' })).toHaveLength(2)
     expect(screen.queryByRole('button', { name: 'Carica altre' })).not.toBeInTheDocument()
+    // The second request has to carry the exact cursor the first page returned, not
+    // merely *some* cursor: a stale or wrong-but-defined value would still pass every
+    // assertion above.
+    expect(lastRequestedQuery().cursor).toBe('page-2')
   })
 })

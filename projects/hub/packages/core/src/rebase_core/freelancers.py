@@ -40,8 +40,7 @@ PDF_MAGIC = b"%PDF-"
 # address already on file (REB-272): one more line in `magic_link_mail`'s voice, not a
 # mail of its own.
 ALREADY_HAS_CARD_NOTE = (
-    "Risulta già una scheda su rebase con questo indirizzo: la trovi e la modifichi "
-    "dalla tua area."
+    "Risulta già una scheda su rebase con questo indirizzo: la trovi e la modifichi dalla tua area."
 )
 
 

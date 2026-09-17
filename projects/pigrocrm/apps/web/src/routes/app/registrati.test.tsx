@@ -4,7 +4,7 @@
  * seam every other route test in this tree uses, and the router is faked because the
  * page only ever calls `navigate`.
  */
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -273,11 +273,13 @@ describe('the signup wizard', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/\/beta è libero/))
     // The older probe (alpha) answers late, for a slug that is no longer current: it
     // must not overwrite beta's already-landed answer with its own.
-    resolveAlpha({
-      data: { slug: 'alpha', disponibile: false, motivo: 'riservato' },
-      response: { status: 200 },
+    await act(async () => {
+      resolveAlpha({
+        data: { slug: 'alpha', disponibile: false, motivo: 'riservato' },
+        response: { status: 200 },
+      })
+      await new Promise((resolve) => setTimeout(resolve, 0))
     })
-    await new Promise((resolve) => setTimeout(resolve, 0))
     expect(screen.getByRole('status')).toHaveTextContent(/\/beta è libero/)
   })
 })

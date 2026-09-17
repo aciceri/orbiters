@@ -65,10 +65,11 @@ const DIRECT_HEX = /^#[0-9a-fA-F]{3,8}$/
 const LANDING_VAR = /^var\((--landing-[\w-]+)\)$/
 
 /** Every `--landing-*` custom property declared in the given sheet's `:root`,
- *  resolved to a plain hex where that is possible: a `var(--color-…)` value through
- *  `shared`, a literal `#ffffff` as-is, and a `color-mix()` (the grid line, the tile
- *  and the two on-ink overlays) skipped, since none of `pigrocrm.css`'s own `color`
- *  or `background` declarations resolve through one. */
+ *  resolved to a plain hex where that is possible without a backdrop: a
+ *  `var(--color-…)` value through `shared`, or a literal `#ffffff` as-is. A
+ *  `color-mix()` (the grid line, the tile, the two on-ink overlays, the light
+ *  band's veil) is left to `resolveValue`, which has the backdrop to composite it
+ *  against. */
 function landingVars(css: string): Record<string, string> {
   const vars: Record<string, string> = {}
   const root = css.match(/:root\s*\{([^}]*)\}/)?.[1] ?? ''
@@ -89,6 +90,35 @@ function landingVars(css: string): Record<string, string> {
   return vars
 }
 
+/** Every `--landing-*` declaration's raw value, unresolved: `resolveValue` reads
+ *  this for the ones `landingVars` could not (a `color-mix()`), because resolving
+ *  one of those needs a backdrop it does not have until an element is being
+ *  walked. */
+function landingVarsRaw(css: string): Record<string, string> {
+  const raw: Record<string, string> = {}
+  const root = css.match(/:root\s*\{([^}]*)\}/)?.[1] ?? ''
+  for (const declaration of root.matchAll(/(--landing-[\w-]+)\s*:\s*([^;]+);/g)) {
+    const name = declaration[1]
+    const value = declaration[2]?.trim()
+    if (name && value) raw[name] = value
+  }
+  return raw
+}
+
+/** Both `--landing-*` on-ink/veil tokens are `color-mix(in <space>, var(--color-…)
+ *  N%, transparent)`; resolving one exactly would mean reproducing the browser's
+ *  OKLab math, so this blends in sRGB instead, close enough at these percentages to
+ *  place a ratio on the right side of 4.5 without claiming false precision. */
+const COLOR_MIX = /^color-mix\(in [\w-]+, var\((--color-[\w-]+)\) (\d+(?:\.\d+)?)%, transparent\)$/
+
+function blendHex(hexA: string, hexB: string, weightAPercent: number): string {
+  const a = hexToRgb(hexA)
+  const b = hexToRgb(hexB)
+  const w = weightAPercent / 100
+  const channel = (i: 0 | 1 | 2) => Math.round(a[i] * w + b[i] * (1 - w))
+  return `#${[channel(0), channel(1), channel(2)].map((c) => c.toString(16).padStart(2, '0')).join('')}`
+}
+
 /** Strips comments and every `@media`/`@font-face`/`@keyframes` block: REB-267's own
  *  `@media (min-width: 60rem)` addition to `pigrocrm.css` carries a `min-block-size`,
  *  no colour, and stripping it here keeps the one-rule-at-a-time scan below from
@@ -101,19 +131,31 @@ function stripAtRules(css: string): string {
 
 type ColourRule = { selector: string; value: string }
 
-/** A declared value resolved to a plain hex where that is mechanical: a literal
- *  `#rgb`/`#rrggbb`, or a `var(--landing-…)` through `vars`. A `color-mix()` (the
- *  grid line, the two on-ink text/rule overlays, the light band's veil) is not
- *  resolved here: none of `pigrocrm.css`'s own declarations use one, and the callers
- *  below treat "cannot resolve" as "skip this element" rather than fall back to a
- *  less specific rule that happens to resolve -- the wrong colour is worse than no
+/** A declared value resolved to a plain hex: a literal `#rgb`/`#rrggbb`; a
+ *  `var(--landing-…)` through `vars` directly, or through `rawVars` and
+ *  `COLOR_MIX` when it needs `backdrop` to composite against; `transparent`/`none`
+ *  as `backdrop` itself, since that is precisely the case where the ancestor's
+ *  ground is what paints. Undefined when none of those apply (a `color-mix()`
+ *  with no backdrop yet, or a value this derivation does not understand) --
+ *  callers treat that as "skip this element", the wrong colour being worse than no
  *  pair. */
-function resolveValue(value: string, vars: Record<string, string>): string | undefined {
+function resolveValue(
+  value: string,
+  vars: Record<string, string>,
+  rawVars: Record<string, string>,
+  backdrop: string | undefined,
+): string | undefined {
+  if (value === 'transparent' || value === 'none') return backdrop
   if (DIRECT_HEX.test(value)) {
     const hex = value.toLowerCase()
     return hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex
   }
-  return vars[LANDING_VAR.exec(value)?.[1] ?? '']
+  const name = LANDING_VAR.exec(value)?.[1] ?? ''
+  if (vars[name]) return vars[name]
+  if (!backdrop) return undefined
+  const mix = COLOR_MIX.exec(rawVars[name] ?? '')
+  const inner = mix && shared[mix[1] ?? '']
+  return inner ? blendHex(inner, backdrop, Number(mix[2])) : undefined
 }
 
 /** Every rule in `css` that declares the given property, next to the selector list
@@ -181,46 +223,63 @@ function winningRule(rules: ColourRule[], element: Element): ColourRule | undefi
 }
 
 /** For every element some `colourRules` entry could apply to, the pair it actually
- *  renders: the winning colour, per `winningRule`, against the nearest ancestor-or-
- *  self's winning `background` (self first, since `background` never inherits and
- *  an unpainted element shows whatever is behind it). A level whose winning rule
- *  does not resolve (a `color-mix()`) stops the walk without a pair rather than
- *  reading past it to a deeper ancestor's background that is not, in fact, what
- *  paints there -- the wrong colour is worse than no pair. The page the pair
- *  actually renders, not one a hand-kept list would guess at. Returns one
- *  `[text, background]` per distinct pair found. */
+ *  renders. The background is the whole ancestor-or-self chain of winning
+ *  `background` rules, folded outermost first so each level composites over what
+ *  is actually behind it (`transparent`/`background: none` pass the level below
+ *  through unpainted, a `color-mix()` like the light band's veil blends against
+ *  it) -- not just the nearest one, which would treat a `color-mix()` ground as
+ *  unresolvable and skip every light-band element rather than composite it. The
+ *  colour then resolves against that same background, since a translucent text
+ *  colour (`.band.dark .who`'s on-ink overlay) composites the same way. Undefined
+ *  anywhere in either chain drops the element rather than guessing -- the wrong
+ *  colour is worse than no pair. Returns `[text, background, element]` triples, the
+ *  element kept so a caller can assert a specific one was reached rather than
+ *  only that the aggregate list is non-empty. */
 function derivePairs(
   html: string,
   colourRules: ColourRule[],
   backgroundRules: ColourRule[],
   vars: Record<string, string>,
-): [string, string][] {
+  rawVars: Record<string, string>,
+): [string, string, Element][] {
   document.body.innerHTML = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? ''
-  function nearestBackground(el: Element): string | undefined {
+  function resolveBackground(el: Element): string | undefined {
+    const chain: ColourRule[] = []
     for (let node: Element | null = el; node; node = node.parentElement) {
       const winner = winningRule(backgroundRules, node)
-      if (winner) return resolveValue(winner.value, vars)
+      if (winner) chain.push(winner)
     }
-    return undefined
+    let backdrop: string | undefined
+    for (let i = chain.length - 1; i >= 0; i--) {
+      backdrop = resolveValue(chain[i]!.value, vars, rawVars, backdrop)
+      if (backdrop === undefined) return undefined
+    }
+    return backdrop
   }
   const candidates = new Set<Element>()
   for (const rule of colourRules) {
     try {
       document.querySelectorAll(rule.selector).forEach((element) => candidates.add(element))
     } catch {
-      // Same unsupported-pseudo-class case as above: no element to add.
+      // A selector jsdom cannot evaluate (an unsupported pseudo-class) describes no
+      // static element, so it contributes none here.
     }
   }
-  const pairs = new Map<string, [string, string]>()
+  // Not deduped by colour+background: `.who`'s pair happens to equal `.chat-tool
+  // dt`'s, and a caller below asserts on the specific element a selector reaches,
+  // which a first-one-wins dedup would silently hide behind whichever candidate
+  // the `Set` iterates first.
+  const pairs: [string, string, Element][] = []
   for (const element of candidates) {
+    const background = resolveBackground(element)
+    if (background === undefined) continue
     const winner = winningRule(colourRules, element)
-    const colour = winner && resolveValue(winner.value, vars)
+    const colour = winner && resolveValue(winner.value, vars, rawVars, background)
     if (!colour) continue
-    const background = nearestBackground(element)
-    if (background) pairs.set(`${colour}|${background}`, [colour, background])
+    pairs.push([colour, background, element])
   }
   document.body.innerHTML = ''
-  return [...pairs.values()]
+  return pairs
 }
 
 describe('landing tokens', () => {
@@ -334,41 +393,92 @@ describe('pitch deck tokens', () => {
 // REB-268: /pigrocrm read 4.37:1 on the light band's role line, `.voices-light`
 // overriding the ground `landing.css`'s `.who .role` sits on -- a pair the test
 // above never saw, because it reads `landing.css` alone. These derive every pair
-// `pigrocrm.css` actually renders (its own `color`/`background` declarations, plus
-// the `landing.css` ones its markup reaches, crossed against `pigrocrm.html`'s real
-// DOM) instead of naming them, so the next override is caught unseen or not at all.
+// `pigrocrm.css` participates in (its own declarations, or a `landing.css` one
+// applied to an element whose colour or background chain `pigrocrm.css` also
+// touches) crossed against `pigrocrm.html`'s real DOM, instead of naming them, so
+// the next override is caught unseen or not at all. A pair neither sheet's rules
+// touch (`landing.css`'s own kicker-on-veil, say) is `landing tokens`' concern
+// above, not this one, and is left out so this suite does not fail on a finding
+// outside REB-268's ground.
 describe('pigrocrm.css text pairs', () => {
   const vars = landingVars(landingCss)
-  const colourRules = [...extractDeclarations(landingCss, 'color'), ...extractDeclarations(pigrocrmCss, 'color')]
-  const backgroundRules = [...extractDeclarations(landingCss, 'background'), ...extractDeclarations(pigrocrmCss, 'background')]
-  const pairs = derivePairs(pigrocrmHtml, colourRules, backgroundRules, vars)
+  const rawVars = landingVarsRaw(landingCss)
+  const landingColourRules = extractDeclarations(landingCss, 'color')
+  const landingBackgroundRules = extractDeclarations(landingCss, 'background')
+  const pigrocrmColourRules = extractDeclarations(pigrocrmCss, 'color')
+  const pigrocrmBackgroundRules = extractDeclarations(pigrocrmCss, 'background')
+  const colourRules = [...landingColourRules, ...pigrocrmColourRules]
+  const backgroundRules = [...landingBackgroundRules, ...pigrocrmBackgroundRules]
+  // Every selector `pigrocrm.css` names for *any* property, not only the ones
+  // that win a `color`/`background`: `.voices-light` sets neither today, only
+  // `border-top-color` and a `data-reveal` reset, so a filter over winning colour
+  // or background rules would never reach the element REB-268 is about at all.
+  const pigrocrmSelectors = [...stripAtRules(pigrocrmCss).matchAll(/([^{}]+)\{/g)]
+    .map((rule) => rule[1]?.trim())
+    .filter((selector): selector is string => Boolean(selector) && selector !== ':root')
 
-  it('finds at least the pairs the fix above already knows about', () => {
-    // A derivation that silently found nothing would pass every assertion below
-    // without checking anything -- this is what tells the two apart.
-    expect(pairs.length).toBeGreaterThan(0)
+  /** Whether `element` or an ancestor is named by any `pigrocrm.css` selector --
+   *  the line between "this card's ground" and a finding that belongs to
+   *  `landing tokens` instead. */
+  function touchesPigrocrmCss(element: Element): boolean {
+    for (let node: Element | null = element; node; node = node.parentElement) {
+      for (const selector of pigrocrmSelectors) {
+        let matches = false
+        try {
+          matches = node.matches(selector)
+        } catch {
+          // Same unsupported-pseudo-class case as elsewhere: names no element.
+        }
+        if (matches) return true
+      }
+    }
+    return false
+  }
+
+  const allPairs = derivePairs(pigrocrmHtml, colourRules, backgroundRules, vars, rawVars)
+  const pairs = allPairs.filter(([, , element]) => touchesPigrocrmCss(element))
+
+  it('reaches the .who text on .voices-light specifically, not just a non-empty list', () => {
+    // A derivation that silently stopped reaching this element -- a regex change,
+    // a selector jsdom cannot evaluate, a background it cannot resolve -- would
+    // still pass every assertion below on whatever it does find. `.voices-light`
+    // itself carries no colour or background of its own today (`.box` supplies the
+    // white), so `touchesPigrocrmCss` reaches it only through the ancestor chain,
+    // exactly the path REB-268 is about. `.who` is the candidate, not its `.role`
+    // child: `.role`'s own rule only sets `font-size`, so its colour is `.who`'s,
+    // inherited, and `derivePairs` (like the browser) reports the colour against
+    // the element a `color` rule actually names.
+    const who = pairs.find(([, , element]) => element.matches('.voices-light .who'))
+    expect(who).toBeDefined()
+    expect(who?.[0]).toBe('#465362')
+    expect(who?.[1]).toBe('#ffffff')
   })
 
-  it('reaches 4.5:1 on every text pair pigrocrm.html actually renders', () => {
+  it('reaches 4.5:1 on every text pair pigrocrm.css participates in', () => {
     for (const [text, background] of pairs) {
       expect(contrastRatio(text, background), `${text} on ${background}`).toBeGreaterThanOrEqual(4.5)
     }
   })
 
-  it('would have caught REB-268: a light-band override under an existing landing.css text colour', () => {
-    // The regression drill: `.role` is `landing.css`'s (`--landing-ink-quiet` on
-    // whatever ground it sits on), `.panel` is a synthetic `pigrocrm.css` override,
-    // same shape as `.voices-light` -- a background introduced on an ancestor of text
-    // this sheet never declares a colour for. Grey-on-grey is the failing "old
-    // value"; swapping the override to white is the "new" one derivePairs passes.
-    const role = '.who .role { color: var(--landing-ink-quiet); }'
-    const html = '<body><div class="panel"><p class="who"><span class="role">hi</span></p></div></body>'
-    const roleRules = extractDeclarations(landingCss + role, 'color')
-    const failing = derivePairs(html, roleRules, [{ selector: '.panel', value: '#9aa0a6' }], vars)
-    expect(failing).toEqual([['#465362', '#9aa0a6']])
-    expect(contrastRatio('#465362', '#9aa0a6')).toBeLessThan(4.5)
+  it('would have caught REB-268: a background pigrocrm.css adds under an existing landing.css text colour', () => {
+    // The regression drill, through the real pipeline rather than a hand-built
+    // stand-in: appends the exact shape REB-268 named -- `.voices-light` itself
+    // taking a background -- to the real `pigrocrm.css` text, extracts it the same
+    // way the describe block above does, and derives against the real
+    // `pigrocrm.html`. Grey is the failing "old value" this drill proves the
+    // mechanism would have caught; white (what `.box` already supplies today) is
+    // the "new" one it passes.
+    const failingCss = `${pigrocrmCss}\n.voices-light { background-color: #9aa0a6; }\n`
+    const failingBackgrounds = [...landingBackgroundRules, ...extractDeclarations(failingCss, 'background')]
+    const failing = derivePairs(pigrocrmHtml, colourRules, failingBackgrounds, vars, rawVars)
+    const failingWho = failing.find(([, , element]) => element.matches('.voices-light .who'))
+    expect(failingWho?.[1]).toBe('#9aa0a6')
+    expect(contrastRatio(failingWho![0], failingWho![1])).toBeLessThan(4.5)
 
-    const passing = derivePairs(html, roleRules, [{ selector: '.panel', value: '#ffffff' }], vars)
-    expect(contrastRatio(...passing[0]!)).toBeGreaterThanOrEqual(4.5)
+    const passingCss = `${pigrocrmCss}\n.voices-light { background-color: #ffffff; }\n`
+    const passingBackgrounds = [...landingBackgroundRules, ...extractDeclarations(passingCss, 'background')]
+    const passing = derivePairs(pigrocrmHtml, colourRules, passingBackgrounds, vars, rawVars)
+    const passingWho = passing.find(([, , element]) => element.matches('.voices-light .who'))
+    expect(contrastRatio(passingWho![0], passingWho![1])).toBeGreaterThanOrEqual(4.5)
   })
 })

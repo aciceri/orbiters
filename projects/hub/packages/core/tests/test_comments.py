@@ -27,7 +27,7 @@ def clean(hub_session: Session) -> Session:
 
 
 def _freelancer(session: Session) -> FreelancerRead:
-    return FreelancerService(session).apply(
+    read, _ = FreelancerService(session).apply(
         FreelancerCreate(
             nome="Ada",
             cognome="Lovelace",
@@ -40,6 +40,7 @@ def _freelancer(session: Session) -> FreelancerRead:
         "cv.pdf",
         "application/pdf",
     )
+    return read
 
 
 def _company(session: Session) -> CompanyRead:

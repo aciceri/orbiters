@@ -8,9 +8,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from rebase_api.deps import get_tracker
+from rebase_api.deps import get_sender, get_tracker
 from rebase_api.ratelimit import SIGNUPS_PER_MINUTE
 from rebase_core.analytics import APPLICATION_COMPLETED, Tracker
+from rebase_core.mail import RecordingSender
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
 
@@ -164,6 +165,64 @@ def test_an_application_with_no_cv_at_all_is_accepted_and_stored_without_one(
     ).one()
     assert row.email == "ada@studio.it"
     assert (row.cv_bytes, row.cv_filename, row.cv_size) == (None, None, None)
+
+
+@pytest.fixture
+def sender(client: TestClient) -> Iterator[RecordingSender]:
+    recording = RecordingSender()
+    client.app.dependency_overrides[get_sender] = lambda: recording  # type: ignore[attr-defined]
+    yield recording
+
+
+def test_a_repeated_application_leaves_the_existing_card_unchanged(
+    client: TestClient, api_session: Session
+) -> None:
+    """REB-272: this route is public and unauthenticated, so a second post to the same
+    address proves nothing about who sent it. Every field, `compilata_da` and the CV
+    bytes stay exactly as the first application left them, and the answer is still the
+    same mute 201."""
+    _clean(api_session)
+    first = client.post(
+        "/api/hub/freelancers", data=_form(), files={"cv": ("Ada CV.pdf", PDF, "application/pdf")}
+    )
+    assert first.status_code == 201, first.text
+    columns = (
+        "nome, cognome, linkedin_url, tariffa_giornaliera, posizione, remoto, links, "
+        "compilata_da, cv_bytes, cv_filename, cv_mime, cv_size"
+    )
+    before = api_session.execute(text(f"SELECT {columns} FROM freelancers")).one()
+    again = client.post(
+        "/api/hub/freelancers",
+        data=_form(posizione="Tech lead", tariffa_giornaliera="900,00"),
+        files={"cv": ("evil.pdf", PDF + b"v2", "application/pdf")},
+    )
+    assert again.status_code == 201, again.text
+    assert again.json() == {"ok": True}
+    after = api_session.execute(text(f"SELECT {columns} FROM freelancers")).one()
+    assert after == before
+    assert api_session.execute(text("SELECT count(*) FROM freelancers")).scalar() == 1
+
+
+def test_a_repeated_application_sends_the_existing_card_a_magic_link_mail(
+    client: TestClient, api_session: Session, sender: RecordingSender
+) -> None:
+    _clean(api_session)
+    assert (
+        client.post(
+            "/api/hub/freelancers",
+            data=_form(),
+            files={"cv": ("Ada CV.pdf", PDF, "application/pdf")},
+        ).status_code
+        == 201
+    )
+    assert sender.sent == []
+    again = client.post("/api/hub/freelancers", data=_form(posizione="Tech lead"))
+    assert again.status_code == 201, again.text
+    assert len(sender.sent) == 1
+    mail = sender.sent[0]
+    assert mail.to == "ada@studio.it"
+    assert "Risulta già una scheda" in mail.text
+    assert "/entra?t=" in mail.text
 
 
 def test_a_field_the_form_refuses_is_a_422_in_the_same_shape_as_a_json_body(

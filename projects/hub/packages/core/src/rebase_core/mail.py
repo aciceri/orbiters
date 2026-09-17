@@ -194,12 +194,17 @@ def _frame(title: str, body: str) -> str:
     )
 
 
-def magic_link_mail(to: str, link: str, minutes: int) -> Mail:
+def magic_link_mail(to: str, link: str, minutes: int, note: str | None = None) -> Mail:
     """The one mail the hub sends: the link, how long it lasts, and that ignoring it is
-    fine. In the voice of `docs/design/positioning.md`, as text and as the landing's box."""
+    fine. In the voice of `docs/design/positioning.md`, as text and as the landing's box.
+    `note`, when given, is one more sentence before the link (REB-272): the wizard sends
+    this same mail, with this note, to someone who applied again with a card already on
+    file, instead of writing over it."""
+    note_line = f"{note}\n\n" if note else ""
     text = (
         "Ciao,\n"
         "\n"
+        f"{note_line}"
         "questo è il link per entrare nella tua area su rebase:\n"
         "\n"
         f"{link}\n"
@@ -214,9 +219,11 @@ def magic_link_mail(to: str, link: str, minutes: int) -> Mail:
     safe_link = html_escape.escape(link, quote=True)
     paragraph = 'style="margin:24px 0 0 0;"'
     small = f'style="margin:24px 0 0 0;font-size:13px;line-height:1.5;color:{INK_QUIET};'
-    body = "\n".join(
+    rows = ['<p style="margin:0 0 20px 0;">Ciao,</p>']
+    if note:
+        rows.append(f'<p style="margin:0 0 20px 0;">{html_escape.escape(note)}</p>')
+    rows.extend(
         (
-            '<p style="margin:0 0 20px 0;">Ciao,</p>',
             '<p style="margin:0 0 24px 0;">'
             "questo è il link per entrare nella tua area su rebase.</p>",
             _button(safe_link, "Entra nella tua area"),
@@ -228,6 +235,7 @@ def magic_link_mail(to: str, link: str, minutes: int) -> Mail:
             f"<p {paragraph}>Noi di rebase</p>",
         )
     )
+    body = "\n".join(rows)
     return Mail(
         to=to,
         subject="Il tuo accesso a rebase",

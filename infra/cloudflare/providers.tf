@@ -8,8 +8,10 @@
 #   export TF_VAR_orbiters_api_token=cfat_...   # joinorbiters.com, Zone:DNS:Edit
 #
 # The state is local and ignored by git (see .gitignore here). The import blocks in
-# `*-imports.tf` make it reproducible from nothing: `terraform init && terraform apply`
-# on a fresh clone reads the twenty-one records into a new state without changing any.
+# `*-imports.tf` make it reproducible from nothing: `rebase.tf` and `orbiters.tf`
+# declare twenty-three records, and on a fresh clone `terraform init && terraform
+# apply` reads the twenty-two that carry an import block into a new state without
+# changing any (the gap is the joinorbiters.com verification TXT; see README.md).
 
 terraform {
   required_version = ">= 1.5"

@@ -24,7 +24,7 @@ from pigrocrm.core.tenants.database import (
 from pigrocrm.core.validation import SafeStr
 from pigrocrm_api.deps import ACCESS_COOKIE, REFRESH_COOKIE, ActorDep, SessionDep, SettingsDep
 from pigrocrm_api.errors import PROBLEM_RESPONSES
-from pigrocrm_api.ratelimit import TOO_MANY_REQUESTS_RESPONSE, spend_one
+from pigrocrm_api.ratelimit import LOGIN_REQUESTS_PER_MINUTE, TOO_MANY_REQUESTS_RESPONSE, spend_one
 from pigrocrm_api.sessions import (  # noqa: F401 - get_sender is the override seam
     SenderDep,
     get_sender,
@@ -138,7 +138,11 @@ def _clear_other_jars(response: Response, request: Request, settings: Settings) 
         response.delete_cookie(REFRESH_COOKIE, path=path)
 
 
-@router.post("/login", response_model=UserRead, responses={401: _LOGIN_UNAUTHORIZED_RESPONSE})
+@router.post(
+    "/login",
+    response_model=UserRead,
+    responses={401: _LOGIN_UNAUTHORIZED_RESPONSE, 429: TOO_MANY_REQUESTS_RESPONSE},
+)
 def login(
     payload: LoginRequest,
     request: Request,
@@ -146,6 +150,12 @@ def login(
     session: SessionDep,
     settings: SettingsDep,
 ) -> UserRead:
+    # On its own budget (`LOGIN_REQUESTS_PER_MINUTE`), before the argon2 verify below,
+    # not after: unauthenticated and unthrottled otherwise, so a script could run the
+    # library's own 64 MiB, time-cost-3 hash at line rate. Running this first is what
+    # stops that cost from being paid at all past the budget, not merely what
+    # attaches a message to a request already paid for (REB-270).
+    spend_one(request, scope="login", per_minute=LOGIN_REQUESTS_PER_MINUTE)
     # Same message regardless of which of the three the domain layer detected (unknown
     # email, wrong password, deactivated user) -- UserService.authenticate already
     # raises one identical ValidationFailed for all three, on purpose, so there is

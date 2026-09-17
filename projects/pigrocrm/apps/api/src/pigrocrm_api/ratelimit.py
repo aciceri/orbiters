@@ -25,6 +25,15 @@ REQUESTS_PER_MINUTE = 5
 # needs (REB-228) -- five hesitations while naming a business is not a scripted sweep.
 # A generous ceiling on a read-only lookup that sends no mail and provisions nothing.
 DISPONIBILE_REQUESTS_PER_MINUTE = 30
+# `POST /api/auth/login` gets its own budget rather than sharing `REQUESTS_PER_MINUTE`:
+# it is the one route whose cost per failed attempt is not just wasted mail or a
+# wasted provision but a full argon2id verify at the library's own defaults (64 MiB,
+# time cost 3, `auth/passwords.py`), so tying it to the signup routes' bucket would
+# let a script guessing a password also burn the tokens a person mistyping a signup
+# field needs, and vice versa. Ten, not five: a person locked out by a typo gets two
+# tries at recovering their own password before the wait, still nowhere near enough
+# attempts a minute to make guessing worthwhile (REB-270).
+LOGIN_REQUESTS_PER_MINUTE = 10
 RETRY_AFTER_SECONDS = 60
 # Bounds the table: an attacker who varies `X-Forwarded-For` on every request must not
 # be able to grow it without limit. Full buckets (clients that have gone quiet) are
@@ -110,7 +119,8 @@ def spend_one(request: Request, *, scope: str = "", per_minute: int = REQUESTS_P
 
 
 # Documents the 429 `spend_one` raises above, for the routes that call it
-# (`POST /api/auth/link`, `GET /api/tenants/{slug}/disponibile`, REB-228): a plain
+# (`POST /api/auth/link`, `GET /api/tenants/{slug}/disponibile`, REB-228;
+# `POST /api/auth/login`, REB-270): a plain
 # `HTTPException`, `application/json`, never `application/problem+json`
 # (`pigrocrm_api.errors.PROBLEM_RESPONSES` would misdocument the content type -- the
 # same reason auth.py's own `_UNAUTHENTICATED_RESPONSE` cannot reuse it for 401).

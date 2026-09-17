@@ -12,7 +12,7 @@ from pigrocrm.core.config import Settings, get_settings
 from pigrocrm.core.errors import NotFound
 from pigrocrm_api.deps import ACCESS_COOKIE, REFRESH_COOKIE, get_session
 from pigrocrm_api.main import create_app
-from pigrocrm_api.ratelimit import REQUESTS_PER_MINUTE
+from pigrocrm_api.ratelimit import LOGIN_REQUESTS_PER_MINUTE, REQUESTS_PER_MINUTE
 
 CREDENTIALS = {"email": "admin@pigro.it", "password": "supersegreta1"}
 
@@ -114,6 +114,47 @@ def test_login_by_a_deactivated_user_is_401(client: TestClient, api_session: Ses
         json={"email": "disattivato@pigro.it", "password": "supersegreta1"},
     )
     assert response.status_code == 401
+
+
+def test_login_is_throttled_per_client_before_the_password_is_checked(
+    client: TestClient, admin_user, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`spend_one` runs before `UserService.authenticate`, so the request past the
+    budget never pays for the argon2 verify at all -- the whole point of REB-270,
+    which exists because that verify is a 64 MiB, time-cost-3 hash anyone could
+    trigger at line rate. Wrapping `authenticate` with a counter, rather than trusting
+    the 401/429 split alone, is what actually proves that: a limiter placed after the
+    verify but before the 401 raise would produce the exact same responses while
+    paying for the hash on every one of the eleven attempts. On its own budget, not
+    `REQUESTS_PER_MINUTE`'s five: this loop runs `LOGIN_REQUESTS_PER_MINUTE` (ten)
+    attempts, which would already be a 429 on a shared bucket with the signup
+    routes."""
+    calls = 0
+    real_authenticate = UserService.authenticate
+
+    def counting_authenticate(self: UserService, email: str, password: str) -> object:
+        nonlocal calls
+        calls += 1
+        return real_authenticate(self, email, password)
+
+    monkeypatch.setattr(UserService, "authenticate", counting_authenticate)
+
+    for _ in range(LOGIN_REQUESTS_PER_MINUTE):
+        response = client.post("/api/auth/login", json={**CREDENTIALS, "password": "sbagliata"})
+        assert response.status_code == 401, response.text
+    refused = client.post("/api/auth/login", json={**CREDENTIALS, "password": "sbagliata"})
+    assert refused.status_code == 429, refused.text
+    assert refused.headers["Retry-After"] == "60"
+    assert calls == LOGIN_REQUESTS_PER_MINUTE
+    # Another client has its own bucket, still under budget -- 401 like the rest, not
+    # the 429 this client's own bucket would now give it.
+    other = client.post(
+        "/api/auth/login",
+        json={**CREDENTIALS, "password": "sbagliata"},
+        headers={"X-Real-IP": "10.0.0.7"},
+    )
+    assert other.status_code == 401, other.text
+    assert calls == LOGIN_REQUESTS_PER_MINUTE + 1
 
 
 def test_login_failures_are_byte_identical_regardless_of_cause(

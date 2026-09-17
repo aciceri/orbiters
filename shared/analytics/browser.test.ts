@@ -91,13 +91,21 @@ describe('on a real host', () => {
     expect(init.mock.calls[0]?.[1]).not.toHaveProperty('internal_or_test_user_hostname')
   })
 
-  it('masks every text node only when asked, which is what the CRM asks', () => {
+  it('masks every text node, every replay attribute and every autocapture property only when asked (REB-274)', () => {
     initAnalytics({ hostname: 'pigro.letsrebase.com', maskText: true })
-    expect(init.mock.calls[0]?.[1]?.session_recording?.maskTextSelector).toBe('*')
+    const config = init.mock.calls[0]?.[1]
+    expect(config?.session_recording?.maskTextSelector).toBe('*')
+    expect(config?.session_recording?.maskAllElementAttributes).toBe(true)
+    expect(config?.mask_all_text).toBe(true)
+    expect(config?.mask_all_element_attributes).toBe(true)
     vi.clearAllMocks()
     __resetAnalyticsForTests()
     initAnalytics({ hostname: 'letsrebase.com' })
-    expect(init.mock.calls[0]?.[1]?.session_recording).not.toHaveProperty('maskTextSelector')
+    const withoutMaskText = init.mock.calls[0]?.[1]
+    expect(withoutMaskText?.session_recording).not.toHaveProperty('maskTextSelector')
+    expect(withoutMaskText?.session_recording).not.toHaveProperty('maskAllElementAttributes')
+    expect(withoutMaskText).not.toHaveProperty('mask_all_text')
+    expect(withoutMaskText).not.toHaveProperty('mask_all_element_attributes')
   })
 
   it('stays silent, and lets the page render, when the SDK throws on init', () => {

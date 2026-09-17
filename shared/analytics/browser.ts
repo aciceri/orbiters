@@ -54,9 +54,17 @@ const scrubTrackingToken: BeforeSendFn = (result) => {
 
 export interface AnalyticsOptions {
   /**
-   * Mask every text node in a recording, not only the inputs. The CRM sets this: a
-   * replay must show where a person clicks and stops, never an invoice amount or a
-   * customer's name. The hub's wizards are forms, so masking the inputs is enough.
+   * Mask every text node and every DOM attribute in a recording, and stop autocapture
+   * from sending an element's text or attributes as event properties -- not only the
+   * inputs a replay masks by default. Three separate PostHog switches, none a subset
+   * of another: `session_recording.maskTextSelector` hides replay's own text nodes,
+   * `session_recording.maskAllElementAttributes` hides replay's `href`/`src`/`class`
+   * (a masked `mailto:` link's text without this still shows the address in its
+   * `href`), and the top-level `mask_all_text`/`mask_all_element_attributes` stop
+   * autocapture's click/change events from carrying `$el_text` and `attr__href` as
+   * ordinary, searchable properties -- a path replay's own masking never touches.
+   * Both surfaces set this now: the CRM for invoices and customer names, the hub
+   * (REB-274) for the admin area's candidate and company data.
    */
   maskText?: boolean
   /** The hostname to decide on; defaults to the page's own. Tests pass one. */
@@ -80,9 +88,10 @@ export function initAnalytics(options: AnalyticsOptions = {}): boolean {
       person_profiles: 'identified_only',
       capture_pageview: 'history_change',
       autocapture: true,
+      ...(options.maskText ? { mask_all_text: true, mask_all_element_attributes: true } : {}),
       session_recording: {
         maskAllInputs: true,
-        ...(options.maskText ? { maskTextSelector: '*' } : {}),
+        ...(options.maskText ? { maskTextSelector: '*', maskAllElementAttributes: true } : {}),
       },
       before_send: scrubTrackingToken,
     })

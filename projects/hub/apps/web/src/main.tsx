@@ -13,10 +13,13 @@ import './styles/tokens.css'
 // itself (REB-273). A no-op on every other route.
 stripEntraToken()
 
-// Before the first render, so the router's first entry is the first pageview. Inputs
-// only are masked in a recording: the wizards are forms, and the privacy page says the
-// hub records pages, clicks and sessions of the signed-in person.
-initAnalytics()
+// Once, before anything renders: `initAnalytics` decides on the hostname whether this
+// page is measured at all (nothing on localhost), and every wrapper after it is a
+// no-op until it has. Every text in a replay is masked, not only the inputs (REB-274):
+// the wizards are forms, but the admin area renders every freelancer's and company's
+// name, email, rate and links as plain text, and a recording of an admin browsing it
+// is a copy of the candidate database at a third party otherwise.
+initAnalytics({ maskText: true })
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } })
 

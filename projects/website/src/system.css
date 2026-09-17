@@ -15,6 +15,49 @@
   --system-cell: 16px;
 }
 
+/* A stand-in for Outfit while it loads (REB-267): `font-display: swap` on the real
+   @font-face (shared/brand/font.css) already avoids invisible text, but the swap
+   itself still reflows every line under it, because the reader's own `sans-serif`
+   has a different average glyph width and a different ascent/descent than Outfit.
+   `termini.html` measured 0.165 of CLS from exactly that swap on its one paragraph,
+   and the same swap reflows the hero conversation on `pigrocrm.html` (measured: the
+   chat figure renders 24px taller with the fallback active than with Outfit loaded,
+   at a 390px viewport). The descriptors below give a *fallback* font Outfit's own
+   box, so the swap changes the letterforms without changing the line height:
+   `size-adjust` scales the fallback so its average character width
+   (xAvgCharWidth/unitsPerEm) matches Outfit's, then `ascent-override` and
+   `descent-override` restate Outfit's own ascent/descent (both /unitsPerEm) against
+   that scaled-down em, so the vertical box matches too. Values computed with
+   fontTools against `shared/brand/fonts/outfit-variable-latin.woff2`, instanced at
+   weight 300 (`body`'s own `font-weight`, not the variable font's default 100
+   instance: Outfit's `xAvgCharWidth` moves from 555 to 564 between those two, and
+   `body` never renders the lighter one) and
+   `/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf`: Liberation
+   Sans, not Noto Sans, because `local()` matches a font's full name or PostScript
+   name, never its family name alone, and Chrome resolves nothing for `local('Noto
+   Sans')` (its full name is "Noto Sans Regular") -- confirmed by rebuilding and
+   re-running Lighthouse, which reported the pre-fix CLS unchanged until this was
+   fixed. Liberation Sans's full name is "Liberation Sans" (matches its family
+   name), it is designed to be advance-width-compatible with Arial, and it is what
+   `fc-match Arial` resolves to on this box, so calibrating against it also serves
+   an Arial-only reader reasonably well without measuring a font this repository
+   does not have. Outfit's 564/1000 em average width over Liberation Sans's
+   1187/2048 gives size-adjust 97.31%; Outfit's ascent 1000/1000 and descent
+   260/1000 (no line gap, unchanged across weights) divided by that ratio give the
+   two overrides. `local()` never fetches a font, so this costs nothing on a system
+   with neither name installed: `--font-sans` still falls through to its own
+   `ui-sans-serif, system-ui, sans-serif`, exactly as before. */
+@font-face {
+  font-family: 'Outfit Fallback';
+  src:
+    local('Liberation Sans'),
+    local('Arial');
+  size-adjust: 97.31%;
+  ascent-override: 102.76%;
+  descent-override: 26.72%;
+  line-gap-override: 0%;
+}
+
 /* Four tiles, one of them the accent: the wordmark is the field, at glyph scale. */
 .glyph {
   width: 6px;

@@ -155,7 +155,10 @@
   display: inline-block;
   background: var(--landing-ink);
   color: #ffffff;
-  font-family: var(--font-sans);
+  /* Overriding the monospace parent back to the body's sans stack, so it needs the
+     same fallback stage that stack now carries (REB-267), or this badge would be
+     the one run of text on the page still swapping unmatched. */
+  font-family: 'Outfit', 'Outfit Fallback', var(--font-sans);
   font-weight: 500;
   font-size: 0.75rem;
   padding: 0.1rem 0.45rem;

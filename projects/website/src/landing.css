@@ -62,7 +62,11 @@ body {
     linear-gradient(to bottom, var(--landing-grid) 1px, transparent 1px);
   background-size: var(--landing-cell) var(--landing-cell);
   color: var(--landing-ink);
-  font-family: var(--font-sans);
+  /* 'Outfit Fallback' (system.css) sits between the real font and the stack
+     `--font-sans` ends in: metric-matched to Outfit, so the swap once it loads
+     reflows nothing under it (REB-267). Repeats 'Outfit' rather than forking
+     `--font-sans`'s own tail: harmless, the browser skips an already-tried name. */
+  font-family: 'Outfit', 'Outfit Fallback', var(--font-sans);
   font-weight: 300;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;

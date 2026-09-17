@@ -91,7 +91,7 @@ describe('on a real host', () => {
     expect(init.mock.calls[0]?.[1]).not.toHaveProperty('internal_or_test_user_hostname')
   })
 
-  it('masks every text node only when asked, which is what the CRM asks', () => {
+  it('masks every text node only when asked, which the CRM and the hub both ask for (REB-274)', () => {
     initAnalytics({ hostname: 'pigro.letsrebase.com', maskText: true })
     expect(init.mock.calls[0]?.[1]?.session_recording?.maskTextSelector).toBe('*')
     vi.clearAllMocks()

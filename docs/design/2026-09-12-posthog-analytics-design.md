@@ -147,6 +147,15 @@ the browser's own distinct id (posted with the application) and with
 seven profiles reached the hub with no browser event at all. `wizard_completato` stays
 as the client-side funnel's last step; the server event is what counts completions.
 
+**Amended 2026-09-17 (REB-274).** «Replay with inputs masked (the wizards are forms)»
+stopped holding the day the admin area shipped: it renders every freelancer's and
+company's name, email, rate, LinkedIn URL and links as plain text, and autocapture on
+a clicked `mailto:` or LinkedIn anchor records the address in `attr__href`. The hub now
+asks `initAnalytics({ maskText: true })`, the same as the CRM: every text is masked, not
+only the inputs. The wizard funnel events (`wizard_iniziato`, `wizard_passo`,
+`wizard_completato`) are unaffected, since they are explicit `capture` calls, not
+replay or autocapture.
+
 ## The CRM's MCP server (ORB-186)
 
 `posthog` (the Python SDK, 7.40 or later, which knows `mcp` 2.x and `MCPServer`) as a

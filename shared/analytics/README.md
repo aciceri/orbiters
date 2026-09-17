@@ -6,7 +6,7 @@ SPAs initialise it with. Design: `docs/design/2026-09-12-posthog-analytics-desig
 | File | What it holds | Who reads it |
 |---|---|---|
 | `posthog.ts` | The project key, the EU ingestion and asset hosts, which hostnames are silent (localhost, the test runners) and which are internal (the previews) | The CRM and the hub through `browser.ts`; the website's `pixel.test.ts`, which compares the literals `consent.js` carries with these |
-| `browser.ts` | `initAnalytics`, `identifyUser`, `identifyGroup`, `capture`, `resetUser` on top of `posthog-js`: pageviews on history change, autocapture, replay with inputs masked (and every text, for the CRM), anonymous until a login, no-ops when the page is silent | `projects/pigrocrm/apps/web/src/main.tsx`, `projects/hub/apps/web/src/main.tsx` |
+| `browser.ts` | `initAnalytics`, `identifyUser`, `identifyGroup`, `capture`, `resetUser` on top of `posthog-js`: pageviews on history change, autocapture, replay with inputs masked and, when a surface asks (`maskText`, both do since REB-274), every text, attribute and autocapture property too, anonymous until a login, no-ops when the page is silent | `projects/pigrocrm/apps/web/src/main.tsx`, `projects/hub/apps/web/src/main.tsx` |
 
 ## Why a package rather than a constant in each project
 

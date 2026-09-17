@@ -40,9 +40,10 @@ the one value every surface must agree on. The package holds:
   `localhost`) never send an event.
 - `browser.ts`: the one `initAnalytics(...)` the two SPAs call, on top of `posthog-js`.
   It applies the shared policy (pageviews on history change, autocapture, replay with
-  inputs masked, the CRM adds text masking, `person_profiles: 'identified_only'`,
-  preview marked as internal) and exposes `identifyUser`, `identifyGroup`,
-  `resetUser` and `capture` as thin wrappers that are no-ops when analytics is off.
+  inputs masked, `maskText` for every text/attribute/autocapture property on request
+  (both surfaces ask, REB-274), `person_profiles: 'identified_only'`, preview marked as
+  internal) and exposes `identifyUser`, `identifyGroup`, `resetUser` and `capture` as
+  thin wrappers that are no-ops when analytics is off.
 
 The website does not import the package at runtime (see below). Its literal copy of the
 key and hosts in `consent.js` is compared with the package's exports by
@@ -149,12 +150,15 @@ as the client-side funnel's last step; the server event is what counts completio
 
 **Amended 2026-09-17 (REB-274).** «Replay with inputs masked (the wizards are forms)»
 stopped holding the day the admin area shipped: it renders every freelancer's and
-company's name, email, rate, LinkedIn URL and links as plain text, and autocapture on
-a clicked `mailto:` or LinkedIn anchor records the address in `attr__href`. The hub now
-asks `initAnalytics({ maskText: true })`, the same as the CRM: every text is masked, not
-only the inputs. The wizard funnel events (`wizard_iniziato`, `wizard_passo`,
-`wizard_completato`) are unaffected, since they are explicit `capture` calls, not
-replay or autocapture.
+company's name, email, rate, LinkedIn URL and links as plain text, and a `mailto:` or
+LinkedIn anchor's own `href` carries the address regardless of what its text shows.
+The hub now asks `initAnalytics({ maskText: true })`, the same as the CRM, which
+`browser.ts` turns into three separate PostHog switches: `session_recording`'s
+`maskTextSelector`/`maskAllElementAttributes` (replay's own text and DOM attributes)
+and the top-level `mask_all_text`/`mask_all_element_attributes` (autocapture's
+`$el_text`/`attr__href` properties, a path replay's own masking never reaches). The
+wizard funnel events (`wizard_iniziato`, `wizard_passo`, `wizard_completato`) are
+unaffected, since they are explicit `capture` calls, neither replay nor autocapture.
 
 ## The CRM's MCP server (ORB-186)
 

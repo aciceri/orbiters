@@ -156,6 +156,10 @@ def login(
     # stops that cost from being paid at all past the budget, not merely what
     # attaches a message to a request already paid for (REB-270).
     spend_one(request, scope="login", per_minute=LOGIN_REQUESTS_PER_MINUTE)
+    # Same message regardless of which of the three the domain layer detected (unknown
+    # email, wrong password, deactivated user) -- UserService.authenticate already
+    # raises one identical ValidationFailed for all three, on purpose, so there is
+    # nothing here that could distinguish them even if this wanted to.
     try:
         user = UserService(session).authenticate(payload.email, payload.password)
     except ValidationFailed as exc:

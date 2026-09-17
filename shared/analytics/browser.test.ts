@@ -124,7 +124,7 @@ describe('on a real host', () => {
 })
 
 describe('the magic-link token scrubber', () => {
-  it('removes t from $current_url, $initial_current_url and $referrer, and keeps every other param', () => {
+  it('removes t from $current_url and $referrer in properties, and keeps every other value', () => {
     initAnalytics({ hostname: 'letsrebase.com' })
     const beforeSend = init.mock.calls[0]?.[1]?.before_send as (
       result: CaptureResult | null,
@@ -134,16 +134,33 @@ describe('the magic-link token scrubber', () => {
       event: '$pageview',
       properties: {
         $current_url: 'https://letsrebase.com/hub/entra?t=abc&x=1',
-        $initial_current_url: 'https://letsrebase.com/hub/entra?t=abc&x=1',
         $referrer: 'https://letsrebase.com/hub/entra?t=abc&x=1',
+        x: 1,
       },
     })
     expect(scrubbed?.properties.$current_url).toBe('https://letsrebase.com/hub/entra?x=1')
-    expect(scrubbed?.properties.$initial_current_url).toBe('https://letsrebase.com/hub/entra?x=1')
     expect(scrubbed?.properties.$referrer).toBe('https://letsrebase.com/hub/entra?x=1')
+    expect(scrubbed?.properties.x).toBe(1)
   })
 
-  it('is a no-op on an event with none of those properties, and on a null result', () => {
+  it('removes t from $initial_current_url in $set_once, where posthog-js actually puts it', () => {
+    // Not a `properties` member: posthog-js computes it once, from the first pageview
+    // this browser ever sent, and carries it as a person `$set_once` value, a sibling
+    // of `properties` on the capture result.
+    initAnalytics({ hostname: 'letsrebase.com' })
+    const beforeSend = init.mock.calls[0]?.[1]?.before_send as (
+      result: CaptureResult | null,
+    ) => CaptureResult | null
+    const scrubbed = beforeSend({
+      uuid: 'ev1',
+      event: '$pageview',
+      properties: {},
+      $set_once: { $initial_current_url: 'https://letsrebase.com/hub/entra?t=abc&x=1' },
+    })
+    expect(scrubbed?.$set_once?.$initial_current_url).toBe('https://letsrebase.com/hub/entra?x=1')
+  })
+
+  it('is a no-op on an event with none of those properties, on an event with no $set_once, and on a null result', () => {
     initAnalytics({ hostname: 'letsrebase.com' })
     const beforeSend = init.mock.calls[0]?.[1]?.before_send as (
       result: CaptureResult | null,
@@ -151,5 +168,6 @@ describe('the magic-link token scrubber', () => {
     expect(beforeSend(null)).toBeNull()
     const untouched = beforeSend({ uuid: 'ev2', event: 'cliente_creato', properties: { via: 'ui' } })
     expect(untouched?.properties).toEqual({ via: 'ui' })
+    expect(untouched?.$set_once).toBeUndefined()
   })
 })

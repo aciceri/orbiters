@@ -10,6 +10,7 @@ import {
 import { render, screen } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { stripEntraToken, takeEntraToken } from '@/lib/entra-token'
 import { Entra } from './Entra'
 
 function answer(status: number, body: unknown) {
@@ -57,7 +58,13 @@ function mount(path: string, { strict = false }: { strict?: boolean } = {}) {
   render(strict ? <StrictMode>{tree}</StrictMode> : tree)
 }
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  // Whatever a test left behind in the browser's own URL and in the module's
+  // one-shot slot, so the next test's `?? fromSearch` fallback starts clean.
+  window.history.replaceState(null, '', '/')
+  takeEntraToken()
+})
 
 describe('/entra', () => {
   it('posts the token from the URL once and goes to the area', async () => {
@@ -82,6 +89,20 @@ describe('/entra', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, PROFILE))
     mount('/entra?t=abc-123_XYZ', { strict: true })
     await screen.findByRole('heading', { name: 'La tua area' })
+  })
+
+  it('posts the token stripEntraToken already took out of the URL, not only the search-param fallback', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, PROFILE))
+    window.history.replaceState(null, '', '/hub/entra?t=abc-123_XYZ')
+    stripEntraToken()
+    // The router mounts at a clean path with no `t`: the only way the token reaches
+    // `mutateAsync` is `takeEntraToken()`'s one-shot read, under StrictMode's double
+    // invoke of the `useState` initialiser.
+    mount('/entra', { strict: true })
+    await screen.findByRole('heading', { name: 'La tua area' })
+    const enterCalls = fetchSpy.mock.calls.filter(([url]) => url === '/api/hub/auth/enter')
+    expect(enterCalls).toHaveLength(1)
+    expect(enterCalls[0]![1]).toMatchObject({ method: 'POST', body: JSON.stringify({ token: 'abc-123_XYZ' }) })
   })
 
   it('shows the API message and a retry on a 429, not the dead-link sentence', async () => {

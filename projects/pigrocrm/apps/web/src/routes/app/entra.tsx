@@ -22,6 +22,14 @@ async function homeAfterEntry(): Promise<string> {
  * link (spent, expired, made up) shows the API's sentence and the way back to the login,
  * where another one can be asked.
  *
+ * The first thing the mount does, before the token is even spent, is drop `t` from the
+ * visible URL with `history.replaceState` (REB-229): the mail link is a GET, so without
+ * this the token sits in the browser's history and in any `Referer` a link on this page
+ * would send, for as long as that history entry exists -- well past the token's own
+ * 15-minute, single-use life. `replaceState`, not `pushState`: this page has no back
+ * button of its own to preserve, and a second history entry would only let "back" return
+ * here.
+ *
  * `go` is injectable because jsdom does not let a test spy on `window.location.assign`.
  * The token is spent once per mount, however often the page re-renders.
  */
@@ -42,6 +50,11 @@ export function EnterPage({
   useEffect(() => {
     if (started.current) return
     started.current = true
+    const url = new URL(window.location.href)
+    if (url.searchParams.has('t')) {
+      url.searchParams.delete('t')
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+    }
     void (async () => {
       try {
         await enterWithLink(token)

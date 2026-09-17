@@ -75,10 +75,10 @@ the variable font from google/fonts, pinned to the commit the SVGs were drawn fr
 refused unless it checksums to `FONT_SHA256`, instances the weight, shapes the word
 through HarfBuzz so the kerning is the font's own, and rewrites all four SVGs. Never
 hand-edit an SVG: the next run would silently undo it, and the `wordmark` check in
-`.github/preflight.json` runs `--check` on every pull request touching
-`shared/brand/**`, failing while it stands, byte for byte, without writing anything.
-The source font is not committed, because nothing serves it and the artefacts are the
-files it produces.
+`.github/preflight.json` reruns `--check` locally, before the push, on any diff
+touching `shared/brand/**`, failing while it stands, byte for byte, without writing
+anything. The source font is not committed, because nothing serves it and the
+artefacts are the files it produces.
 
 ## The echo logo
 

@@ -130,7 +130,7 @@
       "when": [
         "shared/brand/**"
       ],
-      "why": "wordmark.svg, lockup.svg, wordmark-paper.svg and lockup-paper.svg are drawn from the constants at the top of tools/build-wordmark.py and committed rather than built by either surface, so nothing else notices a hand edit or a redraw that never ran. This reruns the script with --check, which needs the network for the pinned font unless the tempdir cache is warm, and compares the bytes it would write against what is on disk. It is what makes committing the four generated SVGs safe: a source edited without a regeneration fails here rather than leaving four files that say something the repository no longer draws."
+      "why": "wordmark.svg, lockup.svg, wordmark-paper.svg and lockup-paper.svg are drawn from the constants at the top of tools/build-wordmark.py and committed rather than built by either surface, so nothing else notices a hand edit or a redraw that never ran. This reruns the script with --check, which needs the network for the pinned font unless the tempdir cache is warm, and for the two PEP 723 packages it declares (fonttools, uharfbuzz) unless uv's own cache is warm, and compares the bytes it would write against what is on disk. It is what makes committing the four generated SVGs safe: a source edited without a regeneration fails here rather than leaving four files that say something the repository no longer draws."
     },
     {
       "id": "website-build",

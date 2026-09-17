@@ -5,7 +5,8 @@
   "type": "module",
   "description": "The palette, the typeface, the four-tile mark and the wordmark, shared by every surface.",
   "scripts": {
-    "build:echo": "node tools/build-echo.mjs"
+    "build:echo": "node tools/build-echo.mjs",
+    "build:wordmark": "uv run tools/build-wordmark.py"
   },
   "exports": {
     "./palette.css": "./palette.css",

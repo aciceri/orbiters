@@ -35,13 +35,13 @@ made better with no new capability; `chore` is maintenance with no change in beh
 `docs` is documentation that stands on its own. `test`, `ci`, `design`, `security` and
 `spike` mean what their names say.
 
-The projects on the board, read with `list_projects` on 2026-09-16. This table is a
+The projects on the board, read with `list_projects` on 2026-09-16 and 2026-09-17. This table is a
 snapshot and the board is the authority: `list_projects` with `team: "rebase"`, which
 answers completed projects too, is what to trust when the two disagree. Opening or closing
 a project is a board action with no PR of its own, so whoever does it adds or updates the
 row here, in the PR that ships the release or in one of its own.
 
-| Initiative | Project | Lead | State on 2026-09-16 |
+| Initiative | Project | Lead | State on 2026-09-17 |
 |---|---|---|---|
 | `PigroCRM` | `PigroCRM v1 - first deploy from CI, with green gates` | Ivan | In Progress |
 | `PigroCRM` | `PigroCRM v2 - a space is born ready, and you enter with your email` | Ivan | In Progress, opened 2026-09-12 |
@@ -54,12 +54,27 @@ row here, in the PR that ships the release or in one of its own.
 | `Monorepo` | `Monorepo hygiene v1 - CI cost, licence and the English rule` | Lorenzo | Completed, 2026-09-10 |
 | `Monorepo` | `Rebrand v2 - orbiters leaves the code` | Lorenzo | Completed, 2026-09-16 (opened 2026-09-15) |
 | `Monorepo` | `Code audit v1 - what five read-only reviewers found on the trunk` | Lorenzo | In Progress, opened 2026-09-16 |
+| `Hub` | `Hub v2 - one hub, and an admin is a member with one more section` | Lorenzo | Planned, opened 2026-09-17 |
+| `PigroCRM` | `PigroCRM v3 - a space has a team` | Lorenzo | Planned, opened 2026-09-17 |
+| `Monorepo` | `Shared UI v1 - the hub and the CRM look like the site` | Lorenzo | Planned, opened 2026-09-17 |
 
 `Monorepo hygiene v1` was where repository-wide work that belongs to no product went
 (CI cost, the licence, this page). It is closed, and nothing has replaced it: a
 repository-wide issue that fits no open `Monorepo` project is filed with no project,
 which is what REB-131 and REB-136 did, until somebody opens a `Monorepo hygiene v2` with
 a scope it can reach.
+
+**The plan cap counts every issue that is not archived, whatever its state.** The
+workspace is on Linear's Free plan, 250 issues, and `save_issue` answers `You've exceeded
+the free issue limit` past it. A Done issue keeps counting until it is archived, the team's
+auto-archive period is six months, and an issue inside a project that is still open never
+archives before that. On 2026-09-17 the board stood at 275 while the three projects above
+were being filed; the 69 terminal issues (Done, Canceled, Duplicate) that sat in a
+Completed project or in no project were archived by hand through the API, which is what
+Linear would have done in six months and is undone from the archive view, and the count
+went to 206. Before a bulk filing, read `teams { issueCount }` and, when there is no room,
+archive terminal issues of Completed projects. Never delete an issue to make room: an
+archived issue keeps its URL, its comments and its links, a deleted one does not.
 
 Every project always carries a lead and both members, Lorenzo and Ivan, no matter who
 leads it. A project created without a lead or without both members is incomplete, and

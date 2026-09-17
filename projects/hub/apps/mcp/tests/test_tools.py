@@ -100,7 +100,7 @@ async def test_the_admin_tools_read_and_move_a_candidate_without_the_cv(
 
     session = factory()
     try:
-        row = FreelancerService(session).apply(
+        row, _ = FreelancerService(session).apply(
             FreelancerCreate(
                 nome="Ada",
                 cognome="Lovelace",
@@ -175,7 +175,7 @@ def _seed_freelancer(factory: sessionmaker[Session]) -> str:
 
     session = factory()
     try:
-        row = FreelancerService(session).apply(
+        row, _ = FreelancerService(session).apply(
             FreelancerCreate(
                 nome="Ada",
                 cognome="Lovelace",
@@ -346,7 +346,7 @@ async def test_the_cv_is_read_as_text_and_a_card_without_one_answers_a_sentence(
 
     session = factory()
     try:
-        with_cv = FreelancerService(session).apply(
+        with_cv, _ = FreelancerService(session).apply(
             FreelancerCreate(
                 nome="Ada",
                 cognome="Lovelace",

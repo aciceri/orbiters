@@ -72,11 +72,10 @@ def members(hub_engine: Engine, hub_session: Session) -> MemberService:
 
 
 def _apply(session: Session, email: str = "ada@studio.it") -> UUID:
-    return (
-        FreelancerService(session)
-        .apply(FreelancerCreate(**GOOD, email=email), PDF, "Ada CV.pdf", "application/pdf")
-        .id
+    read, _ = FreelancerService(session).apply(
+        FreelancerCreate(**GOOD, email=email), PDF, "Ada CV.pdf", "application/pdf"
     )
+    return read.id
 
 
 def _token_from(mail_text: str) -> str:
@@ -252,7 +251,7 @@ def test_a_wizard_card_that_came_without_a_cv_is_completed_from_the_area(
     theirs already, it is simply not `completa`, and the upload here is what finishes
     it. The same ending as a card an admin drafted, from the other beginning."""
     freelancer_id = (
-        FreelancerService(hub_session).apply(FreelancerCreate(**GOOD, email="ada@studio.it")).id
+        FreelancerService(hub_session).apply(FreelancerCreate(**GOOD, email="ada@studio.it"))[0].id
     )
     assert members.profile(freelancer_id).completa is False
     with pytest.raises(NotFound):

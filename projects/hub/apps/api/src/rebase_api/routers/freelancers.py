@@ -137,16 +137,15 @@ def apply(
     # small PDF raises `ValidationFailed`, which the app's handler renders as the same
     # 422 shape as the fields above.
     service = FreelancerService(session)
-    already_on_file = service.has_email(data.email)
     if cv is None:
-        service.apply(data)
+        _, created = service.apply(data)
     else:
-        service.apply(data, cv.file.read(), cv.filename or "", cv.content_type or "")
-    if already_on_file and sender is not None:
+        _, created = service.apply(data, cv.file.read(), cv.filename or "", cv.content_type or "")
+    if not created and sender is not None:
         mail = MemberService(session, settings).request_link(data.email, note=ALREADY_HAS_CARD_NOTE)
         if mail is not None:
             background.add_task(_send_existing_card_mail, sender, mail)
-    if tracker is not None:
+    if created and tracker is not None:
         background.add_task(
             tracker.application,
             "freelance",

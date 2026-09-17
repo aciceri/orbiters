@@ -69,7 +69,13 @@ def test_an_application_is_stored_with_its_cv_and_read_back_without_the_bytes(
     assert (cv.filename, cv.mime, cv.content) == ("Ada CV.pdf", "application/pdf", PDF)
 
 
-def test_a_second_application_from_the_same_address_corrects_the_first(clean: Session) -> None:
+def test_a_second_application_from_the_same_address_leaves_the_card_unchanged(
+    clean: Session,
+) -> None:
+    """REB-272: this route is public and unauthenticated, so a second application
+    proves nothing about who is sending it. It changes nothing on the card already
+    there -- not the fields, not the status an admin set, not the CV -- and answers
+    with the same read the first application produced."""
     service = FreelancerService(clean)
     first = service.apply(_application(), PDF, "cv.pdf", "application/pdf")
     service.set_status(first.id, StatusChange(stato="contattato", note="ha risposto"))
@@ -83,13 +89,20 @@ def test_a_second_application_from_the_same_address_corrects_the_first(clean: Se
     )
     assert again.id == first.id
     assert (again.posizione, again.tariffa_giornaliera, again.cv_filename) == (
-        "Tech lead",
-        Decimal("600.00"),
-        "cv-2.pdf",
+        "Backend developer",
+        Decimal("450.00"),
+        "cv.pdf",
     )
-    # What the admin wrote survives what the person corrected.
     assert (again.stato, again.note) == ("contattato", "ha risposto")
+    assert service.cv(again.id).content == PDF
     assert clean.execute(text("SELECT count(*) FROM freelancers")).scalar() == 1
+
+
+def test_has_email_tells_apart_a_known_address_from_a_new_one(clean: Session) -> None:
+    service = FreelancerService(clean)
+    assert service.has_email("Ada@studio.it") is False
+    service.apply(_application())
+    assert service.has_email("ADA@studio.it ") is True
 
 
 @pytest.mark.parametrize(
@@ -299,14 +312,17 @@ def test_a_draft_on_an_unknown_signup_is_not_found(clean: Session) -> None:
         FreelancerService(clean).draft_from_signup(uuid4(), _draft(), "Claude")
 
 
-def test_the_wizard_takes_over_a_researched_card(clean: Session) -> None:
+def test_the_wizard_does_not_take_over_a_researched_card(clean: Session) -> None:
+    """REB-272: an admin's draft is taken over only from the member area, once the
+    person is behind their own session -- never by an unauthenticated repost to the
+    same address, which would let anyone who knows it claim the card."""
     service = FreelancerService(clean)
     signup_id = _signup(clean)
     drafted = service.draft_from_signup(signup_id, _draft(), "Claude")
     assert drafted.compilata_da == "admin"
     applied = service.apply(_application(), PDF, "Ada CV.pdf", "application/pdf")
     assert applied.id == drafted.id
-    assert applied.compilata_da == "persona" and applied.completa is True
+    assert applied.compilata_da == "admin" and applied.completa is False
 
 
 def test_an_application_without_a_cv_is_stored_and_waits_for_one(clean: Session) -> None:
@@ -331,20 +347,6 @@ def test_an_empty_cv_is_refused_while_no_cv_at_all_is_not(clean: Session) -> Non
         service.apply(_application(), b"", "cv.pdf", "application/pdf")
     assert refused.value.details["field"] == "cv"
     assert service.apply(_application()).cv_filename is None
-
-
-def test_a_second_application_without_a_cv_keeps_the_one_already_stored(
-    clean: Session,
-) -> None:
-    """Somebody refreshing their answers from the wizard is not somebody deleting their
-    CV: the row keeps the bytes, and everything else is corrected as usual."""
-    service = FreelancerService(clean)
-    first = service.apply(_application(), PDF, "Ada CV.pdf", "application/pdf")
-    again = service.apply(_application(posizione="Tech lead"))
-    assert again.id == first.id
-    assert (again.cv_filename, again.cv_size) == ("Ada CV.pdf", len(PDF))
-    assert again.posizione == "Tech lead"
-    assert service.cv(again.id).content == PDF
 
 
 def test_a_card_without_a_cv_has_none_to_download(clean: Session) -> None:

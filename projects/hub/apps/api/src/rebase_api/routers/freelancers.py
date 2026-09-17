@@ -5,7 +5,12 @@ Multipart, because the CV is a file: the fields arrive as form values and the PD
 later from their area. Everything is validated by `FreelancerCreate` and `check_cv`
 exactly as the MCP server would validate it, so the two adapters cannot accept
 different things. Public, rate-limited, and mute like the signup: the answer is
-`{"ok": true}` whether this was a first application or a correction of one.
+`{"ok": true}` whether this was a first application or a repeat of one.
+
+An address already on file gets nothing overwritten by this route (REB-272): it is
+unauthenticated, so a second post cannot prove who is sending it. Instead the person
+gets the same magic-link mail `/auth/link` sends, with one more sentence, so they land
+in their own area to make the change themselves.
 
 The completion is reported to PostHog from here, after the answer, as a background
 task (`rebase_core.analytics`, REB-215): the browser's own event is the one an ad
@@ -13,6 +18,7 @@ blocker eats, and `distinct_id` -- the id the browser's SDK carries, when it was
 allowed to run -- is what lands the two halves on the same person.
 """
 
+import logging
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
@@ -28,12 +34,24 @@ from fastapi import (
 )
 from pydantic import ValidationError
 
-from rebase_api.deps import SessionDep, TrackerDep
+from rebase_api.deps import SenderDep, SessionDep, SettingsDep, TrackerDep
 from rebase_api.ratelimit import spend_one
-from rebase_core.freelancers import FreelancerService
+from rebase_core.freelancers import ALREADY_HAS_CARD_NOTE, FreelancerService
+from rebase_core.mail import EmailSender, Mail
+from rebase_core.members import MemberService
 from rebase_core.schemas import DISTINCT_ID_MAX_LENGTH, Ack, FreelancerCreate, SignupUtm
 
 router = APIRouter(prefix="/api/hub", tags=["hub"])
+
+_log = logging.getLogger(__name__)
+
+
+def _send_existing_card_mail(sender: EmailSender, mail: Mail) -> None:
+    """Runs after the response, same as `/auth/link`'s own: a refusal is logged without
+    the address or the key, since the operator needs to know the provider said no, not
+    to whom."""
+    if not sender.send(mail):
+        _log.warning("the existing-card mail was refused by the provider")
 
 
 def _decimal(value: str, field: str) -> Decimal:
@@ -64,6 +82,8 @@ def apply(
     session: SessionDep,
     background: BackgroundTasks,
     tracker: TrackerDep,
+    settings: SettingsDep,
+    sender: SenderDep,
     nome: Annotated[str, Form()],
     cognome: Annotated[str, Form()],
     email: Annotated[str, Form()],
@@ -117,10 +137,15 @@ def apply(
     # small PDF raises `ValidationFailed`, which the app's handler renders as the same
     # 422 shape as the fields above.
     service = FreelancerService(session)
+    already_on_file = service.has_email(data.email)
     if cv is None:
         service.apply(data)
     else:
         service.apply(data, cv.file.read(), cv.filename or "", cv.content_type or "")
+    if already_on_file and sender is not None:
+        mail = MemberService(session, settings).request_link(data.email, note=ALREADY_HAS_CARD_NOTE)
+        if mail is not None:
+            background.add_task(_send_existing_card_mail, sender, mail)
     if tracker is not None:
         background.add_task(
             tracker.application,

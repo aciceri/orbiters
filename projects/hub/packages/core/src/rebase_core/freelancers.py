@@ -36,6 +36,13 @@ LEAD_STATE = "lead"
 LIST_LIMIT_DEFAULT = 100
 LIST_LIMIT_MAX = 500
 PDF_MAGIC = b"%PDF-"
+# The sentence `apply` asks for in the magic-link mail sent instead of overwriting an
+# address already on file (REB-272): one more line in `magic_link_mail`'s voice, not a
+# mail of its own.
+ALREADY_HAS_CARD_NOTE = (
+    "Risulta già una scheda su rebase con questo indirizzo: la trovi e la modifichi "
+    "dalla tua area."
+)
 
 
 def check_cv(content: bytes, filename: str, mime: str) -> tuple[str, str]:
@@ -110,34 +117,36 @@ class FreelancerService:
         cv_filename: str = "",
         cv_mime: str = "",
     ) -> FreelancerRead:
-        """One row per address. A second application from the same address is the same
-        person correcting or refreshing theirs, so it overwrites what the wizard asked
-        and leaves what the admin wrote (`stato`, `note`) alone. The first attribution
-        stays, as it does for signups. A card an admin drafted from a signup (ORB-155)
-        is taken over the same way: the person's answers replace the research and the
-        card becomes theirs (`compilata_da = "persona"`).
+        """One row per address, written once. An address that already has a card is
+        the same person applying again, but this route is public and unauthenticated,
+        so from here that second application proves nothing about who is sending it
+        (REB-272): it changes nothing on the existing row -- not the profile fields,
+        not `compilata_da`, not the CV -- and the card is returned exactly as it was
+        stored. `has_email` is what the caller checks first to know whether to send
+        that person the magic-link mail instead, pointing them at the member area
+        where an authenticated session, not an anonymous form post, is what may change
+        their card, drafted by an admin (ORB-155) or filled by themselves already.
 
         **The CV is optional here.** A card without one is a state the model already
         had -- `cv_of` answers `NotFound` for it, `completa` is false, and the member
         area's `replace_cv` exists precisely to add it later -- and asking for a PDF
         before a person can finish the form was turning away people who did not have
-        one to hand. A CV that *is* sent is checked exactly as before, and an
-        application that omits it **never clears a CV already stored**: somebody
-        refreshing their answers from the wizard is not somebody deleting their CV.
+        one to hand.
 
         `cv is None` is "no file was attached"; `cv == b""` is an attached file with no
         bytes in it, and that is a refusal like any other broken upload. The difference
         is the caller's to make, and this signature is what lets them make it.
         """
+        email = data.email.strip().lower()
+        row = self._find(email)
+        if row is not None:
+            return FreelancerRead.model_validate(row)
         stored: tuple[bytes, str, str] | None = None
         if cv is not None:
             stored = (cv, *check_cv(cv, cv_filename, cv_mime))
-        email = data.email.strip().lower()
-        row = self._find(email)
-        if row is None:
-            utm = data.utm.model_dump() if data.utm is not None and not data.utm.is_empty() else {}
-            row = Freelancer(email=email, **utm)
-            self.session.add(row)
+        utm = data.utm.model_dump() if data.utm is not None and not data.utm.is_empty() else {}
+        row = Freelancer(email=email, **utm)
+        self.session.add(row)
         if stored is not None:
             content, filename, mime = stored
             row.cv_bytes, row.cv_filename, row.cv_mime, row.cv_size = (
@@ -158,10 +167,16 @@ class FreelancerService:
             self.session.commit()
         except IntegrityError:
             # Two first applications racing on one address: the index decides, and the
-            # loser applies again on top of the winner's row.
+            # loser discovers on retry that the winner's row now answers to `_find`.
             self.session.rollback()
             return self.apply(data, cv, cv_filename, cv_mime)
         return FreelancerRead.model_validate(row)
+
+    def has_email(self, email: str) -> bool:
+        """Whether a card already answers to `email`, lowercased and trimmed: what the
+        public wizard route checks before calling `apply`, to know whether to send the
+        existing magic-link mail rather than pretend a new card was written (REB-272)."""
+        return self._find(email.strip().lower()) is not None
 
     def draft_from_signup(
         self, signup_id: UUID, data: FreelancerDraft, autore: str

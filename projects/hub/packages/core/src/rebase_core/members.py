@@ -56,9 +56,12 @@ class MemberService:
 
     # ---- the way in ----------------------------------------------------------------
 
-    def request_link(self, email: str) -> Mail | None:
+    def request_link(self, email: str, note: str | None = None) -> Mail | None:
         """The mail to send, or `None` when nobody with that address applied. Sweeps the
-        person's spent and expired tokens first: nothing needs a cron."""
+        person's spent and expired tokens first: nothing needs a cron. `note`, when
+        given, is passed straight to `magic_link_mail` (REB-272): one more sentence for
+        a caller other than `/auth/link` that already knows why this address is getting
+        a link."""
         row = self._by_email(email.strip().lower())
         if row is None:
             return None
@@ -79,7 +82,7 @@ class MemberService:
         )
         self.session.commit()
         link = f"{self.settings.hub_url.rstrip('/')}/entra?t={raw}"
-        return magic_link_mail(row.email, link, self.settings.magic_link_minutes)
+        return magic_link_mail(row.email, link, self.settings.magic_link_minutes, note)
 
     def enter(self, raw_token: str) -> tuple[MemberProfile, str] | None:
         """The profile and the raw session token for the cookie, or `None` for a wrong,

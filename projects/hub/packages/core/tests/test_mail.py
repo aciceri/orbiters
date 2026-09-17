@@ -119,6 +119,21 @@ def test_the_magic_link_mail_has_an_html_version_in_the_landings_system() -> Non
     assert hostile.html is not None and "<script>" not in hostile.html
 
 
+def test_the_magic_link_mail_carries_an_optional_note_before_the_link() -> None:
+    """REB-272: the extra sentence `apply` asks for shows up once, in both bodies,
+    ahead of the link, and never shows up at all when no caller asks for it."""
+    plain = magic_link_mail("ada@studio.it", "https://letsrebase.com/hub/entra?t=abc", 15)
+    assert "Risulta già" not in plain.text
+    assert plain.html is not None and "Risulta già" not in plain.html
+    note = (
+        "Risulta già una scheda su rebase con questo indirizzo: la trovi e la modifichi "
+        "dalla tua area."
+    )
+    noted = magic_link_mail("ada@studio.it", "https://letsrebase.com/hub/entra?t=abc", 15, note)
+    assert noted.text.index(note) < noted.text.index("https://letsrebase.com/hub/entra?t=abc")
+    assert noted.html is not None and note in noted.html
+
+
 # ---- the welcome mail (ORB-157) ---------------------------------------------------------
 
 ACCEDI = "https://letsrebase.com/hub/accedi"

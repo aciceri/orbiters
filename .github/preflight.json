@@ -125,6 +125,14 @@
       "why": "The other half of packages/core/tests/test_guide_pdf.py. That test compares hashes and needs nothing installed, so it runs in the hub's gate on every pull request; this rebuilds the PDF with pandoc, Typst and fontTools and compares the bytes, which only a machine with all three can do. Two seconds, and it is what makes committing a built artefact safe: a source edited without a regeneration fails here rather than leaving a download that says something the repository no longer does."
     },
     {
+      "id": "wordmark",
+      "run": "uv run shared/brand/tools/build-wordmark.py --check",
+      "when": [
+        "shared/brand/**"
+      ],
+      "why": "wordmark.svg, lockup.svg, wordmark-paper.svg and lockup-paper.svg are drawn from the constants at the top of tools/build-wordmark.py and committed rather than built by either surface, so nothing else notices a hand edit or a redraw that never ran. This reruns the script with --check, which needs the network for the pinned font unless the tempdir cache is warm, and for the two PEP 723 packages it declares (fonttools, uharfbuzz) unless uv's own cache is warm, and compares the bytes it would write against what is on disk. It is what makes committing the four generated SVGs safe: a source edited without a regeneration fails here rather than leaving four files that say something the repository no longer draws."
+    },
+    {
       "id": "website-build",
       "run": "pnpm --filter website build && pnpm --filter website exec tsc --noEmit",
       "when": [

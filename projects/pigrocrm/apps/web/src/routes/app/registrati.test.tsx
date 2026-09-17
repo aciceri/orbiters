@@ -243,4 +243,41 @@ describe('the signup wizard', () => {
     )
     expect(screen.getByRole('button', { name: 'Crea lo spazio' })).toBeEnabled()
   })
+
+  it('ignores an older probe answer that resolves after a newer one already landed (REB-265)', async () => {
+    answers({ '/api/tenants/membro': NOBODY })
+    let resolveAlpha: (value: unknown) => void = () => {}
+    let resolveBeta: (value: unknown) => void = () => {}
+    GET.mockImplementationOnce(() => new Promise((resolve) => (resolveAlpha = resolve)))
+    GET.mockImplementationOnce(() => new Promise((resolve) => (resolveBeta = resolve)))
+    const user = userEvent.setup()
+    render(<SignupPage />)
+    await throughStepOne(user, 'bob@studio.it')
+    await user.type(await screen.findByLabelText('Come si chiama il tuo spazio?'), 'Alpha')
+    await user.click(screen.getByRole('button', { name: 'cambia' }))
+    const slug = screen.getByLabelText('Indirizzo dello spazio')
+    await waitFor(() =>
+      expect(GET).toHaveBeenCalledWith('/api/tenants/{slug}/disponibile', {
+        params: { path: { slug: 'alpha' } },
+      }),
+    )
+    await user.clear(slug)
+    await user.type(slug, 'beta')
+    await waitFor(() =>
+      expect(GET).toHaveBeenCalledWith('/api/tenants/{slug}/disponibile', {
+        params: { path: { slug: 'beta' } },
+      }),
+    )
+    // The newer probe (beta) answers first.
+    resolveBeta({ data: { slug: 'beta', disponibile: true }, response: { status: 200 } })
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/\/beta è libero/))
+    // The older probe (alpha) answers late, for a slug that is no longer current: it
+    // must not overwrite beta's already-landed answer with its own.
+    resolveAlpha({
+      data: { slug: 'alpha', disponibile: false, motivo: 'riservato' },
+      response: { status: 200 },
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.getByRole('status')).toHaveTextContent(/\/beta è libero/)
+  })
 })

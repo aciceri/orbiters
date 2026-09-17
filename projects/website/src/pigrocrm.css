@@ -16,6 +16,14 @@
   .hero-split {
     grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
   }
+
+  /* The two-column grid gives this box a narrower, font-swap-stable width (measured:
+     both font states render it at 25.26rem here, against 36.43rem stacked): the
+     mobile floor above would otherwise carry over and leave a bare gap under the
+     conversation. 25.5rem clears the measured height with the same small margin. */
+  .chat-body {
+    min-block-size: 25.5rem;
+  }
 }
 
 .hero-copy {
@@ -70,6 +78,16 @@
   display: grid;
   gap: 1rem;
   margin-top: -0.75rem;
+  /* Reserves the conversation's own rendered height below the 60rem breakpoint
+     (REB-267), where `.hero-split` stacks the two halves and this box's width, so
+     its wrap, stays fixed while `--font-sans` swaps in: 36.5rem clears 36.43rem, the
+     tallest of the two font states measured at 412x823 (this page's own Lighthouse
+     mobile viewport, `pnpm --filter web build && vite preview`, DevTools request
+     blocking on the woff2 to force each state). `min-block-size`, not `height`: the
+     conversation is fixed copy today, but a box that could only shrink it silently
+     is worse than one a longer one grows past its floor. Reset below, once the grid
+     gives this column a narrower, unrelated width. */
+  min-block-size: 36.5rem;
 }
 
 .chat-body p {

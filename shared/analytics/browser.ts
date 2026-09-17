@@ -8,8 +8,38 @@
  * Every wrapper is a no-op until `initAnalytics` has decided the page is measured, so a
  * feature can call `capture` unconditionally and a test never sees a network call.
  */
-import posthog from 'posthog-js'
+import posthog, { type BeforeSendFn } from 'posthog-js'
 import { POSTHOG_HOST, POSTHOG_KEY, analyticsEnabled, isInternalHost } from './posthog'
+
+/** URL-shaped properties PostHog attaches to nearly every event. A magic-link token
+ *  (`?t=`, REB-273) has two braces already keeping it off these: the hub's and the
+ *  CRM's own `lib/entra-token.ts` take it out of the browser's URL before this module
+ *  even runs. This is the third, unconditional for every surface that calls
+ *  `initAnalytics`: `$initial_current_url` is captured at `posthog.init` itself (this
+ *  function's own first act, before any route-level stripping could run), and
+ *  `$referrer` comes from `document.referrer`, which no route ever rewrites. */
+const URL_PROPERTIES_WITH_TOKEN = ['$current_url', '$initial_current_url', '$referrer'] as const
+
+function withoutTrackingToken(url: unknown): unknown {
+  if (typeof url !== 'string') return url
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return url
+  }
+  if (!parsed.searchParams.has('t')) return url
+  parsed.searchParams.delete('t')
+  return parsed.toString()
+}
+
+const scrubTrackingToken: BeforeSendFn = (result) => {
+  if (!result) return result
+  for (const key of URL_PROPERTIES_WITH_TOKEN) {
+    if (key in result.properties) result.properties[key] = withoutTrackingToken(result.properties[key])
+  }
+  return result
+}
 
 export interface AnalyticsOptions {
   /**
@@ -43,6 +73,7 @@ export function initAnalytics(options: AnalyticsOptions = {}): boolean {
         maskAllInputs: true,
         ...(options.maskText ? { maskTextSelector: '*' } : {}),
       },
+      before_send: scrubTrackingToken,
     })
     // Called rather than configured: `internal_or_test_user_hostname` exists as an
     // option, but it did not take effect when tried live against array.js 1.430.2 on

@@ -12,7 +12,7 @@ vi.mock('posthog-js', () => ({
   },
 }))
 
-import posthog from 'posthog-js'
+import posthog, { type CaptureResult } from 'posthog-js'
 import {
   __resetAnalyticsForTests,
   analyticsActive,
@@ -120,5 +120,36 @@ describe('on a real host', () => {
     expect(posthog.group).toHaveBeenCalledWith('spazio', 'studio', { nome: 'Studio' })
     expect(posthog.capture).toHaveBeenCalledWith('cliente_creato', { via: 'ui' })
     expect(posthog.reset).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the magic-link token scrubber', () => {
+  it('removes t from $current_url, $initial_current_url and $referrer, and keeps every other param', () => {
+    initAnalytics({ hostname: 'letsrebase.com' })
+    const beforeSend = init.mock.calls[0]?.[1]?.before_send as (
+      result: CaptureResult | null,
+    ) => CaptureResult | null
+    const scrubbed = beforeSend({
+      uuid: 'ev1',
+      event: '$pageview',
+      properties: {
+        $current_url: 'https://letsrebase.com/hub/entra?t=abc&x=1',
+        $initial_current_url: 'https://letsrebase.com/hub/entra?t=abc&x=1',
+        $referrer: 'https://letsrebase.com/hub/entra?t=abc&x=1',
+      },
+    })
+    expect(scrubbed?.properties.$current_url).toBe('https://letsrebase.com/hub/entra?x=1')
+    expect(scrubbed?.properties.$initial_current_url).toBe('https://letsrebase.com/hub/entra?x=1')
+    expect(scrubbed?.properties.$referrer).toBe('https://letsrebase.com/hub/entra?x=1')
+  })
+
+  it('is a no-op on an event with none of those properties, and on a null result', () => {
+    initAnalytics({ hostname: 'letsrebase.com' })
+    const beforeSend = init.mock.calls[0]?.[1]?.before_send as (
+      result: CaptureResult | null,
+    ) => CaptureResult | null
+    expect(beforeSend(null)).toBeNull()
+    const untouched = beforeSend({ uuid: 'ev2', event: 'cliente_creato', properties: { via: 'ui' } })
+    expect(untouched?.properties).toEqual({ via: 'ui' })
   })
 })

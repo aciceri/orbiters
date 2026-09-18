@@ -63,8 +63,8 @@ filled ink box. Badges filled with a tint.
 
 Recommended A, and A was chosen. B at 2px and 6px on every card reads as the landing
 with more content in it; A keeps the site's signature (ink, squared, step shadow) at the
-weight a working screen can carry, and it is closer to what the hub's `.site` scope
-already draws.
+weight a working screen can carry. Both are squared like the hub's `.site` scope, which
+holds the site's own 2px and 6px; A lightens those weights for dense screens.
 
 ## 3. The decisions, one paragraph each
 
@@ -79,9 +79,9 @@ visible.
 on the page with a border and no shadow. The site keeps its 8px and 6px; the app never
 uses them.
 
-**Ground.** The 16px grid at 4% ink behind the content area, as the site draws it, so a
-page of the CRM and a page of the site share the same paper. A card is opaque Paper
-white over it.
+**Ground.** The 16px grid behind the content area, the site's `--system-cell`, at 4%
+ink where the site draws it at 7% (`system.css:12`): the same paper, one shade lighter,
+so a dense page does not fight its own ground. A card is opaque Paper white over it.
 
 **Tables.** Ruled: 1px column separators, a 2px rule under the header, 48px rows, no
 zebra, figures right-aligned in tabular numerals, a long cell ellipsised with the full
@@ -95,10 +95,14 @@ admin nav adopts it.
 of the semantic hue) only for the semantic states, so the primary action stays the
 one saturated thing on a screen.
 
-**Dark mode.** Dropped. The CRM's `.dark` block in `tokens.css` and its contract test
-(`tokens.test.ts`, "defines a dark mode") go with REB-299; nothing sets the class
-today, and a second palette would have to be kept honest against every rule above for
-no reader. It can come back as its own brief when somebody asks for it.
+**Dark mode.** Dropped. The CRM's `.dark` block in `tokens.css` goes with REB-299,
+together with every assertion in `tokens.test.ts` that reads it: "defines a dark mode",
+the `block('.dark')` cases on `--border`, `--input` and the sidebar tokens, the
+`[':root', '.dark']` loop and the contrast pair on the dark ground. The hub's own
+`tokens.test.ts` asserts `@custom-variant dark (&:is(.dark *));` in a `tokens.css` that
+REB-302 deletes, so that assertion goes there. Nothing sets the class today, and a second
+palette would have to be kept honest against every rule above for no reader. It can
+come back as its own brief when somebody asks for it.
 
 ## 4. Where the values live
 

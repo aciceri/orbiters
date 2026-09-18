@@ -43,3 +43,5 @@ data/
 !projects/website/src/public/assets/*.png
 # The echo logo, drawn by shared/brand/tools/build-echo.mjs and committed (ORB-200).
 !shared/brand/echo/*.png
+# A rendered contact sheet beside a design record, the evidence for its rows (REB-298).
+!docs/design/**/*.png

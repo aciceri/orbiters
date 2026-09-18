@@ -1,8 +1,8 @@
-import { toast } from 'sonner'
+import { toast } from '@rebase/ui/sonner'
 import { toProblem } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { roleLabel } from '@/lib/roles'
-import { cn } from '@/lib/utils'
+import { cn } from '@rebase/ui/cn'
 import { useUpdateMe } from './queries'
 
 /**

@@ -13,5 +13,5 @@
     "skipLibCheck": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["*.ts", "*.tsx", "gallery/**/*.ts", "gallery/**/*.tsx", "*.config.ts"]
+  "include": ["*.ts", "*.tsx", "gallery/**/*.ts", "gallery/**/*.tsx", "e2e/**/*.ts", "*.config.ts"]
 }

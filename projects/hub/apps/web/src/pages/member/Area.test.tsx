@@ -7,19 +7,15 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Area } from './Area'
-import { MemberGuard } from './Guard'
 
 vi.mock('@rebase/analytics/browser', () => ({
   capture: vi.fn(),
-  identifyUser: vi.fn(),
-  resetUser: vi.fn(),
 }))
-import { capture, identifyUser, resetUser } from '@rebase/analytics/browser'
-import { MEMBER_KEY } from '@/lib/member'
+import { capture } from '@rebase/analytics/browser'
 
 function answer(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -34,14 +30,16 @@ const PROFILE = {
   cognome: 'Lovelace',
   email: 'ada@studio.it',
   linkedin_url: 'https://www.linkedin.com/in/ada',
+  role: 'member',
+  created_at: '2026-09-10T10:00:00Z',
+  updated_at: '2026-09-10T10:00:00Z',
+  ha_scheda: true,
   cv_filename: 'Ada CV.pdf',
   cv_size: 2048,
   tariffa_giornaliera: '450.00',
   posizione: 'Backend developer',
   remoto: 'ibrido',
   links: ['https://github.com/ada'],
-  created_at: '2026-09-10T10:00:00Z',
-  updated_at: '2026-09-10T10:00:00Z',
   completa: true,
 }
 
@@ -57,14 +55,41 @@ const INCOMPLETE = {
   completa: false,
 }
 
-function mount() {
+/** An admin with no freelancer card at all (REB-279): `ha_scheda` false, every card
+ *  field blank, `completa` false -- the shape `MeRead` answers for a bare `users` row. */
+const CARDLESS_ADMIN = {
+  ...PROFILE,
+  id: 'a1',
+  nome: 'Ivan',
+  cognome: 'Fiore',
+  email: 'ivan@rebase.it',
+  linkedin_url: null,
+  role: 'admin',
+  ha_scheda: false,
+  cv_filename: null,
+  cv_size: null,
+  tariffa_giornaliera: null,
+  posizione: null,
+  remoto: null,
+  links: [],
+  completa: false,
+}
+
+function mount(path = '/io') {
   const root = createRootRoute({ component: () => <Outlet /> })
-  const io = createRoute({ getParentRoute: () => root, path: '/io', component: MemberGuard })
-  const index = createRoute({ getParentRoute: () => io, path: '/', component: Area })
-  const accedi = createRoute({ getParentRoute: () => root, path: '/accedi', component: () => <h1>Accedi</h1> })
+  const io = createRoute({ getParentRoute: () => root, path: '/io', component: () => <Outlet /> })
+  const index = createRoute({
+    getParentRoute: () => io,
+    path: '/',
+    component: Area,
+    validateSearch: (search: Record<string, unknown>): { negato?: true } => ({
+      negato: search.negato === true || search.negato === 'true' ? true : undefined,
+    }),
+  })
+  const modifica = createRoute({ getParentRoute: () => io, path: '/modifica', component: () => <h1>Modifica</h1> })
   const router = createRouter({
-    routeTree: root.addChildren([io.addChildren([index]), accedi]),
-    history: createMemoryHistory({ initialEntries: ['/io'] }),
+    routeTree: root.addChildren([io.addChildren([index, modifica])]),
+    history: createMemoryHistory({ initialEntries: [path] }),
   })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
@@ -80,7 +105,7 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe('/io', () => {
+describe('/io, a card (REB-279: reads the merged `useMe`, gated on `ha_scheda`)', () => {
   it('shows the answers under the wizard’s questions, the CV and the two perks', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, PROFILE))
     mount()
@@ -101,7 +126,7 @@ describe('/io', () => {
     )
     expect(screen.getByText('PDF, 6 pagine, 48 KB.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Modifica' })).toHaveAttribute('href', '/io/modifica')
-    // A complete card gets no reminder.
+    // A complete card gets no reminder, and no access-rule banner either.
     expect(screen.queryByRole('status')).toBeNull()
     expect(screen.queryByText('Nessun CV')).toBeNull()
   })
@@ -118,33 +143,6 @@ describe('/io', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(3)
   })
 
-  it('sends a visitor without a session to /accedi', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(401, { detail: 'Autenticazione richiesta' }))
-    mount()
-    expect(await screen.findByRole('heading', { name: 'Accedi' })).toBeInTheDocument()
-    expect(identifyUser).not.toHaveBeenCalled()
-  })
-})
-
-describe('what the area reports to PostHog (ORB-185)', () => {
-  it('identifies the member once the profile is known, by id, with the email and the name', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, PROFILE))
-    mount()
-    await screen.findAllByText('Ada Lovelace')
-    expect(identifyUser).toHaveBeenCalledTimes(1)
-    expect(identifyUser).toHaveBeenCalledWith('f1', { email: 'ada@studio.it', nome: 'Ada' })
-  })
-
-  it('identifies the same person once, however many times the profile is fetched again', async () => {
-    // A fresh Response per call: a body can be read once, and this test reads two.
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => answer(200, PROFILE))
-    const client = mount()
-    await screen.findAllByText('Ada Lovelace')
-    await client.invalidateQueries({ queryKey: MEMBER_KEY })
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
-    expect(identifyUser).toHaveBeenCalledTimes(1)
-  })
-
   it('counts the guide on the click and leaves the download to the link', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, PROFILE))
     mount()
@@ -155,15 +153,36 @@ describe('what the area reports to PostHog (ORB-185)', () => {
     expect(capture).toHaveBeenCalledWith('guida_scaricata')
     expect(link).toHaveAttribute('href', '/api/hub/me/guida')
   })
+})
 
-  it('forgets the person on Esci, before the page leaves', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, PROFILE))
-    // The logout ends in `window.location.assign`, which jsdom cannot do and says so
-    // once on the console (from its own console, out of a spy's reach); the assertion
-    // is about what happens before it.
+describe('/io, no card (REB-279: a card-less admin reads name, email and role, not null fields)', () => {
+  it('shows no wizard-shaped section, no Modifica link, and the role instead', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, CARDLESS_ADMIN))
     mount()
+    expect(await screen.findByRole('heading', { name: 'Ivan Fiore' })).toBeInTheDocument()
+    expect(screen.getByText('ivan@rebase.it')).toBeInTheDocument()
+    expect(screen.getByText('Amministratore')).toBeInTheDocument()
+    expect(screen.queryByText('Come ti chiami?')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Modifica' })).toBeNull()
+    expect(screen.queryByText('Nessun CV')).toBeNull()
+    // The perks stay unconditional even with no card.
+    expect(screen.getByRole('link', { name: /Apri PigroCRM/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Scarica la guida/ })).toBeInTheDocument()
+  })
+})
+
+describe('/io?negato=true (REB-279: AdminGuard bounces a signed-in non-admin here)', () => {
+  it('shows a sentence instead of a blank screen or a raw refusal', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, PROFILE))
+    mount('/io?negato=true')
+    const notice = await screen.findByRole('status')
+    expect(notice).toHaveTextContent('riservata a chi amministra')
+  })
+
+  it('says nothing extra without the flag', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, PROFILE))
+    mount('/io')
     await screen.findAllByText('Ada Lovelace')
-    await userEvent.setup().click(screen.getByRole('button', { name: /Esci/ }))
-    await waitFor(() => expect(resetUser).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })

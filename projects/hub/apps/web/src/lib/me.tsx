@@ -1,21 +1,21 @@
 import { resetUser } from '@rebase/analytics/browser'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  ApiError,
-  member,
-  type FreelancerApplication,
-  type MemberProfile,
-  type MemberUpdate,
-} from './api'
+import { ApiError, member, type FreelancerApplication, type Me, type MemberUpdate } from './api'
 import { linkedinFieldValue, linkedinProfile } from './linkedin'
 
-export const MEMBER_KEY = ['member', 'me'] as const
+/** REB-279: `lib/auth.tsx`'s `useAdmin` and `lib/member.tsx`'s `useMember` merge into
+ *  `useMe`, and their two logouts merge into one `useLogout`, both backed by the one
+ *  identity route (`GET /api/hub/me`, `POST /api/hub/me/logout`). Everything else this
+ *  module carries -- the magic link, the profile edit, the shapes the wizard's own
+ *  fields read and write -- is unchanged from what `lib/member.tsx` used to hold. */
+export const ME_KEY = ['me'] as const
 
-/** The freelancer behind the member cookie, or `null`. A 401 is "not logged in". */
-export function useMember() {
+/** Whoever `orbiters_user` resolves to, member or admin, or `null` signed out. A 401 is
+ *  "not signed in", not an error. */
+export function useMe() {
   return useQuery({
-    queryKey: MEMBER_KEY,
-    queryFn: async (): Promise<MemberProfile | null> => {
+    queryKey: ME_KEY,
+    queryFn: async (): Promise<Me | null> => {
       try {
         return await member.me()
       } catch (error) {
@@ -36,7 +36,7 @@ export function useEnter() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (token: string) => member.enter(token),
-    onSuccess: (me) => client.setQueryData(MEMBER_KEY, me),
+    onSuccess: (me) => client.setQueryData(ME_KEY, me),
   })
 }
 
@@ -44,7 +44,7 @@ export function useUpdateProfile() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (data: MemberUpdate) => member.update(data),
-    onSuccess: (me) => client.setQueryData(MEMBER_KEY, me),
+    onSuccess: (me) => client.setQueryData(ME_KEY, me),
   })
 }
 
@@ -52,11 +52,14 @@ export function useReplaceCv() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (file: File) => member.replaceCv(file),
-    onSuccess: (me) => client.setQueryData(MEMBER_KEY, me),
+    onSuccess: (me) => client.setQueryData(ME_KEY, me),
   })
 }
 
-export function useMemberLogout() {
+/** The one logout for anyone signed in, admin or not: always back to `/accedi`, since
+ *  an admin's own way in is the same magic link now and there is no separate admin
+ *  door to send them to. */
+export function useLogout() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: () => member.logout(),
@@ -71,17 +74,18 @@ export function useMemberLogout() {
 /** The profile in the wizard's own shape, so its steps can render and validate it.
  *  `cv` is `null`: the file we hold is not a `File` in the browser. The answers an
  *  incomplete card lacks (ORB-155) become `''`, which is what the wizard's fields
- *  show as empty and its rules refuse. */
-export function toApplication(profile: MemberProfile): FreelancerApplication {
+ *  show as empty and its rules refuse. Only meaningful when `ha_scheda` is true; the
+ *  caller checks that first (`Area.tsx`, `Modifica.tsx`). */
+export function toApplication(me: Me): FreelancerApplication {
   return {
-    nome: profile.nome,
-    cognome: profile.cognome,
-    email: profile.email,
-    linkedin_url: linkedinFieldValue(profile.linkedin_url ?? ''),
-    tariffa_giornaliera: profile.tariffa_giornaliera ?? '',
-    posizione: profile.posizione ?? '',
-    remoto: profile.remoto ?? '',
-    links: profile.links,
+    nome: me.nome,
+    cognome: me.cognome,
+    email: me.email,
+    linkedin_url: linkedinFieldValue(me.linkedin_url ?? ''),
+    tariffa_giornaliera: me.tariffa_giornaliera ?? '',
+    posizione: me.posizione ?? '',
+    remoto: me.remoto ?? '',
+    links: me.links,
     cv: null,
   }
 }

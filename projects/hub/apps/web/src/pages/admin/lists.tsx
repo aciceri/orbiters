@@ -246,7 +246,7 @@ function StatusEditor({
 }
 
 export function AdminFreelancerDetail() {
-  const { id } = useParams({ from: '/admin/freelance/$id' })
+  const { id } = useParams({ from: '/signedIn/admin/freelance/$id' })
   const client = useQueryClient()
   const row = useQuery({ queryKey: ['freelancer', id], queryFn: () => admin.freelancer(id) })
   const move = useMutation({
@@ -390,7 +390,7 @@ export function AdminCompanies() {
 }
 
 export function AdminCompanyDetail() {
-  const { id } = useParams({ from: '/admin/aziende/$id' })
+  const { id } = useParams({ from: '/signedIn/admin/aziende/$id' })
   const client = useQueryClient()
   const row = useQuery({ queryKey: ['company', id], queryFn: () => admin.company(id) })
   const move = useMutation({

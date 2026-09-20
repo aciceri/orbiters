@@ -113,7 +113,8 @@ def test_the_page_the_person_started_from_is_stored_beside_the_campaign(
         "/api/hub/companies",
         json={
             "nome_azienda": "XYZ",
-            "referente": "Grace Hopper",
+            "referente_nome": "Grace",
+            "referente_cognome": "Hopper",
             "email": "grace@xyz.it",
             "progetto": "Un backend da rifare.",
             "periodo_da": "2026-10-01",
@@ -248,7 +249,8 @@ def test_a_company_request_is_accepted_and_the_answer_says_nothing_else(
         "/api/hub/companies",
         json={
             "nome_azienda": "ACME Srl",
-            "referente": "Wile E.",
+            "referente_nome": "Wile",
+            "referente_cognome": "E.",
             "email": "wile@acme.it",
             "progetto": "Serve un backend developer per tre mesi.",
             "periodo_da": "2026-10-01",
@@ -275,7 +277,8 @@ def test_the_three_public_writes_share_one_budget_per_client(
     _clean(api_session)
     body = {
         "nome_azienda": "ACME Srl",
-        "referente": "Wile E.",
+        "referente_nome": "Wile",
+        "referente_cognome": "E.",
         "email": "wile@acme.it",
         "progetto": "Un progetto",
         "periodo_da": "2026-10-01",
@@ -319,7 +322,8 @@ def tracked(client: TestClient) -> Iterator[RecordingCapture]:
 def _company() -> dict[str, object]:
     return {
         "nome_azienda": "ACME Srl",
-        "referente": "Ada Lovelace",
+        "referente_nome": "Ada",
+        "referente_cognome": "Lovelace",
         "email": "ada@acme.it",
         "progetto": "Dobbiamo rifare il backend del portale clienti.",
         "periodo_da": "2026-10-01",

@@ -10,7 +10,8 @@ import { screensFromFields, Wizard, type Field } from '@/wizard/Wizard'
 
 const EMPTY: CompanyRequest = {
   nome_azienda: '',
-  referente: '',
+  referente_nome: '',
+  referente_cognome: '',
   email: '',
   progetto: '',
   periodo_da: '',
@@ -43,15 +44,25 @@ export const COMPANY_FIELDS: Field<CompanyRequest>[] = [
     label: 'Chi sei, e dove ti scriviamo?',
     render: ({ value, set, autoFocus, error, errorId }) => (
       <div className="grid gap-3">
-        <TextField
-          aria-label="Referente"
-          aria-invalid={!!error && !value.referente.trim()}
-          aria-describedby={error ? errorId : undefined}
-          placeholder="Nome e cognome"
-          value={value.referente}
-          onChange={(referente) => set({ referente })}
-          autoFocus={autoFocus}
-        />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <TextField
+            aria-label="Nome"
+            aria-invalid={!!error && !value.referente_nome.trim()}
+            aria-describedby={error ? errorId : undefined}
+            placeholder="Nome"
+            value={value.referente_nome}
+            onChange={(referente_nome) => set({ referente_nome })}
+            autoFocus={autoFocus}
+          />
+          <TextField
+            aria-label="Cognome"
+            aria-invalid={!!error && !value.referente_cognome.trim()}
+            aria-describedby={error ? errorId : undefined}
+            placeholder="Cognome"
+            value={value.referente_cognome}
+            onChange={(referente_cognome) => set({ referente_cognome })}
+          />
+        </div>
         <TextField
           aria-label="Email"
           aria-invalid={!!error && !EMAIL.test(value.email.trim())}
@@ -65,10 +76,10 @@ export const COMPANY_FIELDS: Field<CompanyRequest>[] = [
       </div>
     ),
     validate: (value) =>
-      value.referente.trim() && EMAIL.test(value.email.trim())
+      value.referente_nome.trim() && value.referente_cognome.trim() && EMAIL.test(value.email.trim())
         ? null
-        : 'Servono un referente e un indirizzo email valido.',
-    summary: (value) => `${value.referente.trim()} · ${value.email.trim()}`,
+        : 'Servono nome, cognome e un indirizzo email validi.',
+    summary: (value) => `${value.referente_nome.trim()} ${value.referente_cognome.trim()} · ${value.email.trim()}`,
   },
   {
     id: 'progetto',
@@ -226,10 +237,16 @@ export function CompanyWizard() {
       void navigate({ to: '/grazie', search: { chi: 'azienda' } })
     } catch (error) {
       const failure = error instanceof ApiError ? error : null
-      // `durata` and `email` share a field with `periodo_da` and `referente`;
+      // `durata` shares a field with `periodo_da`; `email`, `referente_nome` and
+      // `referente_cognome` all share the one step that collects them together;
       // anything else names its own field.
       const field = failure?.fields[0]
-      const knownField = field === 'durata' ? 'periodo_da' : field === 'email' ? 'referente' : field
+      const knownField =
+        field === 'durata'
+          ? 'periodo_da'
+          : field === 'email' || field === 'referente_nome' || field === 'referente_cognome'
+            ? 'referente'
+            : field
       setSubmitError({
         message: failure?.message ?? 'Non siamo riusciti a inviare la richiesta. Riprova.',
         field: knownField,

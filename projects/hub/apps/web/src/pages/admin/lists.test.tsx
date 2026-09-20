@@ -83,19 +83,22 @@ const SIGNUPS = [
   },
 ]
 
-/** The admin routes the three pages sit on, without the layout and its guard: the
- *  pages read `useParams` and render `Link`s, so a router has to be there. */
+/** The admin routes the three pages sit on, without the frame and its guard: the
+ *  pages read `useParams` and render `Link`s, so a router has to be there. The
+ *  pathless `signedIn` id mirrors the real tree (REB-279's `SignedInLayout`), since
+ *  `AdminFreelancerDetail`'s own `useParams({ from })` names that full route id. */
 function mount(path: string) {
   const root = createRootRoute({ component: () => <Outlet /> })
-  const iscrizioni = createRoute({ getParentRoute: () => root, path: '/admin/iscrizioni', component: AdminSignups })
-  const freelance = createRoute({ getParentRoute: () => root, path: '/admin/freelance', component: AdminFreelancers })
+  const signedIn = createRoute({ getParentRoute: () => root, id: 'signedIn', component: () => <Outlet /> })
+  const iscrizioni = createRoute({ getParentRoute: () => signedIn, path: '/admin/iscrizioni', component: AdminSignups })
+  const freelance = createRoute({ getParentRoute: () => signedIn, path: '/admin/freelance', component: AdminFreelancers })
   const detail = createRoute({
-    getParentRoute: () => root,
+    getParentRoute: () => signedIn,
     path: '/admin/freelance/$id',
     component: AdminFreelancerDetail,
   })
   const router = createRouter({
-    routeTree: root.addChildren([iscrizioni, freelance, detail]),
+    routeTree: root.addChildren([signedIn.addChildren([iscrizioni, freelance, detail])]),
     history: createMemoryHistory({ initialEntries: [path] }),
   })
   render(

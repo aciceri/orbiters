@@ -180,7 +180,8 @@ def _request_company(client: TestClient) -> None:
         "/api/hub/companies",
         json={
             "nome_azienda": "ACME Srl",
-            "referente": "Wile E.",
+            "referente_nome": "Wile",
+            "referente_cognome": "E.",
             "email": "wile@acme.it",
             "progetto": "Un backend developer per tre mesi.",
             "periodo_da": "2026-10-01",

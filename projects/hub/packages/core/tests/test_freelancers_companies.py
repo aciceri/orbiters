@@ -182,7 +182,8 @@ def test_a_company_request_is_a_row_every_time(clean: Session) -> None:
     service = CompanyService(clean)
     data = CompanyCreate(
         nome_azienda="ACME Srl",
-        referente="Wile E.",
+        referente_nome="Wile",
+        referente_cognome="E.",
         email="Wile@ACME.it",
         progetto="Serve un backend developer\nper tre mesi, da settembre.",
         periodo_da=date(2026, 10, 1),
@@ -213,7 +214,8 @@ def test_a_company_request_is_a_row_every_time(clean: Session) -> None:
 def test_a_company_request_outside_the_form_is_refused(bad: dict[str, object]) -> None:
     payload: dict[str, object] = {
         "nome_azienda": "ACME Srl",
-        "referente": "Wile E.",
+        "referente_nome": "Wile",
+        "referente_cognome": "E.",
         "email": "wile@acme.it",
         "progetto": "Un progetto",
         "periodo_da": date(2026, 10, 1),

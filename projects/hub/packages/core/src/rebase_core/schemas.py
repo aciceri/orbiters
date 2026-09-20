@@ -411,7 +411,8 @@ class CompanyCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     nome_azienda: SafeStr = Field(min_length=1, max_length=AZIENDA_MAX_LENGTH)
-    referente: SafeStr = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    referente_nome: SafeStr = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    referente_cognome: SafeStr = Field(min_length=1, max_length=NAME_MAX_LENGTH)
     email: EmailStr
     progetto: SafeStr = Field(min_length=1, max_length=PROGETTO_MAX_LENGTH)
     periodo_da: date
@@ -422,7 +423,7 @@ class CompanyCreate(BaseModel):
     utm: SignupUtm | None = None
     distinct_id: SafeStr | None = Field(default=None, max_length=DISTINCT_ID_MAX_LENGTH)
 
-    @field_validator("nome_azienda", "referente", "durata", mode="after")
+    @field_validator("nome_azienda", "referente_nome", "referente_cognome", "durata", mode="after")
     @classmethod
     def _trimmed(cls, value: str) -> str:
         return _clean_text(value, what="un valore")

@@ -88,11 +88,12 @@ def test_two_company_requests_from_the_same_address_share_one_user(
     from rebase_core.companies import CompanyService
     from rebase_core.schemas import CompanyCreate
 
-    def _company(referente: str) -> None:
+    def _company(nome: str, cognome: str) -> None:
         CompanyService(hub_session).request(
             CompanyCreate(
                 nome_azienda="ACME",
-                referente=referente,
+                referente_nome=nome,
+                referente_cognome=cognome,
                 email="acme@example.it",
                 progetto="Un progetto",
                 periodo_da="2026-10-01",
@@ -101,11 +102,14 @@ def test_two_company_requests_from_the_same_address_share_one_user(
             )
         )
 
-    _company("Wile E. Coyote")
-    _company("Road Runner")
+    _company("Wile", "Coyote")
+    _company("Road", "Runner")
     rows = hub_session.scalars(select(User).where(User.email == "acme@example.it")).all()
     assert len(rows) == 1
-    assert rows[0].nome == "Wile E. Coyote"  # the first request's name, not overwritten
+    assert (rows[0].nome, rows[0].cognome) == (
+        "Wile",
+        "Coyote",
+    )  # the first request's, not overwritten
 
 
 def test_a_freelancer_application_never_duplicates_the_user_it_already_has(

@@ -104,7 +104,8 @@ export function applyAsFreelancer(
 
 export interface CompanyRequest {
   nome_azienda: string
-  referente: string
+  referente_nome: string
+  referente_cognome: string
   email: string
   progetto: string
   periodo_da: string
@@ -129,6 +130,8 @@ export function requestPeople(
 
 // ---- the admin area -------------------------------------------------------------------
 
+export type Role = 'member' | 'admin'
+
 export interface Admin {
   id: string
   email: string
@@ -137,15 +140,13 @@ export interface Admin {
   created_at: string
 }
 
-/** What the «Amministratori» form sends. The password travels here and nowhere else. */
-export interface AdminCreate {
+/** What `POST /admins/promote` sends: an email, and `nome`/`cognome` for an address
+ *  with no `users` row yet -- ignored, harmlessly, when one already exists. */
+export interface PromoteRequest {
   email: string
-  nome: string
-  password: string
+  nome?: string
+  cognome?: string
 }
-
-/** The same three fields when the pencil edits a row; an empty password means «keep it». */
-export type AdminUpdate = AdminCreate
 
 export interface Freelancer {
   id: string
@@ -288,10 +289,10 @@ export interface CreatedToken extends AdminToken {
 }
 
 export const admin = {
+  /** The password login (`AdminLogin.tsx`): kept only for that page (REB-279, REB-281
+   *  removes both together with the routes it calls). */
   login: (email: string, password: string) =>
     request<Admin>('/api/hub/auth/login', json({ email, password })),
-  logout: () => request<void>('/api/hub/auth/logout', { method: 'POST' }),
-  me: () => request<Admin>('/api/hub/auth/me'),
   /** Cards and, beside them, the leads: signups whose address has no card yet (ORB-163).
    *  `stato: 'lead'` answers leads alone; another state answers cards alone. */
   freelancers: (stato?: string) =>
@@ -327,13 +328,11 @@ export const admin = {
   loginStats: () => request<LoginStats>('/api/hub/logins'),
   /** Who reads this area, oldest first, and one more of them (ORB-123). */
   admins: () => request<Admin[]>('/api/hub/admins'),
-  createAdmin: (data: AdminCreate) => request<Admin>('/api/hub/admins', json(data)),
-  /** PATCH with what the form holds; an empty password is left out, so the old one stays. */
-  updateAdmin: ({ password, ...rest }: AdminUpdate & { id: string }) =>
-    request<Admin>(`/api/hub/admins/${rest.id}`, {
-      ...json({ nome: rest.nome, email: rest.email, ...(password ? { password } : {}) }),
-      method: 'PATCH',
-    }),
+  /** Promotes whatever `users` row already answers to this address, or creates a bare
+   *  one from `nome`/`cognome` when none exists yet (REB-279, no password anywhere). */
+  promote: (data: PromoteRequest) => request<Admin>('/api/hub/admins/promote', json(data)),
+  /** Sets `role = 'member'`, fully reversible since nothing is deleted. */
+  demote: (id: string) => request<Admin>(`/api/hub/admins/${id}/demote`, { method: 'POST' }),
   /** The admin's own tokens for agents, newest first, revoked ones included (REB-213). */
   tokens: () => request<AdminToken[]>('/api/hub/tokens'),
   createToken: (nome: string) => request<CreatedToken>('/api/hub/tokens', json({ nome })),
@@ -345,25 +344,31 @@ export const admin = {
     request<Comment>(`/api/hub/${kind}/${id}/comments`, json({ testo })),
 }
 
-// ---- the member area ------------------------------------------------------------------
+// ---- whoever is signed in --------------------------------------------------------------
 
-/** The row as its owner reads it: what they gave, never the admin's fields. */
-export interface MemberProfile {
+/** Whoever `orbiters_user` resolves to, member or admin (REB-278/279, replacing
+ *  `MemberProfile`): a `users` row is not necessarily an applicant with a card any
+ *  more, so `ha_scheda` says whether one exists, and the seven card fields answer
+ *  blank -- `null`, `false`, `[]` -- when it does not, the shape a signed-in admin
+ *  with no card gets. */
+export interface Me {
   id: string
   nome: string
   cognome: string
   email: string
   linkedin_url: string | null
-  /** Null while the card is the admin's research and not yet the person's (ORB-155). */
+  role: Role
+  created_at: string
+  updated_at: string
+  ha_scheda: boolean
   cv_filename: string | null
   cv_size: number | null
   tariffa_giornaliera: string | null
   posizione: string | null
   remoto: Remoto | null
   links: string[]
-  created_at: string
-  updated_at: string
-  /** CV, rate, position and remote preference all present. */
+  /** CV, rate, position and remote preference all present. Always `false` without a
+   *  card (`ha_scheda`). */
   completa: boolean
 }
 
@@ -381,10 +386,10 @@ export interface MemberUpdate {
 export const member = {
   /** 202 whether the address is known or not; the page says one thing in both cases. */
   requestLink: (email: string) => request<{ ok: true }>('/api/hub/auth/link', json({ email })),
-  enter: (token: string) => request<MemberProfile>('/api/hub/auth/enter', json({ token })),
-  me: () => request<MemberProfile>('/api/hub/me'),
+  enter: (token: string) => request<Me>('/api/hub/auth/enter', json({ token })),
+  me: () => request<Me>('/api/hub/me'),
   update: (data: MemberUpdate) =>
-    request<MemberProfile>('/api/hub/me', {
+    request<Me>('/api/hub/me', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -392,7 +397,7 @@ export const member = {
   replaceCv: (file: File) => {
     const form = new FormData()
     form.set('cv', file, file.name)
-    return request<MemberProfile>('/api/hub/me/cv', { method: 'PUT', body: form })
+    return request<Me>('/api/hub/me/cv', { method: 'PUT', body: form })
   },
   cvUrl: '/api/hub/me/cv',
   /** The guide, the community's second perk. A plain href rather than a fetch: the

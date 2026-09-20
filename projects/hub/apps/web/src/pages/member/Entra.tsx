@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '@rebase/ui/button'
 import { ApiError } from '@/lib/api'
 import { takeEntraToken } from '@/lib/entra-token'
-import { useEnter } from '@/lib/member'
+import { useEnter } from '@/lib/me'
 
 /** Where the mail's link lands. The token is posted from here, once, and never fetched
  *  by the link itself: a scanner that opens every link in a message does not run this

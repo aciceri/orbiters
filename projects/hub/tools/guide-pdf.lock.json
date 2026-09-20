@@ -6,7 +6,7 @@
   "sources": {
     "projects/hub/content/guida-primi-passi-freelance.md": "0c1ae1fc2a705bc4cfb7ca23f203fccc259143dd0d81611bcd15d1361324904f",
     "projects/hub/tools/guide.typ.template": "579d1dc224e4eb905e5d4a7af3a2007f2741a6933451ec3969f268254441c456",
-    "shared/brand/palette.css": "393a0675891ead3430beaa8371082abe50d54c55cf24d43298a594f47e71a00b",
+    "shared/brand/palette.css": "7dabca57f946a4461df0c4541666b301042658ff8bd4dd9128ccd277fb44f423",
     "shared/brand/fonts/outfit-variable-latin.woff2": "6c18d579fd87c3776be068b762cbc83fde3acb543d49eabd3ade842eb987e887",
     "projects/hub/tools/build_guide_pdf.py": "c49368f792d6a92280be991cf6c24e6d0c1949ac6dad8a96e8d1d198e7096170"
   },

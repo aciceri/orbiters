@@ -23,16 +23,21 @@ class CompanyService:
     def request(self, data: CompanyCreate) -> CompanyRead:
         """Every request is a row: a company has several projects, and two requests a
         week apart are two things to answer, not one to merge. The referente's `users`
-        row is get-or-created by lowercased email (REB-278) and left as it was found on
-        a repeat request: this row's own `referente`/`email` always carry what this
-        particular request said, whether or not it matches the identity on file."""
+        row is get-or-created by lowercased email (REB-278), now from the two fields
+        the wizard collects rather than one string (REB-279, decision (f)), and left
+        as it was found on a repeat request: this row's own `referente`/`email` always
+        carry what this particular request said, whether or not it matches the
+        identity on file."""
         utm = data.utm.model_dump() if data.utm is not None and not data.utm.is_empty() else {}
         email = data.email.strip().lower()
-        user = UserService(self.session).get_or_create(email, data.referente)
+        referente = f"{data.referente_nome} {data.referente_cognome}".strip()
+        user = UserService(self.session).get_or_create(
+            email, data.referente_nome, data.referente_cognome
+        )
         row = Company(
             user_id=user.id,
             nome_azienda=data.nome_azienda,
-            referente=data.referente,
+            referente=referente,
             email=email,
             progetto=data.progetto,
             periodo_da=data.periodo_da,

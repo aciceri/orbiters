@@ -1,44 +1,18 @@
-import { resetUser } from '@rebase/analytics/browser'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiError, admin, type Admin } from './api'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { admin } from './api'
 
-export const ME_KEY = ['admin', 'me'] as const
+const ME_KEY = ['admin', 'me'] as const
 
-/** The admin behind the cookie, or `null`. A 401 is the ordinary "not logged in", not
- *  an error; anything else is. */
-export function useAdmin() {
-  return useQuery({
-    queryKey: ME_KEY,
-    queryFn: async (): Promise<Admin | null> => {
-      try {
-        return await admin.me()
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) return null
-        throw error
-      }
-    },
-    retry: false,
-    staleTime: 60_000,
-  })
-}
-
+/** The password login (`AdminLogin.tsx`): the only thing left in this module since
+ *  `useAdmin` and `useLogout` moved into `@/lib/me`'s merged `useMe`/`useLogout`
+ *  (REB-279). `AdminLogin.tsx` itself is unreferenced by the router from this PR on,
+ *  kept only because REB-281 deletes it together with the password routes it calls
+ *  (design record 2026-09-17 §1, "Password login"). */
 export function useLogin() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: ({ email, password }: { email: string; password: string }) =>
       admin.login(email, password),
     onSuccess: (me) => client.setQueryData(ME_KEY, me),
-  })
-}
-
-export function useLogout() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: () => admin.logout(),
-    onSettled: () => {
-      resetUser()
-      client.clear()
-      window.location.assign('/hub/admin/login')
-    },
   })
 }

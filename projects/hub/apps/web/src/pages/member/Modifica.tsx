@@ -2,7 +2,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Button } from '@rebase/ui/button'
 import { ApiError, type FreelancerApplication } from '@/lib/api'
-import { toApplication, toUpdate, useMember, useReplaceCv, useUpdateProfile } from '@/lib/member'
+import { toApplication, toUpdate, useMe, useReplaceCv, useUpdateProfile } from '@/lib/me'
 import { FREELANCER_FIELDS } from '@/pages/FreelancerWizard'
 import type { Field } from '@/wizard/Wizard'
 
@@ -34,7 +34,7 @@ export function editFields(hasCv: boolean): Field<FreelancerApplication>[] {
 }
 
 export function Modifica() {
-  const me = useMember()
+  const me = useMe()
   const navigate = useNavigate()
   const update = useUpdateProfile()
   const replaceCv = useReplaceCv()

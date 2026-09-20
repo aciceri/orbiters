@@ -23,7 +23,8 @@ describe('the api client', () => {
     const failure = await requestPeople(
       {
         nome_azienda: 'ACME',
-        referente: 'Wile',
+        referente_nome: 'Wile',
+        referente_cognome: 'E.',
         email: 'w@acme.it',
         progetto: 'x',
         periodo_da: '2026-10-01',
@@ -76,32 +77,30 @@ describe('the api client', () => {
     expect((body.get('cv') as File).name).toBe('cv.pdf')
   })
 
-  it('lists the admins and creates one as JSON, with the password in the body only', async () => {
-    // ORB-123: the list and the form behind «Amministratori».
+  it('lists the admins and promotes one by email, no password anywhere', async () => {
+    // ORB-123, REB-279: the list and the promote/demote pair behind «Amministratori».
     const spy = vi.spyOn(globalThis, 'fetch')
     spy.mockResolvedValueOnce(answer(200, [{ id: '1', email: 'ivan@rebase.it', nome: 'Ivan', attivo: true, created_at: '2026-09-10T10:00:00Z' }]))
     const listed = await admin.admins()
     expect(spy.mock.calls[0]![0]).toBe('/api/hub/admins')
     expect(listed[0]!.email).toBe('ivan@rebase.it')
-    spy.mockResolvedValueOnce(answer(201, { id: '2', email: 'lorenzo@rebase.it', nome: 'Lorenzo', attivo: true, created_at: '2026-09-10T10:01:00Z' }))
-    const created = await admin.createAdmin({ email: 'lorenzo@rebase.it', nome: 'Lorenzo', password: 'una-password-lunga' })
+    spy.mockResolvedValueOnce(answer(200, { id: '2', email: 'lorenzo@rebase.it', nome: 'Lorenzo', attivo: true, created_at: '2026-09-10T10:01:00Z' }))
+    const promoted = await admin.promote({ email: 'lorenzo@rebase.it', nome: 'Lorenzo' })
     const [url, init] = spy.mock.calls[1]!
-    expect(url).toBe('/api/hub/admins')
+    expect(url).toBe('/api/hub/admins/promote')
     expect(init?.method).toBe('POST')
-    expect(JSON.parse(init?.body as string)).toEqual({ email: 'lorenzo@rebase.it', nome: 'Lorenzo', password: 'una-password-lunga' })
-    expect(created.nome).toBe('Lorenzo')
+    expect(JSON.parse(init?.body as string)).toEqual({ email: 'lorenzo@rebase.it', nome: 'Lorenzo' })
+    expect(promoted.nome).toBe('Lorenzo')
   })
 
-  it('changes an admin with a PATCH carrying only what changed', async () => {
-    // ORB-129: an empty password is not sent, so the server keeps the old one.
+  it('demotes an admin by id, reversibly', async () => {
     const spy = vi.spyOn(globalThis, 'fetch')
-    spy.mockResolvedValueOnce(answer(200, { id: '2', email: 'lorenzo@rebase.it', nome: 'Lorenzo Fiore', attivo: true, created_at: '2026-09-10T10:01:00Z' }))
-    const changed = await admin.updateAdmin({ id: '2', nome: 'Lorenzo Fiore', email: 'lorenzo@rebase.it', password: '' })
+    spy.mockResolvedValueOnce(answer(200, { id: '2', email: 'lorenzo@rebase.it', nome: 'Lorenzo', attivo: true, created_at: '2026-09-10T10:01:00Z' }))
+    const demoted = await admin.demote('2')
     const [url, init] = spy.mock.calls[0]!
-    expect(url).toBe('/api/hub/admins/2')
-    expect(init?.method).toBe('PATCH')
-    expect(JSON.parse(init?.body as string)).toEqual({ nome: 'Lorenzo Fiore', email: 'lorenzo@rebase.it' })
-    expect(changed.nome).toBe('Lorenzo Fiore')
+    expect(url).toBe('/api/hub/admins/2/demote')
+    expect(init?.method).toBe('POST')
+    expect(demoted.email).toBe('lorenzo@rebase.it')
   })
 
   it('reads the spaces of PigroCRM from the hub, never from the CRM directly', async () => {

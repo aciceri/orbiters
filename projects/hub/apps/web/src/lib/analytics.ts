@@ -1,6 +1,6 @@
 import { capture, identifyUser } from '@rebase/analytics/browser'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import type { Admin, MemberProfile } from './api'
+import type { Me } from './api'
 
 /**
  * What the hub tells PostHog beyond pageviews and autocapture (ORB-185, design
@@ -49,9 +49,16 @@ export function useWizardAnalytics(tipo: WizardKind, search: string) {
   return { onStep, completed }
 }
 
-function useIdentify(
-  person: Pick<Admin | MemberProfile, 'id' | 'email' | 'nome'> | null | undefined,
-  ruolo?: 'admin',
+/** Whoever `useMe()` resolves to, identified once by id, with the role that decides
+ *  what the sidebar shows (REB-279: replaces `useIdentifyAdmin`/`useIdentifyMember`,
+ *  called once from the signed-in shell instead of twice from two guards). `ruolo` is
+ *  `'admin' | 'member'` and sent whenever the person is known, rather than typed
+ *  `'admin'`-only and dropped when falsy: REB-280's own scope item ("widen `ruolo` to
+ *  `'admin' | 'member'` and always send it"), done here because it was already on this
+ *  exact code path in this diff. */
+export function useIdentify(
+  person: Pick<Me, 'id' | 'email' | 'nome'> | null | undefined,
+  ruolo: 'admin' | 'member' | undefined,
 ): void {
   // Primitives rather than the object: the query hands a new object on every refetch
   // and the person has not changed.
@@ -59,16 +66,6 @@ function useIdentify(
   const email = person?.email
   const nome = person?.nome
   useEffect(() => {
-    if (id) identifyUser(id, { email, nome, ...(ruolo ? { ruolo } : {}) })
+    if (id) identifyUser(id, { email, nome, ruolo })
   }, [id, email, nome, ruolo])
-}
-
-/** The freelancer behind the member cookie, once `useMember` has one. */
-export function useIdentifyMember(profile: MemberProfile | null | undefined): void {
-  useIdentify(profile)
-}
-
-/** The admin behind the admin cookie, once `useAdmin` has one. */
-export function useIdentifyAdmin(admin: Admin | null | undefined): void {
-  useIdentify(admin, 'admin')
 }

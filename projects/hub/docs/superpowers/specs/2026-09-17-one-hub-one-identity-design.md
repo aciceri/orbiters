@@ -1,12 +1,14 @@
 # The hub becomes one identity: a `users` table, and freelancer, company and admin as things a person may have
 
-Date: 2026-09-17, revised 2026-09-18. Status: three of the six lettered decisions are
+Date: 2026-09-17, revised 2026-09-18. Status: four of the six lettered decisions are
 taken (Lorenzo, 2026-09-18): the identity model is a `users` table and not a `role`
 column on `freelancers` (§ 0, letter (c)), the way in is the magic link alone, with the
-admin password login gone rather than kept as an emergency door (letter (a)), and
+admin password login gone rather than kept as an emergency door (letter (a)),
 `admin_tokens` moves to `users` in the same migration as everything else that means
-the person (letter (b)). Still proposed, awaiting Lorenzo's letter on the remaining
-three: (d), (e) and (f) in § Open decisions for the lead. Tracker: REB-277 in `Hub v2 -
+the person (letter (b)), and a name the old schema held as one string migrates with an
+empty `cognome` corrected by hand afterwards, never by a mapping of real names
+committed to a migration file (letter (d)). Still proposed, awaiting Lorenzo's letter
+on the remaining two: (e) and (f) in § Open decisions for the lead. Tracker: REB-277 in `Hub v2 -
 one hub, and an admin is a member with one more section`.
 
 ## 0. Why
@@ -620,14 +622,20 @@ time, today. §1 and §3 describe the schema this decides.
 
 **(d) The migrated admin's and company referente's blank `cognome`: fixed by hand, or
 does the migration ask for names up front?**
-Options: (d1) insert with `cognome=''` wherever the only source is a single string
-(`admin_users.nome` or `companies.referente`), fixed by one `UPDATE` after the deploy
-(this record, §3). (d2) the migration takes a small hardcoded mapping of email →
-nome/cognome for the known rows. Recommend **d1**: d2 puts a real person's name in a
-migration file, reviewed and merged before anyone has confirmed the spelling, and now
-covers more than the two admins the first draft counted, since every company referente
-whose name is one word backfills the same way; d1 costs one manual statement, once, for
-however many rows that turns out to be.
+Decided. Lorenzo, 2026-09-18: **d1**. Migration A inserts `cognome=''` wherever the
+only source is a single string (`admin_users.nome`, `companies.referente`), and the
+rows are corrected by one `UPDATE` after the deploy, run against the live data by
+whoever can confirm the spelling. No real person's name enters a migration file, which
+is a thing the repository keeps forever and reviews before anyone has checked it, and
+the set is not the two admins the first draft counted: every company referente whose
+name is one word backfills the same way, so d2's mapping would have grown with the
+data it was meant to cover once. An empty `cognome` is legal for the column
+(`nullable=False`, no `CheckConstraint` anywhere in `models.py`) and every read schema
+takes it as a bare `str` (`MemberProfile:488`, `FreelancerRead:557`), so nothing 500s
+while the `UPDATE` waits; every write schema requires `min_length=1`
+(`FreelancerFields:324`, `MemberUpdate`, `FreelancerDraft:379`, `SignupCreate:158`), so
+the first person to save their own card supplies the surname themselves, which makes
+the blank self-correcting rather than a second thing to remember.
 
 **(e) Does `GET /api/hub/me` survive alongside `GET /api/hub/auth/me`, or does one of
 them go?**

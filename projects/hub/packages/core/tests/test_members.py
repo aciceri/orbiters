@@ -1,7 +1,10 @@
-"""The member area: a freelancer's way back in, and what they may change once in."""
+"""The member area: the freelancer card, and what its owner may change once in.
 
-import re
-from datetime import UTC, datetime, timedelta
+The way in -- the magic link, sessions, `resolve` -- moved to `rebase_core.users`
+(REB-278) and is tested in `test_users.py`; this file keeps what is specific to the
+freelancer card.
+"""
+
 from decimal import Decimal
 from uuid import UUID
 
@@ -15,8 +18,9 @@ from rebase_core.config import Settings
 from rebase_core.errors import NotFound, ValidationFailed
 from rebase_core.freelancers import FreelancerService
 from rebase_core.members import MemberService
-from rebase_core.models import Freelancer, MagicLinkToken, MemberSession
+from rebase_core.models import Freelancer
 from rebase_core.schemas import FreelancerCreate, MemberProfile, MemberUpdate, StatusChange
+from rebase_core.users import UserService
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
 
@@ -33,21 +37,12 @@ GOOD = {
 
 def test_member_update_applies_the_wizards_rules_and_nothing_else() -> None:
     update = MemberUpdate(**GOOD)
-    assert update.links == ["https://github.com/ada"]
-    pasted = MemberUpdate(**{**GOOD, "linkedin_url": "linkedin.com/in/ada/?trk=share"})
-    assert pasted.linkedin_url == "https://www.linkedin.com/in/ada"
-    for bad in (
-        {**GOOD, "linkedin_url": "https://example.com/in/ada"},
-        {**GOOD, "tariffa_giornaliera": "0"},
-        {**GOOD, "posizione": "   "},
-        {**GOOD, "remoto": "da casa"},
-        {**GOOD, "links": ["ftp://x.it"]},
-        {**GOOD, "email": "ada@studio.it"},
-        {**GOOD, "stato": "attivo"},
-    ):
-        with pytest.raises(ValidationError):
-            MemberUpdate(**bad)
-    # The wizard still accepts what it accepted: the base class changed, the rules did not.
+    assert update.nome == "Ada" and update.tariffa_giornaliera == Decimal("450")
+    with pytest.raises(ValidationError):
+        MemberUpdate(**{**GOOD, "email": "ada@studio.it"})  # type: ignore[arg-type]
+
+
+def test_freelancer_create_strips_blank_links() -> None:
     assert FreelancerCreate(**GOOD, email="ada@studio.it").links == ["https://github.com/ada"]
 
 
@@ -59,16 +54,20 @@ def test_member_profile_carries_no_admin_field() -> None:
 
 @pytest.fixture
 def members(hub_engine: Engine, hub_session: Session) -> MemberService:
-    settings = Settings(
+    yield MemberService(hub_session)
+    hub_session.rollback()
+    for table in ("member_sessions", "magic_link_tokens", "comments", "freelancers", "users"):
+        hub_session.execute(text(f"DELETE FROM {table}"))
+    hub_session.commit()
+
+
+@pytest.fixture
+def settings(hub_engine: Engine) -> Settings:
+    return Settings(
         database_url=hub_engine.url.render_as_string(hide_password=False),
         hub_url="http://localhost:5180/hub",
         _env_file=None,  # type: ignore[call-arg]
     )
-    yield MemberService(hub_session, settings)  # type: ignore[misc]
-    hub_session.rollback()
-    for table in ("member_sessions", "magic_link_tokens", "comments", "freelancers"):
-        hub_session.execute(text(f"DELETE FROM {table}"))
-    hub_session.commit()
 
 
 def _apply(session: Session, email: str = "ada@studio.it") -> UUID:
@@ -78,90 +77,20 @@ def _apply(session: Session, email: str = "ada@studio.it") -> UUID:
     return read.id
 
 
-def _token_from(mail_text: str) -> str:
-    match = re.search(r"/entra\?t=([A-Za-z0-9_-]+)", mail_text)
-    assert match, mail_text
-    return match.group(1)
+def _draft_card(session: Session, email: str = "ada@studio.it") -> UUID:
+    from rebase_core.schemas import FreelancerDraft, SignupCreate
+    from rebase_core.service import SignupService
 
-
-def test_a_link_is_written_only_for_an_address_that_applied(
-    members: MemberService, hub_session: Session
-) -> None:
-    assert members.request_link("nessuno@studio.it") is None
-    assert hub_session.scalar(select(MagicLinkToken)) is None
-
-    _apply(hub_session)
-    mail = members.request_link("  ADA@studio.it ")
-    assert mail is not None and mail.to == "ada@studio.it"
-    assert "http://localhost:5180/hub/entra?t=" in mail.text
-    row = hub_session.scalar(select(MagicLinkToken))
-    assert row is not None and row.used_at is None
-    assert row.token_hash != _token_from(mail.text) and len(row.token_hash) == 64
-
-
-def test_a_link_opens_a_session_once_and_never_twice(
-    members: MemberService, hub_session: Session
-) -> None:
-    _apply(hub_session)
-    mail = members.request_link("ada@studio.it")
-    assert mail is not None
-    raw = _token_from(mail.text)
-
-    outcome = members.enter(raw)
-    assert outcome is not None
-    profile, session_token = outcome
-    assert profile.email == "ada@studio.it"
-    assert members.resolve(session_token) is not None
-    assert members.enter(raw) is None, "a spent link opens nothing"
-    assert members.enter("non-un-token-vero-ma-lungo-abbastanza") is None
-    assert members.enter("") is None
-
-
-def test_an_expired_link_opens_nothing_and_is_swept_by_the_next_request(
-    members: MemberService, hub_session: Session
-) -> None:
-    _apply(hub_session)
-    mail = members.request_link("ada@studio.it")
-    assert mail is not None
-    row = hub_session.scalar(select(MagicLinkToken))
-    assert row is not None
-    row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
-    hub_session.commit()
-    assert members.enter(_token_from(mail.text)) is None
-
-    members.request_link("ada@studio.it")
-    tokens = hub_session.scalars(select(MagicLinkToken)).all()
-    assert len(tokens) == 1 and tokens[0].id != row.id
-
-
-def test_a_member_session_is_hashed_sliding_and_closable(
-    members: MemberService, hub_session: Session
-) -> None:
-    _apply(hub_session)
-    mail = members.request_link("ada@studio.it")
-    assert mail is not None
-    outcome = members.enter(_token_from(mail.text))
-    assert outcome is not None
-    _, raw = outcome
-    row = hub_session.scalar(select(MemberSession))
-    assert row is not None and row.token_hash != raw and len(row.token_hash) == 64
-    row.expires_at = row.expires_at - timedelta(days=1)
-    hub_session.commit()
-    before = row.expires_at
-    assert members.resolve(raw) is not None
-    hub_session.refresh(row)
-    assert row.expires_at > before
-
-    row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
-    hub_session.commit()
-    assert members.resolve(raw) is None
-    assert hub_session.scalar(select(MemberSession)) is None
-
-    outcome = members.enter(_token_from(members.request_link("ada@studio.it").text))  # type: ignore[union-attr]
-    assert outcome is not None
-    members.close_session(outcome[1])
-    assert members.resolve(outcome[1]) is None
-    assert members.resolve(None) is None
+    signup = SignupService(session).subscribe(
+        SignupCreate(email=email, nome="Ada", cognome="Lovelace")
+    )
+    draft = FreelancerDraft(
+        nome="Ada",
+        cognome="Lovelace",
+        posizione="Backend developer",
+        fonti=["https://www.linkedin.com/in/ada"],
+    )
+    return FreelancerService(session).draft_from_signup(signup.id, draft, "Claude").id
 
 
 def test_an_update_changes_the_row_and_leaves_one_comment_naming_what_moved(
@@ -190,6 +119,20 @@ def test_an_update_changes_the_row_and_leaves_one_comment_naming_what_moved(
     assert (admin_view.stato, admin_view.note) == ("contattato", "da sentire")
 
 
+def test_a_name_change_is_also_written_onto_the_linked_user(
+    members: MemberService, hub_session: Session
+) -> None:
+    """`GET /me` reads `nome`/`cognome`/`linkedin_url` off `users`, so a member's own
+    edit here has to land there too, in the same commit (REB-278's "no dual write")."""
+    freelancer_id = _apply(hub_session)
+    row = hub_session.scalar(select(Freelancer).where(Freelancer.id == freelancer_id))
+    assert row is not None
+    members.update(freelancer_id, MemberUpdate(**{**GOOD, "nome": "Augusta", "cognome": "King"}))
+    user = UserService(hub_session).by_email("ada@studio.it")
+    assert user is not None
+    assert (user.nome, user.cognome) == ("Augusta", "King")
+
+
 def test_a_new_cv_is_checked_like_the_wizards_and_leaves_its_comment(
     members: MemberService, hub_session: Session
 ) -> None:
@@ -214,23 +157,41 @@ def test_a_row_that_is_not_there_is_not_found(members: MemberService) -> None:
         members.update(missing, MemberUpdate(**GOOD))
 
 
+def test_a_signed_in_person_with_no_card_gets_a_named_404(
+    members: MemberService, hub_session: Session
+) -> None:
+    """An admin promoted with no freelancer card (§1): `card_for_user`/`require_card`
+    answer the shape `GET /me`'s mutation routes need to refuse cleanly."""
+    user = UserService(hub_session).get_or_create("ivan@rebase.it", "Ivan", "Fiore")
+    assert members.card_for_user(user.id) is None
+    with pytest.raises(NotFound) as refused:
+        members.require_card(user.id)
+    assert refused.value.details["entity"] == "scheda"
+
+
+def test_me_read_answers_the_identity_and_the_card_together(
+    members: MemberService, hub_session: Session
+) -> None:
+    freelancer_id = _apply(hub_session)
+    user = UserService(hub_session).by_email("ada@studio.it")
+    assert user is not None
+    me = members.me_read(user.id)
+    assert me.ha_scheda is True and me.nome == "Ada" and me.role == "member"
+    assert me.cv_filename == "Ada CV.pdf" and me.completa is True
+
+    bare = UserService(hub_session).get_or_create("ivan@rebase.it", "Ivan", "Fiore")
+    bare_read = members.me_read(bare.id)
+    assert bare_read.ha_scheda is False
+    assert (bare_read.cv_filename, bare_read.tariffa_giornaliera, bare_read.links) == (
+        None,
+        None,
+        [],
+    )
+    assert bare_read.completa is False
+    assert freelancer_id  # the fixture's card is untouched by the bare read
+
+
 # ---- completing a card an admin wrote from a signup (ORB-155) -------------------------
-
-
-def _draft_card(session: Session, email: str = "ada@studio.it") -> UUID:
-    from rebase_core.schemas import FreelancerDraft, SignupCreate
-    from rebase_core.service import SignupService
-
-    signup = SignupService(session).subscribe(
-        SignupCreate(email=email, nome="Ada", cognome="Lovelace")
-    )
-    draft = FreelancerDraft(
-        nome="Ada",
-        cognome="Lovelace",
-        posizione="Backend developer",
-        fonti=["https://www.linkedin.com/in/ada"],
-    )
-    return FreelancerService(session).draft_from_signup(signup.id, draft, "Claude").id
 
 
 def test_an_incomplete_card_reads_as_such_and_has_no_cv_to_download(
@@ -304,22 +265,26 @@ def test_confirming_a_researched_card_unchanged_still_makes_it_the_persons(
 
 
 def test_entering_is_recorded_and_the_card_and_the_stats_read_it_back(
-    members: MemberService, hub_session: Session
+    members: MemberService, hub_session: Session, settings: Settings
 ) -> None:
     from rebase_core.logins import LoginService
 
     ada = _apply(hub_session, "ada@studio.it")
     _apply(hub_session, "bob@studio.it")
+    ada_row = hub_session.scalar(select(Freelancer).where(Freelancer.id == ada))
+    assert ada_row is not None
     before = LoginService(hub_session).stats()
     assert (before.totale, before.membri, before.membri_totali) == (0, 0, 2)
     assert FreelancerService(hub_session).get(ada).accessi == 0
 
+    users = UserService(hub_session, settings)
     for _ in range(2):
-        mail = members.request_link("ada@studio.it")
+        mail = users.request_link("ada@studio.it")
         assert mail is not None
-        assert members.enter(_token_from(mail.text)) is not None
+        raw = mail.text.split("/entra?t=")[1].split()[0]
+        assert users.enter(raw) is not None
     # A spent link and a wrong token open nothing, so they record nothing either.
-    assert members.enter("non-un-token-vero-ma-lungo-abbastanza") is None
+    assert users.enter("non-un-token-vero-ma-lungo-abbastanza") is None
 
     card = FreelancerService(hub_session).get(ada)
     assert card.accessi == 2 and card.ultimo_accesso is not None
@@ -331,14 +296,14 @@ def test_entering_is_recorded_and_the_card_and_the_stats_read_it_back(
     assert (stats.totale, stats.membri, stats.membri_totali, stats.ultimi_7_giorni) == (2, 1, 2, 2)
     assert [login.email for login in stats.recenti] == ["ada@studio.it", "ada@studio.it"]
     assert stats.recenti[0].logged_at >= stats.recenti[1].logged_at
-    assert stats.recenti[0].freelancer_id == ada
+    assert stats.recenti[0].user_id == ada_row.user_id
 
 
 # ---- the welcome mailing (ORB-157) ------------------------------------------------------
 
 
 def test_the_welcome_mailing_speaks_to_every_address_the_hub_knows(
-    members: MemberService, hub_session: Session
+    members: MemberService, hub_session: Session, settings: Settings
 ) -> None:
     from rebase_core.cli import send_welcome
     from rebase_core.mail import RecordingSender
@@ -351,7 +316,7 @@ def test_the_welcome_mailing_speaks_to_every_address_the_hub_knows(
         SignupCreate(email="carlo@studio.it", nome="Carlo", cognome="Verdi")
     )  # a signup and nothing else
     sender = RecordingSender()
-    outcomes = send_welcome(hub_session, members.settings, sender, None)
+    outcomes = send_welcome(hub_session, settings, sender, None)
     assert outcomes == [
         ("bruna@studio.it", "inviata (admin)"),
         ("carlo@studio.it", "inviata (nessuna)"),
@@ -366,7 +331,7 @@ def test_the_welcome_mailing_speaks_to_every_address_the_hub_knows(
     assert by_to["carlo@studio.it"].text.startswith("Ciao Carlo,")
 
     named = send_welcome(
-        hub_session, members.settings, RecordingSender(), ["ADA@studio.it", "nessuno@studio.it"]
+        hub_session, settings, RecordingSender(), ["ADA@studio.it", "nessuno@studio.it"]
     )
     assert named == [
         ("ada@studio.it", "inviata (persona)"),

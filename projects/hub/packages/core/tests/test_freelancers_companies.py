@@ -45,6 +45,7 @@ def clean(hub_session: Session) -> Session:
     hub_session.execute(text("DELETE FROM comments"))
     hub_session.execute(text("DELETE FROM freelancers"))
     hub_session.execute(text("DELETE FROM companies"))
+    hub_session.execute(text("DELETE FROM users"))
     hub_session.commit()
 
 

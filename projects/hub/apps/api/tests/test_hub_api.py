@@ -33,6 +33,7 @@ def _form(**overrides: str) -> dict[str, str]:
 def _clean(session: Session) -> None:
     session.execute(text("DELETE FROM freelancers"))
     session.execute(text("DELETE FROM companies"))
+    session.execute(text("DELETE FROM users"))
     session.commit()
 
 

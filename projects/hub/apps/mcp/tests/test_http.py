@@ -17,10 +17,10 @@ from mcp.client.streamable_http import streamable_http_client
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from rebase_core.admin import AdminService
 from rebase_core.admin_tokens import AdminTokenService
 from rebase_core.config import Settings
 from rebase_core.db import session_factory
+from rebase_core.models import User
 from rebase_mcp.http import McpHttpApp
 
 URL = "http://prova/mcp"
@@ -40,20 +40,16 @@ ACCEPT = {"Accept": "application/json, text/event-stream", "Content-Type": "appl
 @pytest.fixture
 def ivan_token(mcp_engine: Engine) -> Iterator[str]:
     """An admin and a token of theirs; both removed after."""
-    settings = Settings(
-        database_url=mcp_engine.url.render_as_string(hide_password=False),
-        _env_file=None,  # type: ignore[call-arg]
-    )
     with session_factory(mcp_engine)() as session:
-        admin = AdminService(session, settings).create(
-            "ivan@rebase.it", "Ivan", "una-password-lunga"
-        )
-        _, raw = AdminTokenService(session).create(admin.id, "Claude Code")
+        user = User(email="ivan@rebase.it", nome="Ivan", cognome="Fiore", role="admin")
+        session.add(user)
+        session.commit()
+        _, raw = AdminTokenService(session).create(user.id, "Claude Code")
     try:
         yield raw
     finally:
         with session_factory(mcp_engine)() as session:
-            for table in ("comments", "freelancers", "signups", "admin_tokens", "admin_users"):
+            for table in ("comments", "freelancers", "signups", "admin_tokens", "users"):
                 session.execute(text(f"DELETE FROM {table}"))
             session.commit()
 
@@ -136,9 +132,9 @@ async def test_a_revoked_token_is_a_401_too(
 ) -> None:
     with session_factory(mcp_engine)() as session:
         service = AdminTokenService(session)
-        admin_id = session.execute(text("SELECT admin_id FROM admin_tokens")).scalar_one()
-        [record] = service.list(admin_id)
-        service.revoke(admin_id, record.id)
+        user_id = session.execute(text("SELECT user_id FROM admin_tokens")).scalar_one()
+        [record] = service.list(user_id)
+        service.revoke(user_id, record.id)
     _, client = served
     response = await client.post(
         "/mcp", json=INITIALIZE, headers={**ACCEPT, "Authorization": f"Bearer {ivan_token}"}

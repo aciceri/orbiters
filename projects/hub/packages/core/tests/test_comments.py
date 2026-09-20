@@ -21,7 +21,7 @@ PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
 def clean(hub_session: Session) -> Session:
     yield hub_session  # type: ignore[misc]
     hub_session.rollback()
-    for table in ("comments", "freelancers", "companies"):
+    for table in ("comments", "freelancers", "companies", "users"):
         hub_session.execute(text(f"DELETE FROM {table}"))
     hub_session.commit()
 

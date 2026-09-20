@@ -16,8 +16,9 @@ from rebase_core.conversions import pixel_from_settings
 from rebase_core.db import create_engine_from_settings, session_factory
 from rebase_core.errors import DomainError
 from rebase_core.mail import CardSummary, EmailSender, sender_from_settings, welcome_mail
-from rebase_core.models import Freelancer, Signup
+from rebase_core.models import USER_ROLES, Freelancer, Signup
 from rebase_core.schemas import FreelancerRead
+from rebase_core.users import UserService
 
 
 def createadmin(email: str | None, nome: str | None) -> int:
@@ -53,9 +54,8 @@ def createtoken(email: str | None, nome: str | None) -> int:
     email = (email or input("Email: ")).strip().lower()
     session = session_factory(create_engine_from_settings(settings))()
     try:
-        admins = AdminService(session, settings).list()
-        admin = next((row for row in admins if row.email == email), None)
-        if admin is None:
+        admin = UserService(session, settings).by_email(email)
+        if admin is None or admin.role != "admin":
             print(f"Nessun amministratore con email {email}", file=sys.stderr)
             return 1
         _, raw = AdminTokenService(session).create(admin.id, nome or DEFAULT_NAME)
@@ -65,6 +65,43 @@ def createtoken(email: str | None, nome: str | None) -> int:
     finally:
         session.close()
     print(raw)
+    return 0
+
+
+def setrole(email: str | None, role: str | None, nome: str | None, cognome: str | None) -> int:
+    """`rebase setrole --email a@b.it --role admin|member [--nome ...] [--cognome ...]`:
+    admin creation from now on (REB-278), the shape of `createtoken`. Looks up `users`
+    by lowercased email, creates a minimal row when none exists (`nome`/`cognome`
+    prompted if not given), sets `role`, and for a promotion of a brand-new row sends
+    the same magic link everyone else gets rather than a password printed to a
+    terminal. Demoting is `--role member`, fully reversible."""
+    settings = get_settings()
+    email = (email or input("Email: ")).strip().lower()
+    role = role or input("Ruolo (member/admin): ")
+    if role not in USER_ROLES:
+        print(f"Il ruolo deve essere uno fra {', '.join(USER_ROLES)}", file=sys.stderr)
+        return 2
+    session = session_factory(create_engine_from_settings(settings))()
+    sent = False
+    try:
+        users = UserService(session, settings)
+        if users.by_email(email) is None:
+            nome = nome or input("Nome: ")
+            cognome = cognome or input("Cognome: ")
+        user, created = users.set_role(email, role, nome or "", cognome or "")
+        if created and role == "admin":
+            sender = sender_from_settings(settings)
+            if sender is not None:
+                mail = users.request_link(user.email)
+                if mail is not None:
+                    sent = sender.send(mail)
+    except DomainError as exc:
+        print(exc.message, file=sys.stderr)
+        return 1
+    finally:
+        session.close()
+    suffix = " (link mandato)" if sent else ""
+    print(f"{user.email}: ruolo impostato a {user.role}{suffix}")
     return 0
 
 
@@ -208,6 +245,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     token.add_argument("--email")
     token.add_argument("--nome")
+    role_parser = sub.add_parser(
+        "setrole", help="Imposta il ruolo (member/admin) di un indirizzo, creandolo se serve"
+    )
+    role_parser.add_argument("--email")
+    role_parser.add_argument("--role", choices=USER_ROLES)
+    role_parser.add_argument("--nome")
+    role_parser.add_argument("--cognome")
     welcome_parser = sub.add_parser(
         "welcome",
         help="Manda la mail «la tua area è aperta» a un indirizzo o a tutti quelli noti",
@@ -221,6 +265,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return createadmin(args.email, args.nome)
     if args.command == "createtoken":
         return createtoken(args.email, args.nome)
+    if args.command == "setrole":
+        return setrole(args.email, args.role, args.nome, args.cognome)
     if args.command == "welcome":
         return welcome(args.email, args.all)
     parser.error(f"comando sconosciuto: {args.command}")

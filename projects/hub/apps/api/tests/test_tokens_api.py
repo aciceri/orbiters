@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from rebase_core.admin import AdminService
 from rebase_core.config import Settings
+from rebase_core.models import User
 
 CREDENTIALS = {"email": "ivan@rebase.it", "password": "una-password-lunga"}
 
@@ -20,14 +21,21 @@ def _settings(api_engine: Engine) -> Settings:
     )
 
 
+def _bootstrap_admin(session: Session, email: str, nome: str) -> None:
+    """The users row migration A would have backfilled for a pre-existing admin."""
+    session.add(User(email=email, nome=nome, cognome="", role="admin"))
+    session.commit()
+
+
 @pytest.fixture
 def admin(api_engine: Engine, api_session: Session) -> Iterator[None]:
     AdminService(api_session, _settings(api_engine)).create(
         CREDENTIALS["email"], "Ivan", CREDENTIALS["password"]
     )
+    _bootstrap_admin(api_session, CREDENTIALS["email"], "Ivan")
     yield
     api_session.rollback()
-    for table in ("admin_tokens", "admin_sessions", "admin_users"):
+    for table in ("admin_tokens", "admin_sessions", "admin_users", "users"):
         api_session.execute(text(f"DELETE FROM {table}"))
     api_session.commit()
 
@@ -69,6 +77,7 @@ def test_another_admins_token_is_not_found(
     AdminService(api_session, _settings(api_engine)).create(
         "ada@rebase.it", "Ada", "una-password-lunga"
     )
+    _bootstrap_admin(api_session, "ada@rebase.it", "Ada")
     assert (
         client.post(
             "/api/hub/auth/login",

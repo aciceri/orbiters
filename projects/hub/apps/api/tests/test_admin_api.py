@@ -2,17 +2,17 @@
 
 import json
 from collections.abc import Iterator
-from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, select, text
 from sqlalchemy.orm import Session
 
 from rebase_api.deps import get_http_call
 from rebase_core.admin import AdminService
 from rebase_core.config import Settings, get_settings
 from rebase_core.http import MAX_BODY_BYTES
+from rebase_core.models import Freelancer, User
 from rebase_core.perks import PerkService
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
@@ -28,6 +28,11 @@ def admin(api_engine: Engine, api_session: Session) -> Iterator[None]:
     AdminService(api_session, settings).create(
         CREDENTIALS["email"], "Ivan", CREDENTIALS["password"]
     )
+    # The users row migration A would have backfilled for this admin: the tests below
+    # exercise the still-working password login, whose AdminDep branch matches it by
+    # email (design record 2026-09-17 §4).
+    api_session.add(User(email=CREDENTIALS["email"], nome="Ivan", cognome="", role="admin"))
+    api_session.commit()
     yield
     api_session.rollback()
     for table in (
@@ -38,6 +43,7 @@ def admin(api_engine: Engine, api_session: Session) -> Iterator[None]:
         "admin_users",
         "freelancers",
         "companies",
+        "users",
         "signups",
     ):
         api_session.execute(text(f"DELETE FROM {table}"))
@@ -100,9 +106,12 @@ def test_the_guide_page_counts_downloads_and_names_who_took_it(
     _apply(client, "bob@studio.it")
     listed = client.get("/api/hub/freelancers").json()["items"]
     people = {item["email"]: item["id"] for item in listed}
+    ada_user_id = api_session.scalar(
+        select(Freelancer.user_id).where(Freelancer.email == "ada@studio.it")
+    )
     perks = PerkService(api_session)
     for _ in range(3):
-        perks.record_guide_download(UUID(people["ada@studio.it"]))
+        perks.record_guide_download(ada_user_id)
 
     stats = client.get("/api/hub/perks/guida").json()
     assert (stats["totale"], stats["membri"], stats["membri_totali"]) == (3, 1, 2)
@@ -111,7 +120,8 @@ def test_the_guide_page_counts_downloads_and_names_who_took_it(
     latest = stats["recenti"][0]
     assert (latest["nome"], latest["cognome"]) == ("Ada", "Lovelace")
     assert latest["email"] == "ada@studio.it"
-    assert latest["freelancer_id"] == people["ada@studio.it"]
+    assert latest["user_id"] == str(ada_user_id)
+    assert people["ada@studio.it"] != str(ada_user_id)  # the freelancer id, not the user id
     moments = [item["downloaded_at"] for item in stats["recenti"]]
     assert moments == sorted(moments, reverse=True)
 
@@ -294,8 +304,11 @@ def test_an_admin_lists_the_admins_and_creates_one_who_can_then_log_in(
     assert created.json()["nome"] == "Lorenzo"
     assert "password" not in created.text and "password_hash" not in created.text
 
+    # GET /admins now filters `users.role == 'admin'` (REB-278 §4); a brand-new
+    # password admin has no `users` row yet and does not show up here until they are
+    # migrated or promoted -- the one gap the design record's own legacy branch accepts.
     after = client.get("/api/hub/admins").json()
-    assert [row["email"] for row in after] == ["ivan@rebase.it", "lorenzo@rebase.it"]
+    assert [row["email"] for row in after] == ["ivan@rebase.it"]
 
     # The new admin's credentials open a session of their own.
     assert client.post("/api/hub/auth/logout").status_code == 204
@@ -372,8 +385,10 @@ def test_an_admin_changes_another_admins_name_address_or_password(
     )
     assert moved.status_code == 200, moved.text
     assert moved.json()["email"] == "lorenzo.fiore@rebase.it"
+    # Same gap as the creation test: lorenzo has no users row yet, so admins still
+    # lists only ivan.
     listed = client.get("/api/hub/admins").json()
-    assert [row["email"] for row in listed] == ["ivan@rebase.it", "lorenzo.fiore@rebase.it"]
+    assert [row["email"] for row in listed] == ["ivan@rebase.it"]
 
     # The new credentials open a session; the old password does not.
     assert client.post("/api/hub/auth/logout").status_code == 204
@@ -390,10 +405,9 @@ def test_an_admin_changes_another_admins_name_address_or_password(
 
 
 def test_changing_an_admin_points_the_form_at_the_field_that_is_wrong(
-    client: TestClient, admin: None
+    client: TestClient, admin: None, api_session: Session
 ) -> None:
     _login(client)
-    me = client.get("/api/hub/auth/me").json()
     other = client.post(
         "/api/hub/admins",
         json={"email": "lorenzo@rebase.it", "nome": "Lorenzo", "password": "una-password-lunga"},
@@ -412,23 +426,43 @@ def test_changing_an_admin_points_the_form_at_the_field_that_is_wrong(
     # An empty password in the body is «keep it», not a five-character password.
     kept = client.patch(f"/api/hub/admins/{other['id']}", json={"password": ""})
     assert kept.status_code == 200
-    # One's own row is editable like any other; the same address on itself is no duplicate.
+    # One's own row is editable like any other; the same address on itself is no
+    # duplicate. `PATCH /admins/{id}` is still `admin_users`-backed (REB-278's own
+    # "keep the body unchanged"), so its id comes from `admin_users` directly rather
+    # than from `/auth/me`, whose `id` is now the unified `users` row's.
+    ivan_admin_id = api_session.execute(
+        text("SELECT id FROM admin_users WHERE email = 'ivan@rebase.it'")
+    ).scalar_one()
     own = client.patch(
-        f"/api/hub/admins/{me['id']}", json={"email": "IVAN@rebase.it", "nome": "Ivan S."}
+        f"/api/hub/admins/{ivan_admin_id}", json={"email": "IVAN@rebase.it", "nome": "Ivan S."}
     )
     assert own.status_code == 200 and own.json()["nome"] == "Ivan S."
-    assert client.get("/api/hub/auth/me").json()["nome"] == "Ivan S."
+    # /auth/me's legacy branch now reads the person's nome off `users`, not
+    # `admin_users`; PATCH /admins/{id} still writes only the latter (its own body is
+    # unchanged in 278), so the rename here is real but not yet the one /auth/me shows
+    # -- a further edge of the same accepted gap as the admin list above.
+    assert (
+        api_session.execute(
+            text("SELECT nome FROM admin_users WHERE id = :id"), {"id": str(ivan_admin_id)}
+        ).scalar_one()
+        == "Ivan S."
+    )
     assert client.patch(f"/api/hub/admins/{MISSING}", json={"nome": "Nessuno"}).status_code == 404
 
 
 def test_a_new_password_logs_the_other_admin_out_and_keeps_me_in(
-    client: TestClient, admin: None
+    client: TestClient, admin: None, api_session: Session
 ) -> None:
     _login(client)
     other = client.post(
         "/api/hub/admins",
         json={"email": "lorenzo@rebase.it", "nome": "Lorenzo", "password": "una-password-lunga"},
     ).json()
+    # The users row migration A would have backfilled for a pre-existing admin; this
+    # one is created fresh through the still-working password form, so it needs one of
+    # its own for `/auth/me`'s AdminDep to match it by email.
+    api_session.add(User(email="lorenzo@rebase.it", nome="Lorenzo", cognome="", role="admin"))
+    api_session.commit()
     # Lorenzo logs in from his own browser.
     lorenzo = TestClient(client.app, base_url="https://testserver")
     assert (
@@ -448,9 +482,12 @@ def test_a_new_password_logs_the_other_admin_out_and_keeps_me_in(
     assert lorenzo.get("/api/hub/auth/me").status_code == 401
     assert client.get("/api/hub/auth/me").status_code == 200
 
-    # I change my own: I am still in.
-    me = client.get("/api/hub/auth/me").json()
-    own = client.patch(f"/api/hub/admins/{me['id']}", json={"password": "anche-la-mia-nuova"})
+    # I change my own: I am still in. Same id-source note as the validation test:
+    # PATCH /admins/{id} still needs admin_users' own id, not /auth/me's users one.
+    ivan_admin_id = api_session.execute(
+        text("SELECT id FROM admin_users WHERE email = 'ivan@rebase.it'")
+    ).scalar_one()
+    own = client.patch(f"/api/hub/admins/{ivan_admin_id}", json={"password": "anche-la-mia-nuova"})
     assert own.status_code == 200
     assert client.get("/api/hub/auth/me").status_code == 200
 

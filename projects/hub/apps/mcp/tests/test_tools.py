@@ -161,7 +161,7 @@ async def test_the_admin_tools_read_and_move_a_candidate_without_the_cv(
 
 def _wipe(factory: sessionmaker[Session]) -> None:
     session = factory()
-    for table in ("comments", "freelancers", "companies"):
+    for table in ("comments", "freelancers", "companies", "users"):
         session.execute(text(f"DELETE FROM {table}"))
     session.commit()
     session.close()

@@ -15,7 +15,7 @@ from rebase_api.ratelimit import reset_rate_limit
 from rebase_core.admin import AdminService
 from rebase_core.config import Settings, get_settings
 from rebase_core.mail import Mail, RecordingSender
-from rebase_core.models import GuideDownload
+from rebase_core.models import GuideDownload, User
 from rebase_core.perks import GUIDE_PATH
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
@@ -48,6 +48,7 @@ def clean(api_session: Session) -> Iterator[None]:
         "admin_sessions",
         "admin_users",
         "freelancers",
+        "users",
     ):
         api_session.execute(text(f"DELETE FROM {table}"))
     api_session.commit()
@@ -147,9 +148,10 @@ def test_the_link_enters_once_sets_the_member_cookie_and_opens_only_the_members_
     assert again.status_code == 401
     assert again.json()["detail"].startswith("Link non valido o scaduto")
 
-    # A member cookie is not an admin cookie.
-    assert client.get("/api/hub/freelancers").status_code == 401
-    assert client.get("/api/hub/auth/me").status_code == 401
+    # A member cookie is a real identity, just not an admin's: 403, not 401
+    # (REB-278's own AdminDep, §4).
+    assert client.get("/api/hub/freelancers").status_code == 403
+    assert client.get("/api/hub/auth/me").status_code == 403
 
     cv = client.get("/api/hub/me/cv")
     assert cv.status_code == 200 and cv.content == PDF
@@ -268,7 +270,7 @@ def test_every_download_of_the_guide_is_written_down_with_the_member_behind_it(
     api_session.expire_all()
     rows = api_session.scalars(select(GuideDownload)).all()
     assert len(rows) == 2
-    assert {str(row.freelancer_id) for row in rows} == {profile["id"]}
+    assert {str(row.user_id) for row in rows} == {profile["id"]}
     assert all(row.downloaded_at is not None for row in rows)
 
 
@@ -338,6 +340,9 @@ def test_a_member_changes_their_answers_and_the_admin_sees_the_comment(
     # The admin reads the thread the member wrote into.
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
     AdminService(api_session, settings).create(ADMIN["email"], "Ivan", ADMIN["password"])
+    # The users row migration A would have backfilled for a pre-existing admin.
+    api_session.add(User(email=ADMIN["email"], nome="Ivan", cognome="", role="admin"))
+    api_session.commit()
     # Log the member out first, so the client below holds only the admin cookie: an
     # admin session must not open the member routes any more than a member session
     # opens the admin ones.
@@ -423,6 +428,8 @@ def test_a_login_shows_up_on_the_admin_side(
     AdminService(api_session, Settings(_env_file=None)).create(  # type: ignore[call-arg]
         ADMIN["email"], "Ivan", ADMIN["password"]
     )
+    api_session.add(User(email=ADMIN["email"], nome="Ivan", cognome="", role="admin"))
+    api_session.commit()
     assert client.post("/api/hub/auth/login", json=ADMIN).status_code == 200
     stats = client.get("/api/hub/logins").json()
     assert (stats["totale"], stats["membri"], stats["membri_totali"]) == (1, 1, 1)

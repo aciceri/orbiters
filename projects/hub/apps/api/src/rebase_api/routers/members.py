@@ -3,12 +3,14 @@
 `POST /auth/link` answers 202 whether the address applied or not, and the mail goes out
 in a background task after the response, so neither the status nor the timing nor a
 provider failure says whether an address is known. `POST /auth/enter` spends the token
-and sets `orbiters_user`. Everything under `/me` reads the row from the session and
-never from the URL: there is no `/me/{id}`.
+and sets `orbiters_user`, for anyone with a `users` row, member or admin alike
+(REB-278): the identity resolution behind both lives in `rebase_core.users`, not here.
+Everything under `/me` reads the row from the session and never from the URL: there is
+no `/me/{id}`.
 
 `POST /auth/link`, `POST /auth/enter` and `PUT /me/cv` all spend from the public rate
 limit: the first two because they are unauthenticated by design, `PUT /me/cv` because
-FastAPI reads its multipart body while resolving parameters, before `MemberDep` gets a
+FastAPI reads its multipart body while resolving parameters, before `MeDep` gets a
 chance to reject an anonymous caller with a 401.
 
 `POST /members/lookup` is the one route here for another product rather than for a
@@ -33,7 +35,7 @@ from fastapi import (
     status,
 )
 
-from rebase_api.deps import MEMBER_COOKIE, MemberDep, SenderDep, SessionDep, SettingsDep
+from rebase_api.deps import MEMBER_COOKIE, MeDep, SenderDep, SessionDep, SettingsDep
 from rebase_api.downloads import cv_response, perk_response
 from rebase_api.ratelimit import spend_one
 from rebase_core.mail import EmailSender, Mail
@@ -46,9 +48,10 @@ from rebase_core.schemas import (
     LinkRequest,
     MemberLookup,
     MemberLookupRequest,
-    MemberProfile,
     MemberUpdate,
+    MeRead,
 )
+from rebase_core.users import UserService
 
 router = APIRouter(prefix="/api/hub", tags=["hub-member"])
 
@@ -77,27 +80,27 @@ def request_link(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "L'accesso via email non è ancora attivo. Riprova più avanti.",
         )
-    mail = MemberService(session, settings).request_link(payload.email)
+    mail = UserService(session, settings).request_link(payload.email)
     if mail is not None:
         background.add_task(_send, sender, mail)
     return Ack()
 
 
-@router.post("/auth/enter", response_model=MemberProfile)
+@router.post("/auth/enter", response_model=MeRead)
 def enter(
     payload: EnterRequest,
     request: Request,
     response: Response,
     session: SessionDep,
     settings: SettingsDep,
-) -> MemberProfile:
+) -> MeRead:
     spend_one(request)
-    outcome = MemberService(session, settings).enter(payload.token)
+    outcome = UserService(session, settings).enter(payload.token)
     if outcome is None:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, "Link non valido o scaduto. Chiedine un altro."
         )
-    profile, raw = outcome
+    user, raw = outcome
     response.set_cookie(
         MEMBER_COOKIE,
         raw,
@@ -107,57 +110,59 @@ def enter(
         max_age=settings.member_session_days * 86400,
         path="/",
     )
-    return profile
+    return MemberService(session).me_read(user.id)
 
 
-@router.get("/me", response_model=MemberProfile)
-def me(member: MemberDep) -> MemberProfile:
-    return member
+@router.get("/me", response_model=MeRead)
+def me(me: MeDep) -> MeRead:
+    return me
 
 
-@router.patch("/me", response_model=MemberProfile)
-def update_me(
-    member: MemberDep, session: SessionDep, settings: SettingsDep, payload: MemberUpdate
-) -> MemberProfile:
-    return MemberService(session, settings).update(member.id, payload)
+@router.patch("/me", response_model=MeRead)
+def update_me(me: MeDep, session: SessionDep, payload: MemberUpdate) -> MeRead:
+    service = MemberService(session)
+    freelancer = service.require_card(me.id)
+    service.update(freelancer.id, payload)
+    return service.me_read(me.id)
 
 
-@router.put("/me/cv", response_model=MemberProfile)
+@router.put("/me/cv", response_model=MeRead)
 def replace_my_cv(
-    member: MemberDep,
+    me: MeDep,
     request: Request,
     session: SessionDep,
-    settings: SettingsDep,
     cv: Annotated[UploadFile, File()],
-) -> MemberProfile:
+) -> MeRead:
     # The multipart body is already parsed by the time any dependency runs, so an
     # anonymous caller has made the server read it regardless of the 401 that follows;
     # charge it to the public bucket and never materialise more than the limit `check_cv`
     # enforces anyway.
     spend_one(request)
     content = cv.file.read(CV_MAX_BYTES + 1)
-    return MemberService(session, settings).replace_cv(
-        member.id, content, cv.filename or "", cv.content_type or ""
-    )
+    service = MemberService(session)
+    freelancer = service.require_card(me.id)
+    service.replace_cv(freelancer.id, content, cv.filename or "", cv.content_type or "")
+    return service.me_read(me.id)
 
 
 @router.get("/me/cv")
-def my_cv(member: MemberDep, session: SessionDep, settings: SettingsDep) -> Response:
-    cv = MemberService(session, settings).cv(member.id)
+def my_cv(me: MeDep, session: SessionDep) -> Response:
+    service = MemberService(session)
+    freelancer = service.require_card(me.id)
+    cv = service.cv(freelancer.id)
     return cv_response(cv)
 
 
 @router.get("/me/guida")
-def my_guide(member: MemberDep, session: SessionDep) -> Response:
-    """The guide, to a member and to nobody else.
+def my_guide(me: MeDep, session: SessionDep) -> Response:
+    """The guide, to anyone signed in and to nobody else.
 
-    `MemberDep` is the whole access rule: the perk of being in the community is that
-    this answers at all, so an anonymous caller gets the same 401 as `/me` rather than
-    a redirect or a teaser. The file is `rebase_core`'s own package data, and the
-    member row is not read for anything beyond having resolved. Since ORB-156 the
-    download is written down first, who and when, for the admin area's counter.
+    `MeDep` is the whole access rule: an anonymous caller gets the same 401 as `/me`
+    rather than a redirect or a teaser. The file is `rebase_core`'s own package data.
+    Since ORB-156 the download is written down first, who and when, for the admin
+    area's counter.
     """
-    PerkService(session).record_guide_download(member.id)
+    PerkService(session).record_guide_download(me.id)
     return perk_response(guide_bytes(), GUIDE_FILENAME)
 
 
@@ -185,12 +190,12 @@ def lookup_member(
         presented.encode("utf-8"), settings.pigro_registry_token.encode("utf-8")
     ):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "token non valido")
-    return MemberService(session, settings).lookup(payload.email)
+    return MemberService(session).lookup(payload.email)
 
 
 @router.post("/me/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
     request: Request, response: Response, session: SessionDep, settings: SettingsDep
 ) -> None:
-    MemberService(session, settings).close_session(request.cookies.get(MEMBER_COOKIE))
+    UserService(session, settings).close_session(request.cookies.get(MEMBER_COOKIE))
     response.delete_cookie(MEMBER_COOKIE, path="/")

@@ -38,8 +38,8 @@ from rebase_api.deps import SenderDep, SessionDep, SettingsDep, TrackerDep
 from rebase_api.ratelimit import spend_one
 from rebase_core.freelancers import ALREADY_HAS_CARD_NOTE, FreelancerService
 from rebase_core.mail import EmailSender, Mail
-from rebase_core.members import MemberService
 from rebase_core.schemas import DISTINCT_ID_MAX_LENGTH, Ack, FreelancerCreate, SignupUtm
+from rebase_core.users import UserService
 
 router = APIRouter(prefix="/api/hub", tags=["hub"])
 
@@ -142,7 +142,7 @@ def apply(
     else:
         _, created = service.apply(data, cv.file.read(), cv.filename or "", cv.content_type or "")
     if not created and sender is not None:
-        mail = MemberService(session, settings).request_link(data.email, note=ALREADY_HAS_CARD_NOTE)
+        mail = UserService(session, settings).request_link(data.email, note=ALREADY_HAS_CARD_NOTE)
         if mail is not None:
             background.add_task(_send_existing_card_mail, sender, mail)
     if created and tracker is not None:

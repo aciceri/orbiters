@@ -7,15 +7,21 @@ reads or moves rows other people wrote, or adds one more admin (ORB-123); nothin
 writes on an applicant's behalf. The one thing it writes about a person is the card an
 admin drafts from a signup (ORB-155), and that is signed by the admin and refused where
 the person has already spoken.
+
+Since REB-278 `GET /admins` filters `users` on `role == 'admin'`, and the promote/demote
+pair beside it is the new way to grant or revoke the role, without a password; the old
+create/update pair below keeps posting one for the still-unmigrated SPA (`Admins.tsx`),
+untouched, until REB-281.
 """
 
+import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from rebase_api.deps import ADMIN_COOKIE, AdminDep, SessionDep, SettingsDep
+from rebase_api.deps import ADMIN_COOKIE, AdminDep, SenderDep, SessionDep, SettingsDep
 from rebase_api.downloads import cv_response
 from rebase_api.ratelimit import spend_one
 from rebase_core.admin import AdminRead, AdminService
@@ -23,6 +29,7 @@ from rebase_core.comments import CommentService
 from rebase_core.companies import CompanyService
 from rebase_core.freelancers import FreelancerService
 from rebase_core.logins import LoginService
+from rebase_core.mail import EmailSender, Mail
 from rebase_core.models import NAME_MAX_LENGTH
 from rebase_core.perks import PerkService
 from rebase_core.schemas import (
@@ -39,9 +46,19 @@ from rebase_core.schemas import (
     StatusChange,
 )
 from rebase_core.service import SignupService
+from rebase_core.users import UserService
 from rebase_core.validation import SafeStr
 
 router = APIRouter(prefix="/api/hub", tags=["hub-admin"])
+
+_log = logging.getLogger(__name__)
+
+
+def _send(sender: EmailSender, mail: Mail) -> None:
+    """Runs after the response, same reasoning as `routers/members.py`'s own: a refusal
+    is logged without the address or the key."""
+    if not sender.send(mail):
+        _log.warning("a promotion's magic link mail was refused by the provider")
 
 
 class LoginRequest(BaseModel):
@@ -126,7 +143,7 @@ def me(admin: AdminDep) -> AdminRead:
 
 @router.get("/admins", response_model=list[AdminRead])
 def list_admins(_: AdminDep, session: SessionDep, settings: SettingsDep) -> list[AdminRead]:
-    return AdminService(session, settings).list()
+    return [AdminRead.model_validate(u) for u in UserService(session, settings).list_admins()]
 
 
 @router.post("/admins", response_model=AdminRead, status_code=status.HTTP_201_CREATED)
@@ -154,6 +171,47 @@ def update_admin(
         password=payload.password or None,
         keep_session=request.cookies.get(ADMIN_COOKIE),
     )
+
+
+class PromoteRequest(BaseModel):
+    """`POST /admins/promote`'s body: an email, and `nome`/`cognome` for an address
+    with no `users` row yet -- ignored, harmlessly, when one already exists."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+    nome: SafeStr | None = Field(default=None, min_length=1, max_length=NAME_MAX_LENGTH)
+    cognome: SafeStr | None = Field(default=None, min_length=1, max_length=NAME_MAX_LENGTH)
+
+
+@router.post("/admins/promote", response_model=AdminRead)
+def promote_admin(
+    _: AdminDep,
+    session: SessionDep,
+    settings: SettingsDep,
+    sender: SenderDep,
+    background: BackgroundTasks,
+    payload: PromoteRequest,
+) -> AdminRead:
+    """Promotes whatever `users` row already answers to this address with one click
+    and no form; an address with none yet is created bare, no freelancer card invented
+    for it (§1, Nav and Amministratori). A brand-new row gets the same magic link
+    everyone else gets, since it has no other way in yet."""
+    users = UserService(session, settings)
+    user, created = users.promote(payload.email, payload.nome, payload.cognome)
+    if created and sender is not None:
+        mail = users.request_link(user.email)
+        if mail is not None:
+            background.add_task(_send, sender, mail)
+    return AdminRead.model_validate(user)
+
+
+@router.post("/admins/{user_id}/demote", response_model=AdminRead)
+def demote_admin(
+    _: AdminDep, session: SessionDep, settings: SettingsDep, user_id: UUID
+) -> AdminRead:
+    """Sets `role = 'member'`, fully reversible since nothing is deleted."""
+    return AdminRead.model_validate(UserService(session, settings).demote(user_id))
 
 
 # ---- the lists -------------------------------------------------------------------------

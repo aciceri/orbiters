@@ -72,6 +72,36 @@ class Signup(Base, PrimaryKeyMixin):
     __table_args__ = (Index("uq_orbiters_signups_email_lower", func.lower(email), unique=True),)
 
 
+# ---- identity: one row per person, whatever they are to the hub ------------------------
+
+USER_ROLES = ("member", "admin")
+
+
+class User(Base, PrimaryKeyMixin, TimestampMixin):
+    """One row per person the hub has an address for, one per `lower(email)`
+    (`uq_users_email_lower`). A freelancer card, a company's own request and an admin
+    grant are things a `users` row may have, zero or more of each, not three values
+    competing for one row's identity (design record 2026-09-17, decision (c)): Lorenzo
+    and Ivan are freelancers on some engagements, a company's own referente on others,
+    and admins throughout. `role` is `member` or `admin` (`USER_ROLES`), validated in
+    the service layer the way `stato` and `compilata_da` already are -- two values on a
+    handful of rows do not buy a `user_roles` table. `attivo`, carried over from
+    `admin_users.attivo` by REB-278's migration, still means only "this admin's tokens
+    and sessions keep failing the same way": nothing deactivates a member yet, matching
+    today."""
+
+    __tablename__ = "users"
+
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    nome: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), nullable=False)
+    cognome: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), nullable=False)
+    linkedin_url: Mapped[str | None] = mapped_column(String(LINKEDIN_URL_MAX_LENGTH), default=None)
+    role: Mapped[str] = mapped_column(String(10), nullable=False, default="member")
+    attivo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (Index("uq_users_email_lower", func.lower(email), unique=True),)
+
+
 # ---- the hub proper: who wants to work, and who needs people --------------------------
 
 FREELANCER_STATES = ("nuovo", "contattato", "attivo", "scartato")
@@ -126,10 +156,17 @@ class Freelancer(Base, PrimaryKeyMixin, TimestampMixin, UtmMixin):
     the position and the remote option are therefore nullable -- nothing public states
     them -- and the person completes the card from the member area. `compilata_da` says
     who wrote the answers last, so research can tell a card it may replace from one it
-    may not. Migration 0007 loosened the columns; the wizard still requires all of them."""
+    may not. Migration 0007 loosened the columns; the wizard still requires all of them.
+
+    Since REB-278 the identity is `users`, one row per person: `user_id` is `NOT NULL
+    UNIQUE`, at most one card per person, and `FreelancerService` keeps `nome`/`cognome`/
+    `email`/`linkedin_url` here in step with the linked `users` row on every write that
+    legitimately changes them (a first application, a member's own edit, an admin's
+    re-drafted research) rather than a second, independently drifting copy."""
 
     __tablename__ = "freelancers"
 
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     nome: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), nullable=False)
     cognome: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), nullable=False)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
@@ -149,16 +186,23 @@ class Freelancer(Base, PrimaryKeyMixin, TimestampMixin, UtmMixin):
     __table_args__ = (
         Index("uq_freelancers_email_lower", func.lower(email), unique=True),
         Index("ix_freelancers_created_at", "created_at"),
+        Index("uq_freelancers_user_id", "user_id", unique=True),
     )
 
 
 class Company(Base, PrimaryKeyMixin, TimestampMixin, UtmMixin):
     """A company that needs people: the project in a few lines, from when and for how
     long, and what a day is worth to them. Several rows per company are fine -- a company
-    has several projects -- so nothing is unique here but the id."""
+    has several projects -- so nothing is unique here but the id.
+
+    Since REB-278 `user_id` points at the referente's `users` row, not unique -- a
+    person files several requests over time -- and `CompanyService` keeps `referente`/
+    `email` here in step with it at the moment each request is written, the same
+    reasoning as `Freelancer.user_id`."""
 
     __tablename__ = "companies"
 
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     nome_azienda: Mapped[str] = mapped_column(String(AZIENDA_MAX_LENGTH), nullable=False)
     referente: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), nullable=False)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
@@ -233,11 +277,19 @@ class AdminToken(Base, PrimaryKeyMixin, TimestampMixin):
     list can tell two tokens apart. No expiry: `revoked_at` is the end of a token, and a
     revoked one is refused like an unknown one. Hangs on the admin with a plain foreign
     key, as the sessions do: an admin is never deleted, only deactivated, and a
-    deactivated admin's tokens stop resolving with them."""
+    deactivated admin's tokens stop resolving with them.
+
+    Since REB-278 `user_id` is the owner (`users.id`, `role == 'admin'`); `admin_id`
+    stays, read and written by nothing from this PR on, because a token minted after
+    this deploy may belong to an admin promoted with no `admin_users` row at all.
+    Migration B drops it once nothing points at it any more."""
 
     __tablename__ = "admin_tokens"
 
-    admin_id: Mapped[UUID] = mapped_column(ForeignKey("admin_users.id"), nullable=False, index=True)
+    admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_users.id"), default=None, index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     nome: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), nullable=False)
     token_hash: Mapped[str] = mapped_column(
         String(ADMIN_SESSION_TOKEN_HASH_LENGTH), nullable=False, unique=True
@@ -273,13 +325,21 @@ TOKEN_HASH_LENGTH = 64  # sha256, hex
 class MagicLinkToken(Base, PrimaryKeyMixin):
     """One link, one entry. The raw value travels in the mail and nowhere else; the row
     holds its sha256, a deadline (`magic_link_minutes`) and the moment it was spent, so a
-    link forwarded or fetched twice opens nothing the second time. Hangs on the
-    freelancer with `ON DELETE CASCADE`: deleting a person deletes their way in."""
+    link forwarded or fetched twice opens nothing the second time. Hangs on the person
+    with `ON DELETE CASCADE`: deleting them deletes their way in.
+
+    Since REB-278 the link is for anyone with a `users` row, not only a freelancer:
+    `user_id` is the owner and `freelancer_id` -- kept for the rows already there,
+    written by nothing from this PR on -- can no longer be `NOT NULL`: an admin with
+    no card, or a company's own referente, has none to give it."""
 
     __tablename__ = "magic_link_tokens"
 
-    freelancer_id: Mapped[UUID] = mapped_column(
-        ForeignKey("freelancers.id", ondelete="CASCADE"), nullable=False, index=True
+    freelancer_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("freelancers.id", ondelete="CASCADE"), default=None, index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     token_hash: Mapped[str] = mapped_column(String(TOKEN_HASH_LENGTH), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -290,16 +350,23 @@ class MagicLinkToken(Base, PrimaryKeyMixin):
 
 
 class MemberLogin(Base, PrimaryKeyMixin):
-    """One row per time a member entered through a magic link (ORB-158): who and when,
+    """One row per time somebody entered through a magic link (ORB-158): who and when,
     and nothing else -- no address, no user agent. A log rather than the session table,
     which forgets a session on logout and on expiry, so the admin can read who came in
-    and when a week later. Written by `MemberService.enter` in the commit that opens the
-    session. Hangs on the freelancer with `ON DELETE CASCADE`, like the sessions."""
+    and when a week later. Written by `UserService.enter` in the commit that opens the
+    session. Hangs on the person with `ON DELETE CASCADE`, like the sessions.
+
+    Since REB-278 `user_id` is the owner, for anyone who signs in, not only a
+    freelancer; `freelancer_id`, kept for the rows already there, can no longer be
+    `NOT NULL` for the same reason as `magic_link_tokens.freelancer_id`."""
 
     __tablename__ = "member_logins"
 
-    freelancer_id: Mapped[UUID] = mapped_column(
-        ForeignKey("freelancers.id", ondelete="CASCADE"), nullable=False, index=True
+    freelancer_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("freelancers.id", ondelete="CASCADE"), default=None, index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     logged_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -307,16 +374,22 @@ class MemberLogin(Base, PrimaryKeyMixin):
 
 
 class GuideDownload(Base, PrimaryKeyMixin):
-    """One row per time a member fetched the guide (ORB-156): who and when, and nothing
+    """One row per time somebody fetched the guide (ORB-156): who and when, and nothing
     else. A log rather than a counter on the freelancer, so the admin can read a trend
     and see who came back for it; nothing about the file itself is stored, since the
-    file is package data and the same for everybody. Hangs on the freelancer with
-    `ON DELETE CASCADE`, like their sessions: a deleted person takes their downloads."""
+    file is package data and the same for everybody. Hangs on the person with
+    `ON DELETE CASCADE`: a deleted person takes their downloads.
+
+    Since REB-278 `user_id` is the owner; `freelancer_id`, kept for the rows already
+    there, can no longer be `NOT NULL` for the same reason as the sessions'."""
 
     __tablename__ = "guide_downloads"
 
-    freelancer_id: Mapped[UUID] = mapped_column(
-        ForeignKey("freelancers.id", ondelete="CASCADE"), nullable=False, index=True
+    freelancer_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("freelancers.id", ondelete="CASCADE"), default=None, index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     downloaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -324,14 +397,22 @@ class GuideDownload(Base, PrimaryKeyMixin):
 
 
 class MemberSession(Base, PrimaryKeyMixin):
-    """The admin session's shape, for a freelancer: opaque cookie, hashed at rest, sliding
-    expiry, revoked by deleting the row. A second table and a second cookie rather than
-    a role column on `admin_sessions`, so a member token can never resolve to an admin."""
+    """The session's shape: opaque cookie, hashed at rest, sliding expiry, revoked by
+    deleting the row. One table and one cookie for everyone who signs in, member and
+    admin alike (REB-278): a role is read off the `users` row it resolves to, not off
+    which table the session lives in.
+
+    `user_id` is the owner, for anyone; `freelancer_id`, kept for the rows already
+    there, can no longer be `NOT NULL` for the same reason as the other three tables
+    the magic link touches: an admin with no card has nothing to put in it."""
 
     __tablename__ = "member_sessions"
 
-    freelancer_id: Mapped[UUID] = mapped_column(
-        ForeignKey("freelancers.id", ondelete="CASCADE"), nullable=False, index=True
+    freelancer_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("freelancers.id", ondelete="CASCADE"), default=None, index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     token_hash: Mapped[str] = mapped_column(String(TOKEN_HASH_LENGTH), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(

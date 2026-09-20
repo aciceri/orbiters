@@ -29,10 +29,30 @@ FIELD_LABELS: dict[str, str] = {
     "remoto": "modalità di lavoro",
     "links": "link",
 }
-# The three fields a freelancer card shares with its `users` row: legitimately changing
-# one here also changes it there, in the same commit, so `GET /me` never reads a stale
-# name the person just corrected (§3's "every writer and reader" table).
-_IDENTITY_FIELDS = {"nome", "cognome", "linkedin_url"}
+# The three fields a freelancer card shares with its `users` row: since migration B
+# (REB-281) they live on `users` alone, so a change here writes there instead of the
+# card, and `GET /me` never reads a stale name the person just corrected.
+_IDENTITY_FIELDS = ("nome", "cognome", "linkedin_url")
+
+
+def _to_profile(row: Freelancer, user: User) -> MemberProfile:
+    """`MemberProfile`, identity read off the linked `users` row since REB-281 dropped
+    the card's own `nome`/`cognome`/`email`/`linkedin_url`."""
+    return MemberProfile(
+        id=row.id,
+        nome=user.nome,
+        cognome=user.cognome,
+        email=user.email,
+        linkedin_url=user.linkedin_url,
+        cv_filename=row.cv_filename,
+        cv_size=row.cv_size,
+        tariffa_giornaliera=row.tariffa_giornaliera,
+        posizione=row.posizione,
+        remoto=row.remoto,
+        links=list(row.links),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
 
 
 class MemberService:
@@ -94,54 +114,52 @@ class MemberService:
 
     def lookup(self, email: str) -> MemberLookup:
         """Whether a freelancer with that address exists, and their two names if so
-        (ORB-173). The same match as `uq_freelancers_email_lower`, so the answer agrees
+        (ORB-173). The same match as `uq_freelancers_user_id`, so the answer agrees
         with what the wizard would have refused as a duplicate. An unknown address is
         `membro=False` and never an error: the caller is PigroCRM's signup, and a person
         who is not in the community is the ordinary case there, not a fault."""
-        row = self._by_email(email.strip().lower())
-        if row is None:
+        result = self._by_email(email.strip().lower())
+        if result is None:
             return MemberLookup(membro=False)
-        return MemberLookup(membro=True, nome=row.nome, cognome=row.cognome)
+        _row, user = result
+        return MemberLookup(membro=True, nome=user.nome, cognome=user.cognome)
 
     # ---- what they see and change -----------------------------------------------------
 
     def profile(self, freelancer_id: UUID) -> MemberProfile:
-        return MemberProfile.model_validate(self._require(freelancer_id))
+        row = self._require(freelancer_id)
+        user = self._owner(row)
+        return _to_profile(row, user)
 
     def update(self, freelancer_id: UUID, data: MemberUpdate) -> MemberProfile:
         """Applies the seven answers and leaves one comment naming the ones that moved,
         signed with the person's name after the change. Nothing moved, no comment --
         unless the card was an admin's draft from a signup (ORB-155): saving it, even
         unchanged, makes it the person's (`compilata_da = "persona"`), and the thread
-        says so. `stato`, `note` and the attribution are never touched here. A changed
-        `nome`/`cognome`/`linkedin_url` is also written onto the linked `users` row, in
-        the same commit, so `GET /me` reads the correction on its very next call."""
+        says so. `stato`, `note` and the attribution are never touched here. `nome`/
+        `cognome`/`linkedin_url` live on the linked `users` row since REB-281, so a
+        change to them lands there directly rather than through the card."""
         row = self._require(freelancer_id)
+        user = self._owner(row)
         changed: list[str] = []
-        identity_changed = False
         for field, label in FIELD_LABELS.items():
+            target = user if field in _IDENTITY_FIELDS else row
             value = getattr(data, field)
             if field == "links":
                 value = list(value)
-            if getattr(row, field) != value:
-                setattr(row, field, value)
+            if getattr(target, field) != value:
+                setattr(target, field, value)
                 changed.append(label)
-                if field in _IDENTITY_FIELDS:
-                    identity_changed = True
         taken_over = row.compilata_da != "persona"
         if not changed and not taken_over:
-            return MemberProfile.model_validate(row)
+            return _to_profile(row, user)
         row.compilata_da = "persona"
-        if identity_changed:
-            user = self.session.get(User, row.user_id)
-            if user is not None:
-                user.nome, user.cognome, user.linkedin_url = row.nome, row.cognome, row.linkedin_url
         self.session.commit()
         if changed:
-            self._comment(row, f"Profilo aggiornato dalla persona: {', '.join(changed)}")
+            self._comment(user, row, f"Profilo aggiornato dalla persona: {', '.join(changed)}")
         else:
-            self._comment(row, "Scheda confermata dalla persona")
-        return MemberProfile.model_validate(row)
+            self._comment(user, row, "Scheda confermata dalla persona")
+        return _to_profile(row, user)
 
     def replace_cv(
         self, freelancer_id: UUID, content: bytes, filename: str, mime: str
@@ -150,6 +168,7 @@ class MemberService:
         ones and the thread says so."""
         filename, mime = check_cv(content, filename, mime)
         row = self._require(freelancer_id)
+        user = self._owner(row)
         first = row.cv_bytes is None
         row.cv_bytes, row.cv_filename, row.cv_mime, row.cv_size = (
             content,
@@ -159,16 +178,23 @@ class MemberService:
         )
         row.compilata_da = "persona"
         self.session.commit()
-        self._comment(row, "CV caricato dalla persona" if first else "CV aggiornato dalla persona")
-        return MemberProfile.model_validate(row)
+        self._comment(
+            user, row, "CV caricato dalla persona" if first else "CV aggiornato dalla persona"
+        )
+        return _to_profile(row, user)
 
     def cv(self, freelancer_id: UUID) -> CvFile:
         return cv_of(self._require(freelancer_id))
 
     # ---- helpers ---------------------------------------------------------------------
 
-    def _comment(self, row: Freelancer, text: str) -> None:
-        author = f"{row.nome} {row.cognome}"[:AUTORE_MAX_LENGTH]
+    def _owner(self, row: Freelancer) -> User:
+        user = self.session.get(User, row.user_id)
+        assert user is not None
+        return user
+
+    def _comment(self, user: User, row: Freelancer, text: str) -> None:
+        author = f"{user.nome} {user.cognome}"[:AUTORE_MAX_LENGTH]
         CommentService(self.session).add(ENTITY, row.id, text, author)
 
     def _require(self, freelancer_id: UUID) -> Freelancer:
@@ -177,5 +203,9 @@ class MemberService:
             raise NotFound(ENTITY, freelancer_id)
         return row
 
-    def _by_email(self, email: str) -> Freelancer | None:
-        return self.session.scalar(select(Freelancer).where(func.lower(Freelancer.email) == email))
+    def _by_email(self, email: str) -> tuple[Freelancer, User] | None:
+        return self.session.execute(
+            select(Freelancer, User)
+            .join(User, User.id == Freelancer.user_id)
+            .where(func.lower(User.email) == email)
+        ).first()  # type: ignore[return-value]

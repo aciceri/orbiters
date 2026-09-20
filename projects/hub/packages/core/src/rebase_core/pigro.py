@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from rebase_core.config import Settings
 from rebase_core.http import MAX_BODY_BYTES, HttpCall
-from rebase_core.models import Freelancer
+from rebase_core.models import Freelancer, User
 
 REGISTRY_PATH = "/api/tenants/"
 
@@ -113,10 +113,12 @@ class PigroRegistry:
         """The members behind those addresses, by lowercased address, in one query."""
         if not emails:
             return {}
-        rows = session.scalars(
-            select(Freelancer).where(func.lower(Freelancer.email).in_(emails))
+        rows = session.execute(
+            select(Freelancer.id, User.email, User.nome, User.cognome)
+            .join(User, User.id == Freelancer.user_id)
+            .where(func.lower(User.email).in_(emails))
         ).all()
         return {
-            row.email.lower(): PigroMember(id=row.id, nome=row.nome, cognome=row.cognome)
-            for row in rows
+            email.lower(): PigroMember(id=freelancer_id, nome=nome, cognome=cognome)
+            for freelancer_id, email, nome, cognome in rows
         }

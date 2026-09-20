@@ -46,14 +46,11 @@ class Settings(BaseSettings):
     posthog_key: str = ""
     posthog_host: str = "https://eu.i.posthog.com"
 
-    # --- the admin session -----------------------------------------------------------
+    # --- the one cookie, for a member and an admin alike (REB-281) -------------------
     # `Secure` by default, like PigroCRM: on plain HTTP the browser drops the cookie and
     # the login looks like it worked. Local development sets it to false in its `.env`;
     # compose never forwards it, so a deploy cannot inherit that.
     cookie_secure: bool = True
-    # Sliding: every authenticated request pushes the expiry this far ahead, so someone
-    # who uses the admin area never sees the login again and someone who does not does.
-    admin_session_days: int = 30
 
     # --- the member area -------------------------------------------------------------
     # Resend sends the magic link. An empty key means no sender, and the API answers the
@@ -65,7 +62,10 @@ class Settings(BaseSettings):
     # development points it at the Vite dev server.
     hub_url: str = "https://letsrebase.com/hub"
     magic_link_minutes: int = 15
-    # Sliding, as the admin's.
+    # Sliding: every authenticated request pushes the expiry this far ahead, so anyone
+    # signed in, member or admin alike, sees the same window before being asked again.
+    # `Settings.admin_session_days` was dropped in the same migration that dropped the
+    # cookie it timed (REB-281).
     member_session_days: int = 30
 
     # --- PigroCRM's spaces, read-only -------------------------------------------------

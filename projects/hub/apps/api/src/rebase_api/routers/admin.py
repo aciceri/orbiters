@@ -1,30 +1,28 @@
-"""The admin area's API: a login, and the lists behind it.
+"""The admin area's API: the lists an admin reads, and the promote/demote pair.
 
-One cookie, `orbiters_admin`, opaque and httpOnly, resolved against `admin_sessions` on
-every request (`deps.get_admin`). The login shares the public token bucket, so a
-password guess costs the same budget as a signup flood. Everything under this router
-reads or moves rows other people wrote, or adds one more admin (ORB-123); nothing here
-writes on an applicant's behalf. The one thing it writes about a person is the card an
-admin drafts from a signup (ORB-155), and that is signed by the admin and refused where
-the person has already spoken.
+One cookie, `orbiters_user`, the same one every signed-in person carries, resolved
+against `sessions` on every request (`deps.get_admin`, checking `role == 'admin'`).
+Everything under this router reads or moves rows other people wrote, or grants the role
+to one more person (ORB-123); nothing here writes on an applicant's behalf. The one
+thing it writes about a person is the card an admin drafts from a signup (ORB-155), and
+that is signed by the admin and refused where the person has already spoken.
 
 Since REB-278 `GET /admins` filters `users` on `role == 'admin'`, and the promote/demote
-pair beside it is the new way to grant or revoke the role, without a password; the old
-create/update pair below keeps posting one for the still-unmigrated SPA (`Admins.tsx`),
-untouched, until REB-281.
+pair is the only way to grant or revoke it: REB-281 dropped the password login and the
+create/update pair that posted one, once the SPA that still called them (REB-279)
+stopped being their last caller.
 """
 
 import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Query, Response, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from rebase_api.deps import ADMIN_COOKIE, AdminDep, SenderDep, SessionDep, SettingsDep
+from rebase_api.deps import AdminDep, SenderDep, SessionDep, SettingsDep
 from rebase_api.downloads import cv_response
-from rebase_api.ratelimit import spend_one
-from rebase_core.admin import AdminRead, AdminService
+from rebase_core.admin_tokens import AdminRead
 from rebase_core.comments import CommentService
 from rebase_core.companies import CompanyService
 from rebase_core.freelancers import FreelancerService
@@ -61,116 +59,18 @@ def _send(sender: EmailSender, mail: Mail) -> None:
         _log.warning("a promotion's magic link mail was refused by the provider")
 
 
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class AdminCreate(BaseModel):
-    """The form behind «Amministratori»: the creating admin chooses the password and
-    hands it over out of band, as `rebase createadmin` does (ORB-123). The rules on the
-    password and the name live in `AdminService.create`, once, so the CLI and the form
-    agree; this only closes what a body can carry that a prompt cannot: a NUL byte, a
-    key nobody declared (`attivo` is not for the caller to choose), and a name past the
-    column before Postgres sees it."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    email: EmailStr
-    nome: SafeStr = Field(min_length=1, max_length=NAME_MAX_LENGTH)
-    password: str
-
-
-class AdminUpdate(BaseModel):
-    """The pencil on a row (ORB-129): each field optional, absent means «keep it». An
-    empty password is «keep it» too, since that is what an untouched password field
-    sends; a present one goes through the service's ten-character rule. `attivo` is not
-    here on purpose: Ivan does not want deactivation from the area yet."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    email: EmailStr | None = None
-    nome: SafeStr | None = Field(default=None, min_length=1, max_length=NAME_MAX_LENGTH)
-    password: str | None = None
-
-
-@router.post("/auth/login", response_model=AdminRead)
-def login(
-    payload: LoginRequest,
-    request: Request,
-    response: Response,
-    session: SessionDep,
-    settings: SettingsDep,
-) -> AdminRead:
-    spend_one(request)
-    service = AdminService(session, settings)
-    admin = service.authenticate(payload.email, payload.password)
-    if admin is None:
-        # The same sentence for an unknown address, a wrong password and a deactivated
-        # admin: the form is not an oracle for who reads this area.
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Credenziali non valide")
-    response.set_cookie(
-        ADMIN_COOKIE,
-        service.open_session(admin.id),
-        httponly=True,
-        secure=settings.cookie_secure,
-        samesite="lax",
-        max_age=settings.admin_session_days * 86400,
-        path="/",
-    )
-    return admin
-
-
-@router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(
-    request: Request, response: Response, session: SessionDep, settings: SettingsDep
-) -> None:
-    AdminService(session, settings).close_session(request.cookies.get(ADMIN_COOKIE))
-    response.delete_cookie(ADMIN_COOKIE, path="/")
-
-
-@router.get("/auth/me", response_model=AdminRead)
-def me(admin: AdminDep) -> AdminRead:
-    return admin
-
-
 # ---- the admins ------------------------------------------------------------------------
 #
-# Who reads this area, one more of them, and a change to one (ORB-123, ORB-129). No
-# deactivation and no deletion here, on purpose: the `attivo` flag exists and nothing in
-# the area changes it yet.
+# Who reads this area, and the one form that grants or revokes the role (ORB-123,
+# REB-279): typing an email promotes whatever `users` row already answers to it, or
+# creates a bare one from `nome`/`cognome` when none exists yet. No deactivation and no
+# deletion here, on purpose: the `attivo` flag exists and nothing in the area changes it
+# yet, and demoting is fully reversible since nothing is deleted.
 
 
 @router.get("/admins", response_model=list[AdminRead])
 def list_admins(_: AdminDep, session: SessionDep, settings: SettingsDep) -> list[AdminRead]:
     return [AdminRead.model_validate(u) for u in UserService(session, settings).list_admins()]
-
-
-@router.post("/admins", response_model=AdminRead, status_code=status.HTTP_201_CREATED)
-def create_admin(
-    _: AdminDep, session: SessionDep, settings: SettingsDep, payload: AdminCreate
-) -> AdminRead:
-    return AdminService(session, settings).create(payload.email, payload.nome, payload.password)
-
-
-@router.patch("/admins/{admin_id}", response_model=AdminRead)
-def update_admin(
-    _: AdminDep,
-    request: Request,
-    session: SessionDep,
-    settings: SettingsDep,
-    admin_id: UUID,
-    payload: AdminUpdate,
-) -> AdminRead:
-    # The caller's own cookie is spared when a new password revokes the row's sessions,
-    # so an admin resetting their own password is not logged out by it.
-    return AdminService(session, settings).update(
-        admin_id,
-        nome=payload.nome,
-        email=payload.email,
-        password=payload.password or None,
-        keep_session=request.cookies.get(ADMIN_COOKIE),
-    )
 
 
 class PromoteRequest(BaseModel):

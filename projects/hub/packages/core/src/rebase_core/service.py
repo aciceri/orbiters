@@ -2,7 +2,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from rebase_core.models import Freelancer, Signup
+from rebase_core.models import Freelancer, Signup, User
 from rebase_core.schemas import SignupCreate, SignupList, SignupListItem, SignupRead
 
 LIST_LIMIT_DEFAULT = 100
@@ -64,10 +64,12 @@ class SignupService:
         one kind of caller allowed to reach this method at all."""
         limit = max(1, min(limit, LIST_LIMIT_MAX))
         # The freelancer card with the same address, when there is one (ORB-155): one
-        # outer join on the two case-insensitive unique indexes, not a query per row.
+        # outer join through `users` (the card's identity since REB-281), not a query
+        # per row.
         rows = self.session.execute(
             select(Signup, Freelancer.id)
-            .outerjoin(Freelancer, func.lower(Freelancer.email) == func.lower(Signup.email))
+            .outerjoin(User, func.lower(User.email) == func.lower(Signup.email))
+            .outerjoin(Freelancer, Freelancer.user_id == User.id)
             .order_by(Signup.created_at.desc(), Signup.id.desc())
             .limit(limit)
         ).all()

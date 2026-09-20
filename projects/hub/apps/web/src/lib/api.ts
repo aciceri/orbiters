@@ -289,10 +289,6 @@ export interface CreatedToken extends AdminToken {
 }
 
 export const admin = {
-  /** The password login (`AdminLogin.tsx`): kept only for that page (REB-279, REB-281
-   *  removes both together with the routes it calls). */
-  login: (email: string, password: string) =>
-    request<Admin>('/api/hub/auth/login', json({ email, password })),
   /** Cards and, beside them, the leads: signups whose address has no card yet (ORB-163).
    *  `stato: 'lead'` answers leads alone; another state answers cards alone. */
   freelancers: (stato?: string) =>

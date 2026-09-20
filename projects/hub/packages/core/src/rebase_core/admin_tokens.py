@@ -8,8 +8,10 @@ somebody chose. Every way `resolve` can fail is the same sentence: an unknown va
 revoked token and a deactivated or demoted owner are not told apart, so a leaked token
 is not an oracle for whether it is still worth using.
 
-Since REB-278 the owner is a `users` row with `role == 'admin'` (`user_id`), not an
-`admin_users` row: `AdminRead` is unchanged in shape, only in what it is read off."""
+Since REB-278 the owner is a `users` row with `role == 'admin'` (`user_id`); since
+REB-281 that table is the only one an admin has ever lived in, `admin_users` gone with
+the password login. `AdminRead` moved here from the retired `rebase_core.admin`, its
+shape unchanged: a thin read of a `users` row, never the card fields, never a join."""
 
 import hashlib
 import secrets
@@ -20,7 +22,6 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from rebase_core.admin import AdminRead
 from rebase_core.errors import NotFound, ValidationFailed
 from rebase_core.models import NAME_MAX_LENGTH, AdminToken, User
 
@@ -29,6 +30,19 @@ TOKEN_PREFIX = "reb_"
 PREFIX_VISIBLE_CHARS = 8
 INVALID_TOKEN = "Token non valido"
 DEFAULT_NAME = "Claude Code"
+
+
+class AdminRead(BaseModel):
+    """An admin as the API and the MCP server both read them: never the card, never a
+    join. `attivo` and `created_at` are here for the list of admins (ORB-123)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    email: str
+    nome: str
+    attivo: bool
+    created_at: datetime
 
 
 class AdminTokenRead(BaseModel):

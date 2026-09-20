@@ -56,7 +56,7 @@ def test_member_profile_carries_no_admin_field() -> None:
 def members(hub_engine: Engine, hub_session: Session) -> MemberService:
     yield MemberService(hub_session)
     hub_session.rollback()
-    for table in ("member_sessions", "magic_link_tokens", "comments", "freelancers", "users"):
+    for table in ("sessions", "magic_link_tokens", "comments", "freelancers", "users"):
         hub_session.execute(text(f"DELETE FROM {table}"))
     hub_session.commit()
 

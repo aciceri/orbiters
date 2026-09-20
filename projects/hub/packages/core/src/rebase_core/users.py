@@ -2,10 +2,10 @@
 member and an admin alike (REB-278, design record 2026-09-17 §4).
 
 Owns get-or-create by lowercased email, session open/close, and the magic link's
-request-and-enter, moved out of the person-matching pieces `MemberService` and
-`AdminService` each used to carry their own copy of. `MemberService` keeps what is
-specific to the freelancer card; `AdminService` keeps the password login and the admin
-list/CRUD, both untouched and still working for the SPA until REB-279/281.
+request-and-enter, moved out of the person-matching pieces `MemberService` and the
+password-login `AdminService` REB-281 retired: `MemberService` keeps what is specific
+to the freelancer card, and the admin list/promote/demote pair lives here alongside
+everything else that means the person.
 """
 
 import hashlib
@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from rebase_core.config import Settings
 from rebase_core.errors import NotFound, ValidationFailed
 from rebase_core.mail import Mail, magic_link_mail
-from rebase_core.models import USER_ROLES, MagicLinkToken, MemberLogin, MemberSession, User
+from rebase_core.models import USER_ROLES, Login, MagicLinkToken, User, UserSession
 
 ENTITY = "user"
 
@@ -184,13 +184,13 @@ class UserService:
             return None
         raw_session = secrets.token_urlsafe(32)
         self.session.add(
-            MemberSession(
+            UserSession(
                 user_id=row.id, token_hash=_hash(raw_session), expires_at=self._deadline(now)
             )
         )
         # The login itself, kept after the session is gone (ORB-158): same commit, so a
         # session never exists without its login and a login never without its session.
-        self.session.add(MemberLogin(user_id=row.id, logged_at=now))
+        self.session.add(Login(user_id=row.id, logged_at=now))
         self.session.commit()
         return row, raw_session
 
@@ -201,7 +201,7 @@ class UserService:
         if not raw:
             return None
         session_row = self.session.scalar(
-            select(MemberSession).where(MemberSession.token_hash == _hash(raw))
+            select(UserSession).where(UserSession.token_hash == _hash(raw))
         )
         if session_row is None:
             return None
@@ -230,7 +230,7 @@ class UserService:
         if not raw:
             return
         session_row = self.session.scalar(
-            select(MemberSession).where(MemberSession.token_hash == _hash(raw))
+            select(UserSession).where(UserSession.token_hash == _hash(raw))
         )
         if session_row is not None:
             self.session.delete(session_row)

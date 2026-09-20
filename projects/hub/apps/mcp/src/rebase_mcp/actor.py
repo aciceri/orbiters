@@ -14,7 +14,7 @@ from typing import Any
 from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
 from mcp.shared.exceptions import MCPError
 
-from rebase_core.admin import AdminRead
+from rebase_core.admin_tokens import AdminRead
 
 _CURRENT_ADMIN: contextvars.ContextVar[AdminRead] = contextvars.ContextVar("mcp_request_admin")
 

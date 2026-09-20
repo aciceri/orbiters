@@ -1,12 +1,13 @@
 # The hub becomes one identity: a `users` table, and freelancer, company and admin as things a person may have
 
-Date: 2026-09-17, revised 2026-09-18. Status: two of the six lettered decisions are
+Date: 2026-09-17, revised 2026-09-18. Status: three of the six lettered decisions are
 taken (Lorenzo, 2026-09-18): the identity model is a `users` table and not a `role`
-column on `freelancers` (§ 0, letter (c)), and the way in is the magic link alone, with
-the admin password login gone rather than kept as an emergency door (letter (a)). Still
-proposed, awaiting Lorenzo's letter on the remaining four: (b), (d), (e) and (f) in
-§ Open decisions for the lead. Tracker: REB-277 in `Hub v2 - one hub, and an admin is a
-member with one more section`.
+column on `freelancers` (§ 0, letter (c)), the way in is the magic link alone, with the
+admin password login gone rather than kept as an emergency door (letter (a)), and
+`admin_tokens` moves to `users` in the same migration as everything else that means
+the person (letter (b)). Still proposed, awaiting Lorenzo's letter on the remaining
+three: (d), (e) and (f) in § Open decisions for the lead. Tracker: REB-277 in `Hub v2 -
+one hub, and an admin is a member with one more section`.
 
 ## 0. Why
 
@@ -591,12 +592,15 @@ table: `admin_users` and `password_hash` survive until migration B either way.
 
 **(b) Does `admin_tokens` get repointed to `users` in REB-278's migration, or does it
 wait for REB-287?**
-Options: (b1) repoint now, `admin_tokens.user_id → users.id` (this record, §3),
-REB-287 becomes purely behavioural. (b2) leave `admin_tokens.admin_id → admin_users.id`
-until REB-287, which means `admin_users` cannot be dropped in REB-281 and survives as a
-table with no other purpose until milestone 4 ships. Recommend **b1**: a table kept
-alive for one foreign key, for a milestone whose own estimate (3 points) says it is not
-imminent, is exactly the debt REB-287's card describes finding.
+Decided. Lorenzo, 2026-09-18: **b1**, repoint now. `admin_tokens.admin_id` becomes
+`admin_tokens.user_id → users.id` in migration A (§3), alongside the sessions, the
+magic links and the logins, so every foreign key that means "the person" moves in one
+statement and `admin_users` has nothing left pointing at it when REB-281 drops it.
+REB-287 becomes purely behavioural: `resolve()` reads `role` off the `users` row at
+call time and the mint, list and revoke routes inherit `AdminDep`'s new meaning with no
+migration of their own. The alternative kept a table alive for a single foreign key
+until a milestone whose own estimate says it is not imminent, which is the debt
+REB-287's card describes finding rather than a reason to postpone.
 
 **(c) Is the identity table `freelancers` with a `role` column, a new `persons` table,
 or a `users` table a freelancer card and a company request both hang off?**

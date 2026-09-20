@@ -1,14 +1,16 @@
 # The hub becomes one identity: a `users` table, and freelancer, company and admin as things a person may have
 
-Date: 2026-09-17, revised 2026-09-18. Status: four of the six lettered decisions are
+Date: 2026-09-17, revised 2026-09-18. Status: five of the six lettered decisions are
 taken (Lorenzo, 2026-09-18): the identity model is a `users` table and not a `role`
 column on `freelancers` (§ 0, letter (c)), the way in is the magic link alone, with the
 admin password login gone rather than kept as an emergency door (letter (a)),
 `admin_tokens` moves to `users` in the same migration as everything else that means
 the person (letter (b)), and a name the old schema held as one string migrates with an
 empty `cognome` corrected by hand afterwards, never by a mapping of real names
-committed to a migration file (letter (d)). Still proposed, awaiting Lorenzo's letter
-on the remaining two: (e) and (f) in § Open decisions for the lead. Tracker: REB-277 in `Hub v2 -
+committed to a migration file (letter (d)), and one "who am I" route survives, `/me`,
+with `/auth/me` deleted in REB-281 once REB-279 has moved its last caller (letter (e)).
+Still proposed, awaiting Lorenzo's letter on the last one: (f) in § Open decisions for
+the lead. Tracker: REB-277 in `Hub v2 -
 one hub, and an admin is a member with one more section`.
 
 ## 0. Why
@@ -639,13 +641,15 @@ the blank self-correcting rather than a second thing to remember.
 
 **(e) Does `GET /api/hub/me` survive alongside `GET /api/hub/auth/me`, or does one of
 them go?**
-Options: (e1) one survives, `/me` (this record, §4), because it already answers the
-unified shape off the cookie that survives, so 278 only widens it to `MeRead` and the
-old SPA keeps `/auth/me` untouched until 279 moves; REB-278's card, which names
-`/auth/me`, gets the one-word correction. (e2) keep both, `/auth/me` re-exporting
-`/me`'s answer. Recommend **e1**: two routes answering the same question is the exact
-shape this whole record exists to remove; a client migration inside one company's own
-SPA is not the external-compatibility case that would justify keeping a second name.
+Decided. Lorenzo, 2026-09-18: **e1**, `/me` survives and `/auth/me` goes. It already
+answers the unified shape off the cookie that survives, so REB-278 only widens it to
+`MeRead` (§4) and the current SPA keeps calling `/auth/me` untouched until REB-279
+moves it, which is the last thing that reads the old route: `/auth/me` is deleted in
+REB-281 with the rest of the two-login surface, not before, so no window exists where
+a deployed client calls a route that is gone. REB-278's card names `/auth/me` as the
+route it widens and needs the one-word correction to `/me`. Two routes answering the
+same question is the shape this record exists to remove, and the only client is a SPA
+in this repository, not an external integration whose migration we do not control.
 
 **(f) The company wizard collects `referente` as one string; `users.nome`/`cognome` are
 `NOT NULL`. Does the wizard split it into two fields, or does the whole string go into

@@ -64,9 +64,10 @@ pandoc and Typst, into `packages/core/src/rebase_core/perks/`, and the result is
 why: the alternative puts those two binaries plus fontTools inside `Dockerfile.api` for
 one document.
 
-It is served by `GET /api/hub/me/guida`, which depends on `MemberDep` and nothing else,
-so the perk of being in the community is that the route answers at all. There is no
-public URL for the file, and the website links to the wizard instead (ORB-70).
+It is served by `GET /api/hub/me/guida`, which depends on `MeDep` and nothing else, so
+the perk of being signed in is that the route answers at all (`MemberDep` until
+REB-278 unified member and admin sign-in). There is no public URL for the file, and
+the website links to the wizard instead (ORB-70).
 
 What that costs is a file that can fall behind its sources, so after editing the
 Markdown, the template, the palette or the typeface run

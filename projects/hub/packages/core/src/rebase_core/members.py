@@ -1,36 +1,22 @@
-"""The member area: how a freelancer gets back in, and what they may change once in.
+"""The member area: the freelancer card, and what its owner may change once signed in.
 
-The way in is a magic link (member area spec, 2026-09-10): the person types the address
-they gave the wizard, a one-time token goes out by mail, the link opens a session. No
-password anywhere. Sessions are the admin's shape in a table of their own. Every change
+The way in -- the magic link, session open/close, `resolve` -- moved to
+`rebase_core.users` (REB-278): a person signs in as a `users` row, member or admin
+alike, and this module keeps only what is specific to the freelancer card. Every change
 the person makes is a comment in the row's thread (ORB-59), so the admin sees what moved
-without an audit table. The service never sends a mail: it returns the one to send, and
-the adapter answers the same status and body whether the address exists or not and
-sends in the background; the rate limit on that route is what bounds how many timing
-samples an address can collect.
+without an audit table.
 """
 
-import hashlib
-import secrets
-from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from rebase_core.comments import CommentService
-from rebase_core.config import Settings
 from rebase_core.errors import NotFound
 from rebase_core.freelancers import check_cv, cv_of
-from rebase_core.mail import Mail, magic_link_mail
-from rebase_core.models import (
-    AUTORE_MAX_LENGTH,
-    Freelancer,
-    MagicLinkToken,
-    MemberLogin,
-    MemberSession,
-)
-from rebase_core.schemas import CvFile, MemberLookup, MemberProfile, MemberUpdate
+from rebase_core.models import AUTORE_MAX_LENGTH, Freelancer, User
+from rebase_core.schemas import CvFile, MemberLookup, MemberProfile, MemberUpdate, MeRead
 
 ENTITY = "freelancer"
 # What the comment calls each field, in the admin's language, in the wizard's order.
@@ -43,119 +29,66 @@ FIELD_LABELS: dict[str, str] = {
     "remoto": "modalità di lavoro",
     "links": "link",
 }
-
-
-def _hash(raw: str) -> str:
-    return hashlib.sha256(raw.encode()).hexdigest()
+# The three fields a freelancer card shares with its `users` row: legitimately changing
+# one here also changes it there, in the same commit, so `GET /me` never reads a stale
+# name the person just corrected (§3's "every writer and reader" table).
+_IDENTITY_FIELDS = {"nome", "cognome", "linkedin_url"}
 
 
 class MemberService:
-    def __init__(self, session: Session, settings: Settings) -> None:
+    def __init__(self, session: Session) -> None:
         self.session = session
-        self.settings = settings
 
-    # ---- the way in ----------------------------------------------------------------
+    # ---- the identity behind a card ---------------------------------------------------
 
-    def request_link(self, email: str, note: str | None = None) -> Mail | None:
-        """The mail to send, or `None` when nobody with that address applied. Sweeps the
-        person's spent and expired tokens first: nothing needs a cron. `note`, when
-        given, is passed straight to `magic_link_mail` (REB-272): one more sentence for
-        a caller other than `/auth/link` that already knows why this address is getting
-        a link."""
-        row = self._by_email(email.strip().lower())
+    def card_for_user(self, user_id: UUID) -> Freelancer | None:
+        return self.session.scalar(select(Freelancer).where(Freelancer.user_id == user_id))
+
+    def require_card(self, user_id: UUID) -> Freelancer:
+        """The freelancer card for a signed-in person, or a 404 named "scheda": an
+        admin with none yet is a new case this record's card-less admin introduces
+        (design record §4)."""
+        row = self.card_for_user(user_id)
         if row is None:
-            return None
-        now = datetime.now(UTC)
-        self.session.execute(
-            delete(MagicLinkToken).where(
-                MagicLinkToken.freelancer_id == row.id,
-                or_(MagicLinkToken.used_at.is_not(None), MagicLinkToken.expires_at <= now),
-            )
-        )
-        raw = secrets.token_urlsafe(32)
-        self.session.add(
-            MagicLinkToken(
-                freelancer_id=row.id,
-                token_hash=_hash(raw),
-                expires_at=now + timedelta(minutes=self.settings.magic_link_minutes),
-            )
-        )
-        self.session.commit()
-        link = f"{self.settings.hub_url.rstrip('/')}/entra?t={raw}"
-        return magic_link_mail(row.email, link, self.settings.magic_link_minutes, note)
+            raise NotFound("scheda", user_id)
+        return row
 
-    def enter(self, raw_token: str) -> tuple[MemberProfile, str] | None:
-        """The profile and the raw session token for the cookie, or `None` for a wrong,
-        spent or expired link. The token is spent by a conditional update gated on it
-        still being unused, so of two requests racing on the same raw token (a mail
-        scanner's prefetch against the person's own click) only one sees its row come
-        back from `RETURNING` and opens a session; the other finds the token already
-        spent and gets `None`. `RETURNING` rather than `rowcount`: the DBAPI's row
-        count is typed on `CursorResult` only, not on the `Result` a generic `execute`
-        returns."""
-        if not raw_token:
-            return None
-        now = datetime.now(UTC)
-        token = self.session.scalar(
-            select(MagicLinkToken).where(MagicLinkToken.token_hash == _hash(raw_token))
-        )
-        if token is None or token.used_at is not None or token.expires_at <= now:
-            return None
-        row = self.session.get(Freelancer, token.freelancer_id)
-        if row is None:
-            return None
-        spent = self.session.execute(
-            update(MagicLinkToken)
-            .where(MagicLinkToken.id == token.id, MagicLinkToken.used_at.is_(None))
-            .values(used_at=now)
-            .returning(MagicLinkToken.id)
-        )
-        if len(spent.scalars().all()) != 1:
-            self.session.rollback()
-            return None
-        raw_session = secrets.token_urlsafe(32)
-        self.session.add(
-            MemberSession(
-                freelancer_id=row.id, token_hash=_hash(raw_session), expires_at=self._deadline(now)
+    def me_read(self, user_id: UUID) -> MeRead:
+        """The full `GET /me` shape for whoever `user_id` names: the identity off
+        `users`, plus the card's own fields when one exists, blank otherwise."""
+        user = self.session.get(User, user_id)
+        if user is None:
+            raise NotFound("user", user_id)
+        card = self.card_for_user(user_id)
+        if card is None:
+            return MeRead(
+                id=user.id,
+                nome=user.nome,
+                cognome=user.cognome,
+                email=user.email,
+                linkedin_url=user.linkedin_url,
+                role=user.role,
+                created_at=user.created_at,
+                updated_at=user.updated_at,
+                ha_scheda=False,
             )
+        return MeRead(
+            id=user.id,
+            nome=user.nome,
+            cognome=user.cognome,
+            email=user.email,
+            linkedin_url=user.linkedin_url,
+            role=user.role,
+            created_at=user.created_at,
+            updated_at=user.updated_at,
+            ha_scheda=True,
+            cv_filename=card.cv_filename,
+            cv_size=card.cv_size,
+            tariffa_giornaliera=card.tariffa_giornaliera,
+            posizione=card.posizione,
+            remoto=card.remoto,
+            links=list(card.links),
         )
-        # The login itself, kept after the session is gone (ORB-158): same commit, so a
-        # session never exists without its login and a login never without its session.
-        self.session.add(MemberLogin(freelancer_id=row.id, logged_at=now))
-        self.session.commit()
-        return MemberProfile.model_validate(row), raw_session
-
-    def resolve(self, raw: str | None) -> MemberProfile | None:
-        """The member behind a cookie, or `None`. Slides the expiry on every hit and
-        forgets a session past its deadline the moment it is presented."""
-        if not raw:
-            return None
-        session_row = self.session.scalar(
-            select(MemberSession).where(MemberSession.token_hash == _hash(raw))
-        )
-        if session_row is None:
-            return None
-        now = datetime.now(UTC)
-        if session_row.expires_at <= now:
-            self.session.delete(session_row)
-            self.session.commit()
-            return None
-        row = self.session.get(Freelancer, session_row.freelancer_id)
-        if row is None:
-            return None
-        session_row.expires_at = self._deadline(now)
-        self.session.commit()
-        return MemberProfile.model_validate(row)
-
-    def close_session(self, raw: str | None) -> None:
-        if not raw:
-            return
-        session_row = self.session.scalar(
-            select(MemberSession).where(MemberSession.token_hash == _hash(raw))
-        )
-        if session_row is not None:
-            self.session.delete(session_row)
-            self.session.commit()
 
     # ---- what another product may ask ------------------------------------------------
 
@@ -180,9 +113,12 @@ class MemberService:
         signed with the person's name after the change. Nothing moved, no comment --
         unless the card was an admin's draft from a signup (ORB-155): saving it, even
         unchanged, makes it the person's (`compilata_da = "persona"`), and the thread
-        says so. `stato`, `note` and the attribution are never touched here."""
+        says so. `stato`, `note` and the attribution are never touched here. A changed
+        `nome`/`cognome`/`linkedin_url` is also written onto the linked `users` row, in
+        the same commit, so `GET /me` reads the correction on its very next call."""
         row = self._require(freelancer_id)
         changed: list[str] = []
+        identity_changed = False
         for field, label in FIELD_LABELS.items():
             value = getattr(data, field)
             if field == "links":
@@ -190,10 +126,16 @@ class MemberService:
             if getattr(row, field) != value:
                 setattr(row, field, value)
                 changed.append(label)
+                if field in _IDENTITY_FIELDS:
+                    identity_changed = True
         taken_over = row.compilata_da != "persona"
         if not changed and not taken_over:
             return MemberProfile.model_validate(row)
         row.compilata_da = "persona"
+        if identity_changed:
+            user = self.session.get(User, row.user_id)
+            if user is not None:
+                user.nome, user.cognome, user.linkedin_url = row.nome, row.cognome, row.linkedin_url
         self.session.commit()
         if changed:
             self._comment(row, f"Profilo aggiornato dalla persona: {', '.join(changed)}")
@@ -228,9 +170,6 @@ class MemberService:
     def _comment(self, row: Freelancer, text: str) -> None:
         author = f"{row.nome} {row.cognome}"[:AUTORE_MAX_LENGTH]
         CommentService(self.session).add(ENTITY, row.id, text, author)
-
-    def _deadline(self, now: datetime | None = None) -> datetime:
-        return (now or datetime.now(UTC)) + timedelta(days=self.settings.member_session_days)
 
     def _require(self, freelancer_id: UUID) -> Freelancer:
         row = self.session.get(Freelancer, freelancer_id)

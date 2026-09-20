@@ -9,6 +9,7 @@ from rebase_core.comments import CommentService
 from rebase_core.errors import NotFound, ValidationFailed
 from rebase_core.models import COMPANY_STATES, Company
 from rebase_core.schemas import CompanyCreate, CompanyList, CompanyRead, StatusChange
+from rebase_core.users import UserService
 
 ENTITY = "company"
 LIST_LIMIT_DEFAULT = 100
@@ -21,12 +22,18 @@ class CompanyService:
 
     def request(self, data: CompanyCreate) -> CompanyRead:
         """Every request is a row: a company has several projects, and two requests a
-        week apart are two things to answer, not one to merge."""
+        week apart are two things to answer, not one to merge. The referente's `users`
+        row is get-or-created by lowercased email (REB-278) and left as it was found on
+        a repeat request: this row's own `referente`/`email` always carry what this
+        particular request said, whether or not it matches the identity on file."""
         utm = data.utm.model_dump() if data.utm is not None and not data.utm.is_empty() else {}
+        email = data.email.strip().lower()
+        user = UserService(self.session).get_or_create(email, data.referente)
         row = Company(
+            user_id=user.id,
             nome_azienda=data.nome_azienda,
             referente=data.referente,
-            email=data.email.strip().lower(),
+            email=email,
             progetto=data.progetto,
             periodo_da=data.periodo_da,
             durata=data.durata,

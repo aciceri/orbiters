@@ -18,6 +18,7 @@ from rebase_core.models import (
     Freelancer,
     MemberLogin,
     Signup,
+    User,
 )
 from rebase_core.schemas import (
     CvFile,
@@ -28,6 +29,7 @@ from rebase_core.schemas import (
     SignupListItem,
     StatusChange,
 )
+from rebase_core.users import UserService
 
 ENTITY = "freelancer"
 # The pseudo-state the list filter uses for signups without a card (ORB-163): never
@@ -77,14 +79,15 @@ def cv_of(row: Freelancer) -> CvFile:
 
 def _logins_per_card() -> Subquery:
     """How many times each card's owner entered and when last (ORB-158), as one grouped
-    subquery the list joins once: two hundred people are not two hundred counts."""
+    subquery the list joins once: two hundred people are not two hundred counts. Grouped
+    by `user_id` since REB-278: `freelancer_id` is no longer written by a fresh login."""
     return (
         select(
-            MemberLogin.freelancer_id,
+            MemberLogin.user_id,
             func.count().label("accessi"),
             func.max(MemberLogin.logged_at).label("ultimo_accesso"),
         )
-        .group_by(MemberLogin.freelancer_id)
+        .group_by(MemberLogin.user_id)
         .subquery()
     )
 
@@ -148,7 +151,10 @@ class FreelancerService:
         if row is not None:
             return FreelancerRead.model_validate(row), False
         utm = data.utm.model_dump() if data.utm is not None and not data.utm.is_empty() else {}
-        row = Freelancer(email=email, **utm)
+        user = UserService(self.session).get_or_create(
+            email, data.nome, data.cognome, data.linkedin_url
+        )
+        row = Freelancer(user_id=user.id, email=email, **utm)
         self.session.add(row)
         if stored is not None:
             content, filename, mime = stored
@@ -196,8 +202,21 @@ class FreelancerService:
         created = row is None
         if row is None:
             utm = {column: getattr(signup, column) for column in UTM_COLUMNS}
-            row = Freelancer(email=email, **utm)
+            user = UserService(self.session).get_or_create(
+                email, data.nome, data.cognome, data.linkedin_url
+            )
+            row = Freelancer(user_id=user.id, email=email, **utm)
             self.session.add(row)
+        else:
+            # A second research on the same card: the person's name may genuinely have
+            # been corrected, so the linked `users` row follows it too, in this commit.
+            user = self.session.get(User, row.user_id)
+            if user is not None:
+                user.nome, user.cognome, user.linkedin_url = (
+                    data.nome,
+                    data.cognome,
+                    data.linkedin_url,
+                )
         row.nome = data.nome
         row.cognome = data.cognome
         row.linkedin_url = data.linkedin_url
@@ -233,7 +252,7 @@ class FreelancerService:
         logins, signed = _logins_per_card(), _signed_up()
         stmt = (
             select(Freelancer, logins.c.accessi, logins.c.ultimo_accesso, signed.c.email)
-            .outerjoin(logins, logins.c.freelancer_id == Freelancer.id)
+            .outerjoin(logins, logins.c.user_id == Freelancer.user_id)
             .outerjoin(signed, signed.c.email == func.lower(Freelancer.email))
         )
         count = select(func.count()).select_from(Freelancer)
@@ -281,9 +300,7 @@ class FreelancerService:
         row = self._require(freelancer_id)
         logins = _logins_per_card()
         counted = self.session.execute(
-            select(logins.c.accessi, logins.c.ultimo_accesso).where(
-                logins.c.freelancer_id == row.id
-            )
+            select(logins.c.accessi, logins.c.ultimo_accesso).where(logins.c.user_id == row.user_id)
         ).first()
         signed_up = self.session.scalar(
             select(Signup.id).where(func.lower(Signup.email) == row.email.lower())

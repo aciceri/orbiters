@@ -463,7 +463,7 @@ class CommentCreate(BaseModel):
     testo: SafeStr = Field(min_length=1, max_length=COMMENT_MAX_LENGTH)
 
 
-def _is_complete(card: "MemberProfile | FreelancerRead") -> bool:
+def _is_complete(card: "MemberProfile | FreelancerRead | MeRead") -> bool:
     """CV, rate, position and remote option all there. What «Da completare» in the admin
     area and the notice in the member area read (ORB-155), and what the welcome mailing
     reads before it tells somebody their card is complete. The name and the address are
@@ -500,6 +500,37 @@ class MemberProfile(BaseModel):
     links: list[str]
     created_at: datetime
     updated_at: datetime
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def completa(self) -> bool:
+        return _is_complete(self)
+
+
+class MeRead(BaseModel):
+    """Whoever `orbiters_user` resolves to, member or admin, replacing `MemberProfile`
+    on `GET /me` (REB-278): a `users` row is not necessarily an applicant with a card
+    any more, so `ha_scheda` says whether one exists, and the seven card fields answer
+    blank -- `None`, `False`, `[]` -- when it does not, the shape a signed-in admin
+    with no card now gets. `role` is `member` or `admin` (`USER_ROLES`)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    nome: str
+    cognome: str
+    email: str
+    linkedin_url: str | None
+    role: str
+    created_at: datetime
+    updated_at: datetime
+    ha_scheda: bool
+    cv_filename: str | None = None
+    cv_size: int | None = None
+    tariffa_giornaliera: Decimal | None = None
+    posizione: str | None = None
+    remoto: str | None = None
+    links: list[str] = Field(default_factory=list)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -649,7 +680,7 @@ class GuideDownloadRead(BaseModel):
     """One download, with the member's name for the admin's list."""
 
     id: UUID
-    freelancer_id: UUID
+    user_id: UUID
     nome: str
     cognome: str
     email: str
@@ -660,7 +691,7 @@ class LoginRead(BaseModel):
     """One login, with the member's name for the admin's list (ORB-158)."""
 
     id: UUID
-    freelancer_id: UUID
+    user_id: UUID
     nome: str
     cognome: str
     email: str

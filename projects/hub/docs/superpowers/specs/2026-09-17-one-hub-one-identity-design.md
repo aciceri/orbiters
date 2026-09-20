@@ -1,11 +1,12 @@
 # The hub becomes one identity: a `users` table, and freelancer, company and admin as things a person may have
 
-Date: 2026-09-17, revised 2026-09-18. Status: the identity model is decided (Lorenzo,
-2026-09-18, § 0): a `users` table, not a `role` column on `freelancers`. Still proposed,
-awaiting Lorenzo's letter on whether the admin password login survives next to the
-magic link and on the four other lettered questions in § Open decisions for the lead,
-now five with the company wizard's referente field. Tracker: REB-277 in `Hub v2 - one
-hub, and an admin is a member with one more section`.
+Date: 2026-09-17, revised 2026-09-18. Status: two of the six lettered decisions are
+taken (Lorenzo, 2026-09-18): the identity model is a `users` table and not a `role`
+column on `freelancers` (§ 0, letter (c)), and the way in is the magic link alone, with
+the admin password login gone rather than kept as an emergency door (letter (a)). Still
+proposed, awaiting Lorenzo's letter on the remaining four: (b), (d), (e) and (f) in
+§ Open decisions for the lead. Tracker: REB-277 in `Hub v2 - one hub, and an admin is a
+member with one more section`.
 
 ## 0. Why
 
@@ -577,14 +578,16 @@ page for the merged shell.
 ## Open decisions for the lead
 
 **(a) Does the admin password login survive next to the magic link?**
-Options: (a1) magic link only, `password_hash` gone, this record's recommendation,
-for the reason in §1. (a2) Both, the password an emergency door for when Resend is
-down. Recommend **a1**: an emergency door that is exercised only during an outage of a
-different system is one that has never been tested when it is needed, and the cost of
-keeping it (the CLI, the form, the argon2 budget, a second thing to rotate) is paid on
-every day nothing is down. Unaffected by the identity table: `admin_users` and
-`password_hash` still exist until migration B whichever way the identity question
-answered.
+Decided. Lorenzo, 2026-09-18: **a1**, the magic link only. There is one door into the
+hub for everybody, and what an admin sees more of comes from their row and not from a
+second login: `password_hash` goes with migration B, and with it the password form
+(`AdminLogin.tsx`), `POST /api/hub/auth/login`, the argon2 budget and `rebase
+createadmin`. The reason is the one in §1, and it is worth restating because it is the
+argument against every emergency door of this shape: a path exercised only during an
+outage of a different system has never been tested at the moment it is needed, while
+its cost (a second credential to rotate, a second form to keep accessible, a second
+branch in `get_admin`) is paid on every day nothing is down. Unaffected by the identity
+table: `admin_users` and `password_hash` survive until migration B either way.
 
 **(b) Does `admin_tokens` get repointed to `users` in REB-278's migration, or does it
 wait for REB-287?**

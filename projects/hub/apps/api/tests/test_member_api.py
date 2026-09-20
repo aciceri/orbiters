@@ -12,14 +12,13 @@ from sqlalchemy.orm import Session
 
 from rebase_api.deps import get_sender
 from rebase_api.ratelimit import reset_rate_limit
-from rebase_core.admin import AdminService
 from rebase_core.config import Settings, get_settings
 from rebase_core.mail import Mail, RecordingSender
 from rebase_core.models import GuideDownload, User
 from rebase_core.perks import GUIDE_PATH
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
-ADMIN = {"email": "ivan@rebase.it", "password": "una-password-lunga"}
+ADMIN_EMAIL = "ivan@rebase.it"
 
 
 class RefusingSender:
@@ -42,11 +41,9 @@ def clean(api_session: Session) -> Iterator[None]:
     api_session.rollback()
     for table in (
         "guide_downloads",
-        "member_sessions",
+        "sessions",
         "magic_link_tokens",
         "comments",
-        "admin_sessions",
-        "admin_users",
         "freelancers",
         "users",
     ):
@@ -151,7 +148,6 @@ def test_the_link_enters_once_sets_the_member_cookie_and_opens_only_the_members_
     # A member cookie is a real identity, just not an admin's: 403, not 401
     # (REB-278's own AdminDep, §4).
     assert client.get("/api/hub/freelancers").status_code == 403
-    assert client.get("/api/hub/auth/me").status_code == 403
 
     cv = client.get("/api/hub/me/cv")
     assert cv.status_code == 200 and cv.content == PDF
@@ -338,17 +334,15 @@ def test_a_member_changes_their_answers_and_the_admin_sees_the_comment(
     reset_rate_limit()
 
     # The admin reads the thread the member wrote into.
-    settings = Settings(_env_file=None)  # type: ignore[call-arg]
-    AdminService(api_session, settings).create(ADMIN["email"], "Ivan", ADMIN["password"])
-    # The users row migration A would have backfilled for a pre-existing admin.
-    api_session.add(User(email=ADMIN["email"], nome="Ivan", cognome="", role="admin"))
+    api_session.add(User(email=ADMIN_EMAIL, nome="Ivan", cognome="", role="admin"))
     api_session.commit()
-    # Log the member out first, so the client below holds only the admin cookie: an
-    # admin session must not open the member routes any more than a member session
-    # opens the admin ones.
+    # Log the member out first, so the freelancer thread below is read as the admin,
+    # not as Ada still holding the earlier session; REB-278's unified identity puts
+    # both roles behind the same `/me`, so the admin also gets a 200 there, with
+    # `role` the thing that tells the two apart.
     assert client.post("/api/hub/me/logout").status_code == 204
-    assert client.post("/api/hub/auth/login", json=ADMIN).status_code == 200
-    assert client.get("/api/hub/me").status_code == 401
+    _enter(client, sender, ADMIN_EMAIL)
+    assert client.get("/api/hub/me").json()["role"] == "admin"
     listed = client.get("/api/hub/freelancers").json()["items"]
     assert len(listed) == 1 and listed[0]["posizione"] == "Staff engineer"
     thread = client.get(f"/api/hub/freelancers/{listed[0]['id']}/comments").json()
@@ -418,22 +412,20 @@ def test_a_member_completes_the_card_an_admin_drafted(
 def test_a_login_shows_up_on_the_admin_side(
     client: TestClient, sender: RecordingSender, clean: None, api_session: Session
 ) -> None:
-    from rebase_core.admin import AdminService
-
     _apply(client, "ada@studio.it")
     _enter(client, sender, "ada@studio.it")
     assert client.post("/api/hub/me/logout").status_code == 204
     # The session is gone; the login stays.
     assert client.get("/api/hub/logins").status_code == 401
-    AdminService(api_session, Settings(_env_file=None)).create(  # type: ignore[call-arg]
-        ADMIN["email"], "Ivan", ADMIN["password"]
-    )
-    api_session.add(User(email=ADMIN["email"], nome="Ivan", cognome="", role="admin"))
+    api_session.add(User(email=ADMIN_EMAIL, nome="Ivan", cognome="", role="admin"))
     api_session.commit()
-    assert client.post("/api/hub/auth/login", json=ADMIN).status_code == 200
+    _enter(client, sender, ADMIN_EMAIL)
     stats = client.get("/api/hub/logins").json()
-    assert (stats["totale"], stats["membri"], stats["membri_totali"]) == (1, 1, 1)
-    assert stats["recenti"][0]["email"] == "ada@studio.it"
+    # The admin's own entry is a login too, since REB-278 a login is for any
+    # signed-in person, not only a freelancer with a card.
+    assert (stats["totale"], stats["membri"], stats["membri_totali"]) == (2, 2, 1)
+    assert stats["recenti"][0]["email"] == ADMIN_EMAIL
+    assert stats["recenti"][1]["email"] == "ada@studio.it"
     card = client.get("/api/hub/freelancers").json()["items"][0]
     assert card["accessi"] == 1 and card["ultimo_accesso"] is not None
     detail = client.get(f"/api/hub/freelancers/{card['id']}").json()

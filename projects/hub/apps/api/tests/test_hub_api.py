@@ -50,8 +50,9 @@ def test_an_application_with_a_cv_is_accepted_and_stored(
     assert response.json() == {"ok": True}
     row = api_session.execute(
         text(
-            "SELECT email, tariffa_giornaliera, cv_filename, cv_size, links, utm_source "
-            "FROM freelancers"
+            "SELECT u.email AS email, f.tariffa_giornaliera, f.cv_filename, f.cv_size, "
+            "f.links, f.utm_source "
+            "FROM freelancers f JOIN users u ON u.id = f.user_id"
         )
     ).one()
     assert row.email == "ada@studio.it"
@@ -74,7 +75,9 @@ def test_a_linkedin_address_pasted_from_a_phone_is_stored_as_the_profile(
         data=_form(linkedin_url="linkedin.com/in/ada-lovelace/?utm_source=share"),
     )
     assert accepted.status_code == 201, accepted.text
-    stored = api_session.execute(text("SELECT linkedin_url FROM freelancers")).scalar_one()
+    stored = api_session.execute(
+        text("SELECT u.linkedin_url FROM freelancers f JOIN users u ON u.id = f.user_id")
+    ).scalar_one()
     assert stored == "https://www.linkedin.com/in/ada-lovelace"
 
     refused = client.post(
@@ -162,10 +165,11 @@ def test_an_application_with_no_cv_at_all_is_accepted_and_stored_without_one(
     _clean(api_session)
     response = client.post("/api/hub/freelancers", data=_form())
     assert response.status_code == 201, response.text
-    row = api_session.execute(
-        text("SELECT email, cv_bytes, cv_filename, cv_size FROM freelancers")
-    ).one()
-    assert row.email == "ada@studio.it"
+    email = api_session.execute(
+        text("SELECT u.email FROM freelancers f JOIN users u ON u.id = f.user_id")
+    ).scalar_one()
+    row = api_session.execute(text("SELECT cv_bytes, cv_filename, cv_size FROM freelancers")).one()
+    assert email == "ada@studio.it"
     assert (row.cv_bytes, row.cv_filename, row.cv_size) == (None, None, None)
 
 
@@ -174,6 +178,24 @@ def sender(client: TestClient) -> Iterator[RecordingSender]:
     recording = RecordingSender()
     client.app.dependency_overrides[get_sender] = lambda: recording  # type: ignore[attr-defined]
     yield recording
+
+
+def _card_and_identity(session: Session) -> tuple[object, ...]:
+    """The card's own columns plus the identity fields now read off `users` through
+    the join, combined into one tuple a before/after snapshot can compare whole."""
+    card = session.execute(
+        text(
+            "SELECT tariffa_giornaliera, posizione, remoto, links, compilata_da, "
+            "cv_bytes, cv_filename, cv_mime, cv_size FROM freelancers"
+        )
+    ).one()
+    identity = session.execute(
+        text(
+            "SELECT u.nome, u.cognome, u.linkedin_url "
+            "FROM freelancers f JOIN users u ON u.id = f.user_id"
+        )
+    ).one()
+    return (*card, *identity)
 
 
 def test_a_repeated_application_leaves_the_existing_card_unchanged(
@@ -188,11 +210,7 @@ def test_a_repeated_application_leaves_the_existing_card_unchanged(
         "/api/hub/freelancers", data=_form(), files={"cv": ("Ada CV.pdf", PDF, "application/pdf")}
     )
     assert first.status_code == 201, first.text
-    columns = (
-        "nome, cognome, linkedin_url, tariffa_giornaliera, posizione, remoto, links, "
-        "compilata_da, cv_bytes, cv_filename, cv_mime, cv_size"
-    )
-    before = api_session.execute(text(f"SELECT {columns} FROM freelancers")).one()
+    before = _card_and_identity(api_session)
     again = client.post(
         "/api/hub/freelancers",
         data=_form(posizione="Tech lead", tariffa_giornaliera="900,00"),
@@ -200,7 +218,7 @@ def test_a_repeated_application_leaves_the_existing_card_unchanged(
     )
     assert again.status_code == 201, again.text
     assert again.json() == {"ok": True}
-    after = api_session.execute(text(f"SELECT {columns} FROM freelancers")).one()
+    after = _card_and_identity(api_session)
     assert after == before
     assert api_session.execute(text("SELECT count(*) FROM freelancers")).scalar() == 1
 

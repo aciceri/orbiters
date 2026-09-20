@@ -1,24 +1,25 @@
 """An admin's tokens over HTTP (REB-213): minted once behind the cookie, listed, revoked."""
 
+import re
 from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from rebase_core.admin import AdminService
-from rebase_core.config import Settings
+from rebase_api.deps import get_sender
+from rebase_core.mail import RecordingSender
 from rebase_core.models import User
 
-CREDENTIALS = {"email": "ivan@rebase.it", "password": "una-password-lunga"}
+ADMIN_EMAIL = "ivan@rebase.it"
 
 
-def _settings(api_engine: Engine) -> Settings:
-    return Settings(
-        database_url=api_engine.url.render_as_string(hide_password=False),
-        _env_file=None,  # type: ignore[call-arg]
-    )
+@pytest.fixture
+def sender(client: TestClient) -> Iterator[RecordingSender]:
+    recording = RecordingSender()
+    client.app.dependency_overrides[get_sender] = lambda: recording  # type: ignore[attr-defined]
+    yield recording
 
 
 def _bootstrap_admin(session: Session, email: str, nome: str) -> None:
@@ -28,20 +29,20 @@ def _bootstrap_admin(session: Session, email: str, nome: str) -> None:
 
 
 @pytest.fixture
-def admin(api_engine: Engine, api_session: Session) -> Iterator[None]:
-    AdminService(api_session, _settings(api_engine)).create(
-        CREDENTIALS["email"], "Ivan", CREDENTIALS["password"]
-    )
-    _bootstrap_admin(api_session, CREDENTIALS["email"], "Ivan")
+def admin(api_session: Session) -> Iterator[None]:
+    _bootstrap_admin(api_session, ADMIN_EMAIL, "Ivan")
     yield
     api_session.rollback()
-    for table in ("admin_tokens", "admin_sessions", "admin_users", "users"):
+    for table in ("admin_tokens", "users"):
         api_session.execute(text(f"DELETE FROM {table}"))
     api_session.commit()
 
 
-def _login(client: TestClient) -> None:
-    assert client.post("/api/hub/auth/login", json=CREDENTIALS).status_code == 200
+def _login(client: TestClient, sender: RecordingSender, email: str = ADMIN_EMAIL) -> None:
+    assert client.post("/api/hub/auth/link", json={"email": email}).status_code == 202
+    match = re.search(r"/entra\?t=([A-Za-z0-9_-]+)", sender.sent[-1].text)
+    assert match
+    assert client.post("/api/hub/auth/enter", json={"token": match.group(1)}).status_code == 200
 
 
 def test_tokens_need_the_cookie(client: TestClient, admin: None) -> None:
@@ -50,9 +51,9 @@ def test_tokens_need_the_cookie(client: TestClient, admin: None) -> None:
 
 
 def test_a_token_is_minted_once_listed_and_revoked(
-    client: TestClient, admin: None, api_session: Session
+    client: TestClient, admin: None, api_session: Session, sender: RecordingSender
 ) -> None:
-    _login(client)
+    _login(client, sender)
     created = client.post("/api/hub/tokens", json={})
     assert created.status_code == 201, created.text
     body = created.json()
@@ -72,22 +73,13 @@ def test_a_token_is_minted_once_listed_and_revoked(
 
 
 def test_another_admins_token_is_not_found(
-    client: TestClient, admin: None, api_session: Session, api_engine: Engine
+    client: TestClient, admin: None, api_session: Session, sender: RecordingSender
 ) -> None:
-    AdminService(api_session, _settings(api_engine)).create(
-        "ada@rebase.it", "Ada", "una-password-lunga"
-    )
     _bootstrap_admin(api_session, "ada@rebase.it", "Ada")
-    assert (
-        client.post(
-            "/api/hub/auth/login",
-            json={"email": "ada@rebase.it", "password": "una-password-lunga"},
-        ).status_code
-        == 200
-    )
+    _login(client, sender, "ada@rebase.it")
     adas = client.post("/api/hub/tokens", json={"nome": "Cursor"}).json()
-    client.post("/api/hub/auth/logout")
+    client.post("/api/hub/me/logout")
 
-    _login(client)
+    _login(client, sender)
     assert client.get("/api/hub/tokens").json() == []
     assert client.delete(f"/api/hub/tokens/{adas['id']}").status_code == 404

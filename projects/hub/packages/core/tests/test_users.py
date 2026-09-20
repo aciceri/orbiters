@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from rebase_core.config import Settings
 from rebase_core.errors import ValidationFailed
 from rebase_core.freelancers import FreelancerService
-from rebase_core.models import MagicLinkToken, MemberSession, User
+from rebase_core.models import MagicLinkToken, User, UserSession
 from rebase_core.schemas import FreelancerCreate
 from rebase_core.users import UserService
 
@@ -42,7 +42,7 @@ def users(hub_engine: Engine, hub_session: Session, settings: Settings) -> UserS
     yield UserService(hub_session, settings)
     hub_session.rollback()
     for table in (
-        "member_sessions",
+        "sessions",
         "magic_link_tokens",
         "comments",
         "freelancers",
@@ -188,7 +188,7 @@ def test_a_session_is_hashed_sliding_and_closable(users: UserService, hub_sessio
     outcome = users.enter(_token_from(mail.text))
     assert outcome is not None
     _, raw = outcome
-    row = hub_session.scalar(select(MemberSession))
+    row = hub_session.scalar(select(UserSession))
     assert row is not None and row.token_hash != raw and len(row.token_hash) == 64
     row.expires_at = row.expires_at - timedelta(days=1)
     hub_session.commit()
@@ -200,7 +200,7 @@ def test_a_session_is_hashed_sliding_and_closable(users: UserService, hub_sessio
     row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
     hub_session.commit()
     assert users.resolve(raw) is None
-    assert hub_session.scalar(select(MemberSession)) is None
+    assert hub_session.scalar(select(UserSession)) is None
 
     reentered = users.enter(_token_from(users.request_link("ada@studio.it").text))  # type: ignore[union-attr]
     assert reentered is not None

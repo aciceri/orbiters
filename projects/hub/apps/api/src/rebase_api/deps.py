@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from rebase_core.admin import AdminRead, AdminService
+from rebase_core.admin_tokens import AdminRead
 from rebase_core.analytics import Tracker, tracker_from_settings
 from rebase_core.config import Settings, get_settings
 from rebase_core.db import create_engine_from_settings, session_factory
@@ -18,7 +18,6 @@ from rebase_core.members import MemberService
 from rebase_core.schemas import MeRead
 from rebase_core.users import UserService
 
-ADMIN_COOKIE = "orbiters_admin"
 MEMBER_COOKIE = "orbiters_user"
 
 _engine: Engine | None = None
@@ -49,22 +48,15 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
 def get_admin(request: Request, session: SessionDep, settings: SettingsDep) -> AdminRead:
-    """A signed-in person whose role is admin. Until REB-281 a live `orbiters_admin`
-    session is accepted too, so the SPA that still logs in with a password keeps
-    working across this deploy: a signed-in non-admin is a real identity hitting the
-    wrong door (403), nobody signed in at all is 401 (design record 2026-09-17 §4)."""
+    """A signed-in person whose role is admin: a signed-in non-admin is a real identity
+    hitting the wrong door (403), nobody signed in at all is 401 (design record
+    2026-09-17 §4). The password login and its `orbiters_admin` cookie are gone
+    (REB-281): every admin resolves through the one cookie, `orbiters_user`, like
+    everyone else."""
     users = UserService(session, settings)
     me = users.resolve_admin(request.cookies.get(MEMBER_COOKIE))
     if me is not None:
         return AdminRead.model_validate(me)
-    legacy = AdminService(session, settings).resolve(request.cookies.get(ADMIN_COOKIE))
-    if legacy is not None:
-        # Migration A guarantees every active admin_users row became a users row,
-        # matched by email; a brand-new password admin created between 278 and 279 is
-        # the one gap this legacy branch cannot close (design record's own §4).
-        matched = users.by_email(legacy.email)
-        if matched is not None:
-            return AdminRead.model_validate(matched)
     if users.resolve(request.cookies.get(MEMBER_COOKIE)) is not None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Serve il ruolo di amministratore")
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Autenticazione richiesta")

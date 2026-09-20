@@ -16,7 +16,7 @@ from rebase_core.models import (
     FREELANCER_STATES,
     UTM_COLUMNS,
     Freelancer,
-    MemberLogin,
+    Login,
     Signup,
     User,
 )
@@ -77,17 +77,49 @@ def cv_of(row: Freelancer) -> CvFile:
     return CvFile(filename=row.cv_filename, mime=row.cv_mime, content=row.cv_bytes)
 
 
+def freelancer_read(row: Freelancer, user: User) -> FreelancerRead:
+    """`FreelancerRead`, identity read off the linked `users` row: `nome`/`cognome`/
+    `email`/`linkedin_url` left the card itself in migration B (REB-281), once
+    `FreelancerService` no longer had two copies of the person to keep in step."""
+    return FreelancerRead(
+        id=row.id,
+        nome=user.nome,
+        cognome=user.cognome,
+        email=user.email,
+        linkedin_url=user.linkedin_url,
+        cv_filename=row.cv_filename,
+        cv_mime=row.cv_mime,
+        cv_size=row.cv_size,
+        tariffa_giornaliera=row.tariffa_giornaliera,
+        posizione=row.posizione,
+        remoto=row.remoto,
+        links=list(row.links),
+        stato=row.stato,
+        note=row.note,
+        compilata_da=row.compilata_da,
+        origine=row.origine,
+        utm_source=row.utm_source,
+        utm_medium=row.utm_medium,
+        utm_campaign=row.utm_campaign,
+        utm_content=row.utm_content,
+        utm_term=row.utm_term,
+        utm_id=row.utm_id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
 def _logins_per_card() -> Subquery:
     """How many times each card's owner entered and when last (ORB-158), as one grouped
     subquery the list joins once: two hundred people are not two hundred counts. Grouped
     by `user_id` since REB-278: `freelancer_id` is no longer written by a fresh login."""
     return (
         select(
-            MemberLogin.user_id,
+            Login.user_id,
             func.count().label("accessi"),
-            func.max(MemberLogin.logged_at).label("ultimo_accesso"),
+            func.max(Login.logged_at).label("ultimo_accesso"),
         )
-        .group_by(MemberLogin.user_id)
+        .group_by(Login.user_id)
         .subquery()
     )
 
@@ -98,10 +130,22 @@ def _signed_up() -> Subquery:
     return select(func.lower(Signup.email).label("email")).subquery()
 
 
+def _card_emails() -> Subquery:
+    """Lowercased addresses that already have a card (ORB-163): a card's identity lives
+    on the linked `users` row since REB-281, so this is the one place that joins the
+    two to answer "does this address have a card" without repeating the join per
+    caller."""
+    return (
+        select(func.lower(User.email).label("email"))
+        .join(Freelancer, Freelancer.user_id == User.id)
+        .subquery()
+    )
+
+
 def _read_with_logins(
-    row: Freelancer, accessi: int | None, ultimo: datetime | None, signed_up: object
+    row: Freelancer, user: User, accessi: int | None, ultimo: datetime | None, signed_up: object
 ) -> FreelancerRead:
-    read = FreelancerRead.model_validate(row)
+    read = freelancer_read(row, user)
     read.accessi = accessi or 0
     read.ultimo_accesso = ultimo
     read.provenienza = "form" if signed_up is not None else "landing"
@@ -149,12 +193,14 @@ class FreelancerService:
         email = data.email.strip().lower()
         row = self._find(email)
         if row is not None:
-            return FreelancerRead.model_validate(row), False
+            owner = self.session.get(User, row.user_id)
+            assert owner is not None
+            return freelancer_read(row, owner), False
         utm = data.utm.model_dump() if data.utm is not None and not data.utm.is_empty() else {}
         user = UserService(self.session).get_or_create(
             email, data.nome, data.cognome, data.linkedin_url
         )
-        row = Freelancer(user_id=user.id, email=email, **utm)
+        row = Freelancer(user_id=user.id, **utm)
         self.session.add(row)
         if stored is not None:
             content, filename, mime = stored
@@ -164,9 +210,6 @@ class FreelancerService:
                 mime,
                 len(content),
             )
-        row.nome = data.nome
-        row.cognome = data.cognome
-        row.linkedin_url = data.linkedin_url
         row.tariffa_giornaliera = data.tariffa_giornaliera
         row.posizione = data.posizione
         row.remoto = data.remoto
@@ -179,7 +222,7 @@ class FreelancerService:
             # loser discovers on retry that the winner's row now answers to `_find`.
             self.session.rollback()
             return self.apply(data, cv, cv_filename, cv_mime)
-        return FreelancerRead.model_validate(row), True
+        return freelancer_read(row, user), True
 
     def draft_from_signup(
         self, signup_id: UUID, data: FreelancerDraft, autore: str
@@ -205,7 +248,7 @@ class FreelancerService:
             user = UserService(self.session).get_or_create(
                 email, data.nome, data.cognome, data.linkedin_url
             )
-            row = Freelancer(user_id=user.id, email=email, **utm)
+            row = Freelancer(user_id=user.id, **utm)
             self.session.add(row)
         else:
             # A second research on the same card: the person's name may genuinely have
@@ -217,9 +260,6 @@ class FreelancerService:
                     data.cognome,
                     data.linkedin_url,
                 )
-        row.nome = data.nome
-        row.cognome = data.cognome
-        row.linkedin_url = data.linkedin_url
         row.posizione = data.posizione
         row.tariffa_giornaliera = data.tariffa_giornaliera
         row.remoto = data.remoto
@@ -251,9 +291,10 @@ class FreelancerService:
         lead, totale_lead = self._leads(limit) if stato is None else ([], 0)
         logins, signed = _logins_per_card(), _signed_up()
         stmt = (
-            select(Freelancer, logins.c.accessi, logins.c.ultimo_accesso, signed.c.email)
+            select(Freelancer, User, logins.c.accessi, logins.c.ultimo_accesso, signed.c.email)
+            .join(User, User.id == Freelancer.user_id)
             .outerjoin(logins, logins.c.user_id == Freelancer.user_id)
-            .outerjoin(signed, signed.c.email == func.lower(Freelancer.email))
+            .outerjoin(signed, signed.c.email == func.lower(User.email))
         )
         count = select(func.count()).select_from(Freelancer)
         if stato is not None:
@@ -266,8 +307,8 @@ class FreelancerService:
         return FreelancerList(
             totale=totale,
             items=[
-                _read_with_logins(row, accessi, ultimo, signed_up)
-                for row, accessi, ultimo, signed_up in rows
+                _read_with_logins(row, user, accessi, ultimo, signed_up)
+                for row, user, accessi, ultimo, signed_up in rows
             ],
             totale_lead=totale_lead,
             lead=lead,
@@ -276,9 +317,10 @@ class FreelancerService:
     def _leads(self, limit: int) -> tuple[list[SignupListItem], int]:
         """Signups whose address has no card (ORB-163), newest first, and how many
         there are: one anti-join on the two case-insensitive indexes."""
-        no_card = Freelancer.id.is_(None)
+        card_emails = _card_emails()
+        no_card = card_emails.c.email.is_(None)
         base = select(Signup).outerjoin(
-            Freelancer, func.lower(Freelancer.email) == func.lower(Signup.email)
+            card_emails, card_emails.c.email == func.lower(Signup.email)
         )
         rows = self.session.scalars(
             base.where(no_card).order_by(Signup.created_at.desc(), Signup.id.desc()).limit(limit)
@@ -287,7 +329,7 @@ class FreelancerService:
             self.session.scalar(
                 select(func.count())
                 .select_from(Signup)
-                .outerjoin(Freelancer, func.lower(Freelancer.email) == func.lower(Signup.email))
+                .outerjoin(card_emails, card_emails.c.email == func.lower(Signup.email))
                 .where(no_card)
             )
             or 0
@@ -298,15 +340,17 @@ class FreelancerService:
         """The row with its thread of comments, newest first. Only here: the list
         leaves `commenti` empty."""
         row = self._require(freelancer_id)
+        user = self.session.get(User, row.user_id)
+        assert user is not None
         logins = _logins_per_card()
         counted = self.session.execute(
             select(logins.c.accessi, logins.c.ultimo_accesso).where(logins.c.user_id == row.user_id)
         ).first()
         signed_up = self.session.scalar(
-            select(Signup.id).where(func.lower(Signup.email) == row.email.lower())
+            select(Signup.id).where(func.lower(Signup.email) == user.email.lower())
         )
         accessi, ultimo = counted if counted is not None else (None, None)
-        read = _read_with_logins(row, accessi, ultimo, signed_up)
+        read = _read_with_logins(row, user, accessi, ultimo, signed_up)
         read.commenti = CommentService(self.session).list(ENTITY, freelancer_id)
         return read
 
@@ -327,7 +371,9 @@ class FreelancerService:
         if change.note is not None:
             row.note = change.note.strip() or None
         self.session.commit()
-        return FreelancerRead.model_validate(row)
+        user = self.session.get(User, row.user_id)
+        assert user is not None
+        return freelancer_read(row, user)
 
     def _require(self, freelancer_id: UUID) -> Freelancer:
         row = self.session.get(Freelancer, freelancer_id)
@@ -336,4 +382,8 @@ class FreelancerService:
         return row
 
     def _find(self, email: str) -> Freelancer | None:
-        return self.session.scalar(select(Freelancer).where(func.lower(Freelancer.email) == email))
+        return self.session.scalar(
+            select(Freelancer)
+            .join(User, User.id == Freelancer.user_id)
+            .where(func.lower(User.email) == email)
+        )

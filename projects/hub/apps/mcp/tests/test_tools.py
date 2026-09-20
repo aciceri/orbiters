@@ -9,7 +9,7 @@ from mcp import Client
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
-from rebase_core.admin import AdminRead
+from rebase_core.admin_tokens import AdminRead
 from rebase_core.perks import guide_bytes
 from rebase_core.schemas import SignupCreate
 from rebase_core.service import SignupService

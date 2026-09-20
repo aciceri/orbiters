@@ -24,7 +24,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, sessionmaker
 
-from rebase_core.admin import AdminRead
+from rebase_core.admin_tokens import AdminRead
 from rebase_core.comments import CommentService
 from rebase_core.companies import CompanyService
 from rebase_core.config import Settings

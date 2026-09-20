@@ -1,7 +1,6 @@
 """`rebase`: the operator's commands."""
 
 import argparse
-import getpass
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -9,41 +8,15 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from rebase_core.admin import AdminService
 from rebase_core.admin_tokens import DEFAULT_NAME, AdminTokenService
 from rebase_core.config import Settings, get_settings
 from rebase_core.conversions import pixel_from_settings
 from rebase_core.db import create_engine_from_settings, session_factory
 from rebase_core.errors import DomainError
+from rebase_core.freelancers import freelancer_read
 from rebase_core.mail import CardSummary, EmailSender, sender_from_settings, welcome_mail
-from rebase_core.models import USER_ROLES, Freelancer, Signup
-from rebase_core.schemas import FreelancerRead
+from rebase_core.models import USER_ROLES, Freelancer, Signup, User
 from rebase_core.users import UserService
-
-
-def createadmin(email: str | None, nome: str | None) -> int:
-    """`rebase createadmin`: the first (or another) reader of the admin area.
-
-    The password is read from a prompt, or from stdin when there is no terminal -- so a
-    deploy script can pipe it -- and never from an argument, which would leave it in the
-    shell history and in `ps`.
-    """
-    settings = get_settings()
-    email = email or input("Email: ")
-    nome = nome or input("Nome: ")
-    password = (
-        getpass.getpass("Password: ") if sys.stdin.isatty() else sys.stdin.readline().rstrip("\n")
-    )
-    session = session_factory(create_engine_from_settings(settings))()
-    try:
-        created = AdminService(session, settings).create(email, nome, password)
-    except DomainError as exc:
-        print(exc.message, file=sys.stderr)
-        return 1
-    finally:
-        session.close()
-    print(f"Amministratore creato: {created.email}")
-    return 0
 
 
 def createtoken(email: str | None, nome: str | None) -> int:
@@ -149,9 +122,11 @@ def send_welcome(
     then). Answers one line per address -- `inviata` with the kind, or `rifiutata dal
     provider` -- which is the whole record of the mailing."""
     cards = {
-        row.email.lower(): row
-        for row in session.scalars(
-            select(Freelancer).order_by(Freelancer.created_at, Freelancer.id)
+        user.email.lower(): (card, user)
+        for card, user in session.execute(
+            select(Freelancer, User)
+            .join(User, User.id == Freelancer.user_id)
+            .order_by(Freelancer.created_at, Freelancer.id)
         ).all()
     }
     signups = {
@@ -166,41 +141,44 @@ def send_welcome(
     accedi, wizard = f"{base}/accedi", f"{base}/freelance"
     outcomes: list[tuple[str, str]] = []
     for email in targets:
-        card = cards.get(email)
+        entry = cards.get(email)
         signup = signups.get(email)
-        if card is None and signup is None:
+        if entry is None and signup is None:
             outcomes.append((email, "indirizzo sconosciuto"))
             continue
-        if card is not None and card.compilata_da == "persona":
-            kind = "persona"
-            mail = welcome_mail(
-                card.email,
-                card.nome,
-                accedi,
-                kind=kind,
-                posizione=card.posizione,
-                # Read through the schema so «completa» is the one definition the admin
-                # area and the member area already read (`_is_complete`), never a second
-                # list of columns written here. For this voice the CV is the only thing
-                # that can be missing: the rate, the position and the remote option are
-                # steps of the wizard the person went through.
-                completa=FreelancerRead.model_validate(card).completa,
-            )
-        elif card is not None:
-            kind = "admin"
-            mail = welcome_mail(
-                card.email,
-                card.nome,
-                accedi,
-                kind=kind,
-                summary=CardSummary(
-                    nome=card.nome,
-                    cognome=card.cognome,
+        if entry is not None:
+            card, user = entry
+            if card.compilata_da == "persona":
+                kind = "persona"
+                mail = welcome_mail(
+                    user.email,
+                    user.nome,
+                    accedi,
+                    kind=kind,
                     posizione=card.posizione,
-                    linkedin_url=card.linkedin_url,
-                    links=tuple(card.links),
-                ),
-            )
+                    # Read through the schema so «completa» is the one definition the
+                    # admin area and the member area already read (`_is_complete`),
+                    # never a second list of columns written here. For this voice the
+                    # CV is the only thing that can be missing: the rate, the position
+                    # and the remote option are steps of the wizard the person went
+                    # through.
+                    completa=freelancer_read(card, user).completa,
+                )
+            else:
+                kind = "admin"
+                mail = welcome_mail(
+                    user.email,
+                    user.nome,
+                    accedi,
+                    kind=kind,
+                    summary=CardSummary(
+                        nome=user.nome,
+                        cognome=user.cognome,
+                        posizione=card.posizione,
+                        linkedin_url=user.linkedin_url,
+                        links=tuple(card.links),
+                    ),
+                )
         else:
             assert signup is not None
             kind = "nessuna"
@@ -237,9 +215,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         "conversions-check",
         help="Verifica la chiave della Conversions API senza registrare una conversione",
     )
-    admin = sub.add_parser("createadmin", help="Crea un amministratore dell'area admin")
-    admin.add_argument("--email")
-    admin.add_argument("--nome")
     token = sub.add_parser(
         "createtoken", help="Crea un token personale di un amministratore, per un agente"
     )
@@ -261,8 +236,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "conversions-check":
         return conversions_check()
-    if args.command == "createadmin":
-        return createadmin(args.email, args.nome)
     if args.command == "createtoken":
         return createtoken(args.email, args.nome)
     if args.command == "setrole":

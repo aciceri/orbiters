@@ -35,13 +35,11 @@ def clean(api_session: Session) -> Iterator[None]:
     api_session.rollback()
     for table in (
         "guide_downloads",
-        "member_sessions",
+        "sessions",
         "magic_link_tokens",
-        "member_logins",
+        "logins",
         "comments",
         "admin_tokens",
-        "admin_sessions",
-        "admin_users",
         "freelancers",
         "companies",
         "users",

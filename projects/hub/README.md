@@ -22,10 +22,12 @@ Three public flows and the admin area behind them:
 - `/hub/aziende` — the company wizard.
 - `/hub/accedi` and `/hub/io`: a freelancer gets back in with a magic link by mail, to
   see or change what they sent.
-- `/hub/admin/login` and the freelancer, company and signup lists behind it — a cookie
-  session. The first admin is created with `rebase createadmin` (below); the next ones
-  from «Amministratori» inside the area, where they are also edited.
-- Every login through the magic link is recorded in `member_logins` (ORB-158): the
+- `/hub/admin/*` — the freelancer, company and signup lists — reached by the same
+  magic-link session as `/hub/io` (`/hub/accedi`), open only when the signed-in
+  person's role is `admin`. The first admin is granted with `rebase setrole` (below);
+  the next ones with one click from «Amministratori» inside the area, no form, no
+  password.
+- Every login through the magic link is recorded in `logins` (ORB-158): the
   admin area shows who entered and when under «Accessi», and each card carries its
   count and its last login. The link request itself is not counted.
 - A freelancer card can also be born from a signup (ORB-155): an admin writes what the
@@ -107,10 +109,11 @@ compose file: the deploy passes `--env-file` explicitly and never rsyncs one.
 The first administrator, once the stack is up:
 
 ```
-docker compose -p rebase exec api uv run --no-sync rebase createadmin --email you@example.com --nome "Nome Cognome"
+docker compose -p rebase exec api uv run --no-sync rebase setrole --email you@example.com --role admin --nome Nome --cognome Cognome
 ```
 
-Asks for the password on the terminal, twice, and never takes it as an argument.
+Creates the `users` row if none exists yet and sends the same magic link everyone
+else gets, never a password. `--role member` demotes.
 
 ## Connect an agent
 

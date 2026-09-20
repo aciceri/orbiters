@@ -210,9 +210,9 @@ class FreelancerService:
         else:
             # A second research on the same card: the person's name may genuinely have
             # been corrected, so the linked `users` row follows it too, in this commit.
-            user = self.session.get(User, row.user_id)
-            if user is not None:
-                user.nome, user.cognome, user.linkedin_url = (
+            existing_user = self.session.get(User, row.user_id)
+            if existing_user is not None:
+                existing_user.nome, existing_user.cognome, existing_user.linkedin_url = (
                     data.nome,
                     data.cognome,
                     data.linkedin_url,

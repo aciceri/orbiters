@@ -1,17 +1,17 @@
 # The hub becomes one identity: a `users` table, and freelancer, company and admin as things a person may have
 
-Date: 2026-09-17, revised 2026-09-18. Status: five of the six lettered decisions are
-taken (Lorenzo, 2026-09-18): the identity model is a `users` table and not a `role`
-column on `freelancers` (§ 0, letter (c)), the way in is the magic link alone, with the
-admin password login gone rather than kept as an emergency door (letter (a)),
+Date: 2026-09-17, revised 2026-09-18. Status: decided. Lorenzo answered all six
+lettered decisions on 2026-09-18. The identity model is a `users` table and not a
+`role` column on `freelancers` (§ 0, letter (c)). The way in is the magic link alone,
+with the admin password login gone rather than kept as an emergency door (a).
 `admin_tokens` moves to `users` in the same migration as everything else that means
-the person (letter (b)), and a name the old schema held as one string migrates with an
-empty `cognome` corrected by hand afterwards, never by a mapping of real names
-committed to a migration file (letter (d)), and one "who am I" route survives, `/me`,
-with `/auth/me` deleted in REB-281 once REB-279 has moved its last caller (letter (e)).
-Still proposed, awaiting Lorenzo's letter on the last one: (f) in § Open decisions for
-the lead. Tracker: REB-277 in `Hub v2 -
-one hub, and an admin is a member with one more section`.
+the person (b). A name the old schema held as one string migrates with an empty
+`cognome`, corrected by hand afterwards and never by a mapping of real names committed
+to a migration file (d). One "who am I" route survives, `/me`, with `/auth/me` deleted
+in REB-281 once REB-279 has moved its last caller (e). And the company wizard asks for
+the referente's name and surname rather than one string (f). The reasoning behind each
+is in § Decisions taken; §6 is what implements them. Tracker: REB-277 in `Hub v2 - one
+hub, and an admin is a member with one more section`.
 
 ## 0. Why
 
@@ -529,7 +529,7 @@ not, shows the person's name, email and role alone with no wizard-shaped content
 read from `null` fields.
 
 The company wizard's `CompanyCreate` (`schemas.py:410-421`) collects `referente` as one
-field; decision (f) below asks it to collect two, `nome`/`cognome`, the shape
+field; decision (f) below makes it collect two, `nome`/`cognome`, the shape
 `FreelancerCreate` already asks for one screen earlier in the freelancer wizard. The
 form change is REB-279's, since 279 is already the PR touching every wizard-adjacent
 page for the merged shell.
@@ -580,7 +580,7 @@ page for the merged shell.
   (§1); `resolve()` checks `role` on the `users` row at call time; the mint/list/revoke
   routes keep `AdminDep`'s new meaning for free.
 
-## Open decisions for the lead
+## Decisions taken
 
 **(a) Does the admin password login survive next to the magic link?**
 Decided. Lorenzo, 2026-09-18: **a1**, the magic link only. There is one door into the
@@ -654,11 +654,20 @@ in this repository, not an external integration whose migration we do not contro
 **(f) The company wizard collects `referente` as one string; `users.nome`/`cognome` are
 `NOT NULL`. Does the wizard split it into two fields, or does the whole string go into
 `nome`?**
-Options: (f1) split `referente` into `referente_nome`/`referente_cognome` on the wizard
-(`CompanyCreate`, `schemas.py:410-421`), matching what the freelancer wizard already
-asks a screen earlier. (f2) keep one field, store it whole in `users.nome`, leave
-`cognome=''` the way a migration-only backfill does, indefinitely, for every company
-request from now on. Recommend **f1**: f2 makes every future company contact a
-permanent instance of decision (d)'s stopgap rather than a one-time migration cost, and
-the two-field form is not new work invented for this milestone, it is the freelancer
-wizard's own layout copied one page over.
+Decided. Lorenzo, 2026-09-18: **f1**, two fields. `CompanyCreate` (`schemas.py:410-421`)
+replaces `referente: SafeStr` with `referente_nome` and `referente_cognome`, both
+`SafeStr(min_length=1)` and both through the same `_trimmed` validator, and the wizard
+step in `CompanyWizard.tsx:42-71` becomes the two-input layout `FreelancerCreate`
+already asks for one screen earlier, with its summary line and its "Servono un
+referente e un indirizzo email valido" guard updated to require both. The request
+writes them straight into the `users` row it gets or creates, so a company contact
+from now on arrives complete. The form change belongs to REB-279, which is already the
+PR touching every wizard-adjacent page for the merged shell.
+
+The rows that exist keep arriving through decision (d)'s path: migration A splits
+nothing, it copies `companies.referente` into `users.nome` with `cognome=''`, and the
+`UPDATE` afterwards fixes the few. `companies.referente` and `companies.email` are
+dropped in migration B either way (§3), since the person is the `users` row the
+request points at, so this decision does not add a column, it only stops the blank
+from being produced again. Keeping one field would have made every future company
+contact a permanent instance of (d)'s one-time migration cost.

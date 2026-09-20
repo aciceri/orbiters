@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import {
   AA_NON_TEXT,
   AA_TEXT,
+  blendSrgb,
   contrastRatio,
   hexToRgb,
   paletteFrom,
@@ -154,6 +155,7 @@ describe('the palette every slot resolves through', () => {
   it.each([
     ['watermelon', '#ed254e'],
     ['watermelon-strong', '#e5133e'],
+    ['watermelon-deep', '#c50d33'],
     ['royal-gold', '#f9dc5c'],
     ['paper', '#f1f2f3'],
     ['prussian-blue', '#011936'],
@@ -162,14 +164,51 @@ describe('the palette every slot resolves through', () => {
     expect(css).toContain(`--color-${name}: ${hex}`)
   })
 
-  it('uses the accessible Watermelon variant as the primary and destructive colour', () => {
+  it('uses the deep Watermelon as the primary and destructive colour', () => {
     // Raw --color-watermelon stays the brand colour for accents, borders and the focus
-    // ring; a solid fill carrying white text needs the darker, AA-compliant variant.
-    expect(css).toMatch(/--primary:\s*var\(--color-watermelon-strong\)/)
-    expect(css).toMatch(/--destructive:\s*var\(--color-watermelon-strong\)/)
+    // ring. These two slots take the deepest step because they are read as text as
+    // often as they are filled: `text-primary` is the link variant and
+    // `text-destructive` is every form error in both applications (REB-307).
+    expect(css).toMatch(/--primary:\s*var\(--color-watermelon-deep\)/)
+    expect(css).toMatch(/--destructive:\s*var\(--color-watermelon-deep\)/)
   })
 
-  it('white text on watermelon-strong clears the 4.5:1 AA text threshold', () => {
+  /** The hex a `:root` slot ends up on, through the palette reference it holds. */
+  function slotHex(slot: string): string {
+    const reference = declaration(':root', slot).match(/^var\((--color-[\w-]+)\)$/)
+    if (!reference) throw new Error(`${slot} is not a bare palette reference`)
+    const hex = palette[reference[1]!]
+    if (!hex) throw new Error(`${reference[1]} is not in the brand palette`)
+    return hex
+  }
+
+  it.each([
+    ['--primary', 'the Paper ground', () => tokenHex('paper')],
+    ['--primary', 'a white card', () => '#ffffff'],
+    ['--destructive', 'the Paper ground', () => tokenHex('paper')],
+    ['--destructive', 'a white card', () => '#ffffff'],
+    ['--destructive', 'its own 10% tint over Paper', () => blendSrgb(slotHex('--destructive'), tokenHex('paper'), 10)],
+    ['--destructive', 'its own 10% tint over a white card', () => blendSrgb(slotHex('--destructive'), '#ffffff', 10)],
+  ])('reads %s as text at AA on %s', (slot, _ground, background) => {
+    // Through the slot rather than against a hex: a test that measures
+    // `--color-watermelon-deep` proves a property of a colour nothing has to point
+    // at, and a revert of the two slots would leave it green. These are the four
+    // grounds the destructive and link variants land on, the tint being what
+    // `bg-destructive/10` puts under its own text. `-strong` cleared one of the four.
+    //
+    // blendSrgb takes a percent, not a fraction: 0.1 would blend 0.1% and hand back
+    // the ground untouched, which is the same easy pair as the rows above and would
+    // let a step through that fails the real tint (#c8112f measures 5.20 that way and
+    // 4.42 on the tint it is meant to guard). 10% is also the ceiling: at 15% the
+    // same text is 4.17:1, which is why no variant deepens a tint without darkening
+    // its text (REB-309).
+    expect(contrastRatio(slotHex(slot), background())).toBeGreaterThanOrEqual(AA_TEXT)
+  })
+
+  it('carries white text on both filled steps at AA', () => {
+    // -deep fills the primary button and -strong the sidebar's active tile, which is
+    // the one fill left on the middle step.
+    expect(contrastRatio('#ffffff', tokenHex('watermelon-deep'))).toBeGreaterThanOrEqual(AA_TEXT)
     expect(contrastRatio('#ffffff', tokenHex('watermelon-strong'))).toBeGreaterThanOrEqual(AA_TEXT)
   })
 

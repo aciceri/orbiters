@@ -342,6 +342,18 @@ class AdminToken(Base, PrimaryKeyMixin, TimestampMixin):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
+    __table_args__ = (
+        # Trigram search (REB-313): Agenti's list matches a token by its own `nome`,
+        # the name the admin gave it -- there is no linked `users` row to search
+        # instead, unlike Talenti and Aziende.
+        Index(
+            "ix_admin_tokens_nome_trgm",
+            "nome",
+            postgresql_using="gin",
+            postgresql_ops={"nome": "gin_trgm_ops"},
+        ),
+    )
+
 
 # ---- the member area: how anyone gets back in -------------------------------------------
 

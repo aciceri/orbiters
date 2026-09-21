@@ -1,5 +1,5 @@
-"""Keyset pagination: an opaque cursor over `(sort value, id)`, newest or
-most-relevant first, never offset (REB-285).
+"""Keyset pagination: an opaque cursor over `(sort value, id)`, newest-or-best-match
+first or oldest first, never offset (REB-285, REB-313).
 
 Modeled on PigroCRM's `pigrocrm.core.db.sort` (residuo R9) -- same opaque, one-way
 encoding, same row-value keyset predicate -- reimplemented natively here because
@@ -7,10 +7,13 @@ encoding, same row-value keyset predicate -- reimplemented natively here because
 (`projects/hub/AGENTS.md`, "the one rule"). Narrower than the CRM's module on purpose:
 every list this package paginates sorts by exactly one of two things, `created_at` (a
 `datetime`, never null once a row exists) or a trigram similarity score (a `float`,
-never null either -- `search.similarity_score` `coalesce`s it), always newest or
-best-match first. There is one sort key per request, not a whitelist of several to
-choose `sort`/`dir` from, so `SortSpec` carries only the `kind` a value needs to survive
-JSON, and `keyset_predicate` only ever describes a descending scan.
+never null either -- `search.similarity_score` `coalesce`s it). A search term is
+always best-match first; REB-285's Talenti and Aziende have no bare listing order
+beside that, so both ever needed was descending. REB-313's admin list keeps reading
+oldest first with no term (ORB-123, a history), so `keyset_predicate` takes a
+`descending` flag beside the one sort key a request carries -- `SortSpec` itself still
+carries only the `kind` a value needs to survive JSON, since the direction is a
+property of the scan, not of the value.
 
 **Offset pagination re-reads and skips rows under concurrent insertion**, which is why
 this module exists at all -- an admin's list grows while they page through it.
@@ -131,15 +134,20 @@ def keyset_predicate(
     id_column: Any,
     value: object,
     row_id: UUID,
+    *,
+    descending: bool = True,
 ) -> ColumnElement[bool]:
-    """Everything strictly after `(value, row_id)` in a descending `(sort, id)` scan.
+    """Everything strictly after `(value, row_id)` in a `(sort, id)` scan -- descending
+    by default, ascending when `descending=False` (REB-313's admins list, read oldest
+    first).
 
-    `(col, id) < (v, rid)` is the row-value form of `col < v OR (col = v AND id < rid)`
-    -- the same set of rows, but a single indexable condition rather than a
-    disjunction. Always the row-value form and always `<`: every list this module
-    paginates orders newest-or-best-match first, and neither sort key is ever null once
-    a row is in the result at all (an unmatched search row never reaches this point; a
-    listed row always has a `created_at`), so there is no null tail to reopen with an
+    `(col, id) < (v, rid)` (or `>` ascending) is the row-value form of
+    `col < v OR (col = v AND id < rid)` -- the same set of rows, but a single indexable
+    condition rather than a disjunction. Neither sort key is ever null once a row is in
+    the result at all (an unmatched search row never reaches this point; a listed row
+    always has its sort column), so there is no null tail to reopen with an
     `OR column.is_(None)` arm the way PigroCRM's general `keyset_predicate` needs for a
     nullable sort column -- see its `db/sort.py` for that case."""
-    return tuple_(sort_column, id_column) < (value, row_id)
+    left = tuple_(sort_column, id_column)
+    right = (value, row_id)
+    return left < right if descending else left > right

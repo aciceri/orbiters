@@ -159,12 +159,12 @@ def test_promote_and_demote_routes(
     assert body["email"] == "lorenzo.reb278@rebase.it" and body["nome"] == "Lorenzo"
     assert sender.sent and "/entra?t=" in sender.sent[-1].text  # a brand-new row gets a link
 
-    admins = {row["email"] for row in client.get("/api/hub/admins").json()}
+    admins = {row["email"] for row in client.get("/api/hub/admins").json()["items"]}
     assert admins == {"ivan.reb278@rebase.it", "lorenzo.reb278@rebase.it"}
 
     demoted = client.post(f"/api/hub/admins/{body['id']}/demote")
     assert demoted.status_code == 200 and demoted.json()["email"] == "lorenzo.reb278@rebase.it"
-    assert [row["email"] for row in client.get("/api/hub/admins").json()] == [
+    assert [row["email"] for row in client.get("/api/hub/admins").json()["items"]] == [
         "ivan.reb278@rebase.it"
     ]
 

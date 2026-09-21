@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Copy } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Badge } from '@rebase/ui/badge'
 import { Button } from '@rebase/ui/button'
 import { Input } from '@rebase/ui/input'
@@ -13,6 +13,18 @@ import { Empty, Header } from './lists'
 
 const TOKENS_KEY = ['tokens'] as const
 const DEFAULT_NAME = 'Claude Code'
+const SEARCH_DEBOUNCE_MS = 300
+
+/** The value it settles to `delayMs` after the caller stops changing it -- the search
+ *  box's own text, so a query is not sent on every keystroke (REB-313). */
+function useDebounce<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs)
+    return () => clearTimeout(timer)
+  }, [value, delayMs])
+  return debounced
+}
 
 /**
  * Everything an agent needs to talk to the hub's MCP server as this admin (REB-213): the
@@ -20,10 +32,37 @@ const DEFAULT_NAME = 'Claude Code'
  * each, and the two snippets a client takes. The token is a password: it opens every
  * tool the admin area opens, so the page says so beside it and the list keeps the revoked
  * rows, since a list that hides what was revoked cannot show that somebody revoked it.
+ *
+ * REB-313: a debounced search box narrows the list by the token's own name, and the
+ * rest of it loads on scroll -- newest first with no term, as before, best-match first
+ * once searching.
  */
 export function AdminAgenti() {
   const client = useQueryClient()
-  const list = useQuery({ queryKey: TOKENS_KEY, queryFn: () => admin.tokens() })
+  const [query, setQuery] = useState('')
+  const debouncedQuery = useDebounce(query, SEARCH_DEBOUNCE_MS)
+  const list = useInfiniteQuery({
+    queryKey: [...TOKENS_KEY, debouncedQuery] as const,
+    queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+      admin.tokens({ q: debouncedQuery || undefined, cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+  })
+  const items = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data])
+  const { hasNextPage, fetchNextPage } = list
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!hasNextPage || typeof IntersectionObserver === 'undefined') return
+    const node = sentinelRef.current
+    if (!node) return
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) void fetchNextPage()
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [hasNextPage, fetchNextPage])
+
   const [nome, setNome] = useState(DEFAULT_NAME)
   const [issued, setIssued] = useState<CreatedToken | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
@@ -60,7 +99,7 @@ export function AdminAgenti() {
 
   return (
     <>
-      <Header title="Agenti" count={list.data?.length} />
+      <Header title="Agenti" count={items.length} />
       <div className="grid gap-8 px-6 py-6">
         <section className="grid max-w-2xl gap-4">
           <p className="text-sm text-muted-foreground">
@@ -134,58 +173,85 @@ export function AdminAgenti() {
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-semibold">I tuoi token</h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold">I tuoi token</h2>
+            <Input
+              type="search"
+              placeholder="Cerca per nome…"
+              aria-label="Cerca token"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="w-56"
+            />
+          </div>
           {list.isError ? (
             <Empty>Non riesco a leggere la lista.</Empty>
           ) : list.isPending ? (
             <Empty>Caricamento…</Empty>
-          ) : list.data.length === 0 ? (
-            <Empty>Nessun token ancora.</Empty>
+          ) : items.length === 0 ? (
+            <Empty>{debouncedQuery ? 'Nessun risultato per questa ricerca.' : 'Nessun token ancora.'}</Empty>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs text-muted-foreground">
-                <tr className="border-b">
-                  <th className="py-2 font-medium">Token</th>
-                  <th className="px-3 py-2 font-medium">Stato</th>
-                  <th className="px-3 py-2 text-right font-medium">Creato</th>
-                  <th className="px-3 py-2 text-right font-medium">Ultimo uso</th>
-                  <th className="py-2">
-                    <span className="sr-only">Azioni</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.data.map((row: AdminToken) => (
-                  <tr key={row.id} className="border-b last:border-0">
-                    <td className="py-2.5">
-                      <p className="font-medium">{row.nome}</p>
-                      <p className="font-mono text-xs text-muted-foreground">{row.prefix}…</p>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <Badge variant="pill">{row.revoked_at ? 'Revocato' : 'Attivo'}</Badge>
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-muted-foreground">{formatDate(row.created_at)}</td>
-                    <td className="px-3 py-2.5 text-right text-muted-foreground">
-                      {row.last_used_at ? formatDate(row.last_used_at) : 'Mai'}
-                    </td>
-                    <td className="py-1.5 text-right">
-                      {!row.revoked_at && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={revoke.isPending}
-                          onClick={() => revoke.mutate(row.id)}
-                        >
-                          Revoca
-                          <span className="sr-only"> {row.nome}</span>
-                        </Button>
-                      )}
-                    </td>
+            <>
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="py-2 font-medium">Token</th>
+                    <th className="px-3 py-2 font-medium">Stato</th>
+                    <th className="px-3 py-2 text-right font-medium">Creato</th>
+                    <th className="px-3 py-2 text-right font-medium">Ultimo uso</th>
+                    <th className="py-2">
+                      <span className="sr-only">Azioni</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {items.map((row: AdminToken) => (
+                    <tr key={row.id} className="border-b last:border-0">
+                      <td className="py-2.5">
+                        <p className="font-medium">{row.nome}</p>
+                        <p className="font-mono text-xs text-muted-foreground">{row.prefix}…</p>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <Badge variant="pill">{row.revoked_at ? 'Revocato' : 'Attivo'}</Badge>
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-muted-foreground">{formatDate(row.created_at)}</td>
+                      <td className="px-3 py-2.5 text-right text-muted-foreground">
+                        {row.last_used_at ? formatDate(row.last_used_at) : 'Mai'}
+                      </td>
+                      <td className="py-1.5 text-right">
+                        {!row.revoked_at && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={revoke.isPending}
+                            onClick={() => revoke.mutate(row.id)}
+                          >
+                            Revoca
+                            <span className="sr-only"> {row.nome}</span>
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div ref={sentinelRef} />
+              {list.hasNextPage && (
+                <div className="flex flex-col items-center gap-2 py-5">
+                  <p className="text-sm text-muted-foreground">Mostrati {items.length} token, ce ne sono altri.</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={list.isFetchingNextPage}
+                    onClick={() => void list.fetchNextPage()}
+                  >
+                    {list.isFetchingNextPage ? 'Carico…' : 'Mostra altri'}
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </section>
       </div>

@@ -80,13 +80,24 @@ describe('the api client', () => {
   it('lists the admins and promotes one by email, no password anywhere', async () => {
     // ORB-123, REB-279: the list and the promote/demote pair behind «Amministratori».
     const spy = vi.spyOn(globalThis, 'fetch')
-    spy.mockResolvedValueOnce(answer(200, [{ id: '1', email: 'ivan@rebase.it', nome: 'Ivan', attivo: true, created_at: '2026-09-10T10:00:00Z' }]))
+    spy.mockResolvedValueOnce(
+      answer(200, {
+        items: [{ id: '1', email: 'ivan@rebase.it', nome: 'Ivan', attivo: true, created_at: '2026-09-10T10:00:00Z' }],
+        next_cursor: null,
+      }),
+    )
     const listed = await admin.admins()
     expect(spy.mock.calls[0]![0]).toBe('/api/hub/admins')
-    expect(listed[0]!.email).toBe('ivan@rebase.it')
+    expect(listed.items[0]!.email).toBe('ivan@rebase.it')
+    expect(listed.next_cursor).toBeNull()
+
+    spy.mockResolvedValueOnce(answer(200, { items: [], next_cursor: null }))
+    await admin.admins({ q: 'ivan', cursor: 'abc', limit: 10 })
+    expect(spy.mock.calls[1]![0]).toBe('/api/hub/admins?q=ivan&cursor=abc&limit=10')
+
     spy.mockResolvedValueOnce(answer(200, { id: '2', email: 'lorenzo@rebase.it', nome: 'Lorenzo', attivo: true, created_at: '2026-09-10T10:01:00Z' }))
     const promoted = await admin.promote({ email: 'lorenzo@rebase.it', nome: 'Lorenzo' })
-    const [url, init] = spy.mock.calls[1]!
+    const [url, init] = spy.mock.calls[2]!
     expect(url).toBe('/api/hub/admins/promote')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(init?.body as string)).toEqual({ email: 'lorenzo@rebase.it', nome: 'Lorenzo' })

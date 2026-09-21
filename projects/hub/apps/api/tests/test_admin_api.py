@@ -304,6 +304,62 @@ def test_admindep_is_enforced_before_the_new_search_params_are_even_read(
     assert client.get("/api/hub/companies", params=params).status_code == 401
 
 
+def test_admins_search_hits_a_partial_name(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    _login(client, sender)
+    promoted = client.post(
+        "/api/hub/admins/promote",
+        json={"email": "grace@rebase.it", "nome": "Grace", "cognome": "Hopper"},
+    )
+    assert promoted.status_code == 200, promoted.text
+
+    by_name = client.get("/api/hub/admins", params={"q": "Hopper"}).json()
+    assert [row["email"] for row in by_name["items"]] == ["grace@rebase.it"]
+
+
+def test_admins_list_stays_oldest_first_with_no_term(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    """ORB-123: REB-313's cursor keeps the admins list reading as a history."""
+    _login(client, sender)
+    client.post(
+        "/api/hub/admins/promote",
+        json={"email": "grace@rebase.it", "nome": "Grace", "cognome": "Hopper"},
+    )
+    listed = client.get("/api/hub/admins").json()["items"]
+    assert [row["email"] for row in listed] == [ADMIN_EMAIL, "grace@rebase.it"]
+
+
+def test_logins_search_hits_a_partial_name_and_keeps_the_counters(
+    client: TestClient, admin: None, sender: RecordingSender, api_session: Session
+) -> None:
+    _login(client, sender)
+    _apply(client, "ada@studio.it")
+    ada_user_id = api_session.scalar(
+        select(Freelancer.user_id)
+        .join(User, User.id == Freelancer.user_id)
+        .where(User.email == "ada@studio.it")
+    )
+    api_session.add(Login(user_id=ada_user_id))
+    api_session.commit()
+
+    by_name = client.get("/api/hub/logins", params={"q": "Ada"}).json()
+    assert [row["email"] for row in by_name["recenti"]] == ["ada@studio.it"]
+    # The aggregate counters read the whole table -- the admin's own sign-in above and
+    # Ada's -- unaffected by `q` narrowing `recenti` to Ada alone (REB-313).
+    assert by_name["totale"] == 2 and by_name["membri"] == 2
+
+
+def test_a_malformed_cursor_is_a_422_on_admins_and_logins(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    _login(client, sender)
+    for path in ("/api/hub/admins", "/api/hub/logins"):
+        response = client.get(path, params={"cursor": "not-a-valid-cursor"})
+        assert response.status_code == 422, (path, response.text)
+
+
 # ---- comments --------------------------------------------------------------------------
 
 MISSING = "00000000-0000-7000-8000-000000000000"
@@ -524,6 +580,53 @@ def test_a_member_is_matched_whatever_the_case_of_the_address(
     items = client.get("/api/hub/pigro/istanze").json()["items"]
     assert items[1]["owner_email"] == "Bob@Example.org"
     assert items[1]["membro"]["nome"] == "Ada"
+
+
+def test_q_searches_the_slug_and_the_owner_address(
+    client: TestClient, admin: None, pigro: FakePigro, sender: RecordingSender
+) -> None:
+    _login(client, sender)
+    by_slug = client.get("/api/hub/pigro/istanze", params={"q": "studio"}).json()
+    assert [item["slug"] for item in by_slug["items"]] == ["studio-ada"]
+    by_email = client.get("/api/hub/pigro/istanze", params={"q": "bob@"}).json()
+    assert [item["slug"] for item in by_email["items"]] == ["bob-dev"]
+    no_match = client.get("/api/hub/pigro/istanze", params={"q": "nessuno"}).json()
+    assert no_match["items"] == [] and no_match["totale"] == 0
+
+
+def test_the_cursor_walks_every_space_once_with_no_gap_or_repeat(
+    client: TestClient, admin: None, pigro: FakePigro, sender: RecordingSender
+) -> None:
+    rows = [
+        {
+            "id": f"0192c6f0-0000-7000-8000-{i:012d}",
+            "slug": f"spazio-{i}",
+            "owner_email": f"persona{i}@studio.it",
+            "created_at": f"2026-09-{10 + i:02d}T09:00:00Z",
+        }
+        for i in range(5)
+    ]
+    pigro.body = json.dumps(rows).encode()
+    _login(client, sender)
+
+    seen: list[str] = []
+    cursor: str | None = None
+    for _ in range(10):
+        params = {"limit": 2} | ({"cursor": cursor} if cursor else {})
+        page = client.get("/api/hub/pigro/istanze", params=params).json()
+        seen.extend(item["slug"] for item in page["items"])
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+    assert seen == [f"spazio-{i}" for i in reversed(range(5))]
+
+
+def test_a_malformed_cursor_is_a_422(
+    client: TestClient, admin: None, pigro: FakePigro, sender: RecordingSender
+) -> None:
+    _login(client, sender)
+    response = client.get("/api/hub/pigro/istanze", params={"cursor": "non-un-cursore"})
+    assert response.status_code == 422, response.text
 
 
 def test_when_the_crm_refuses_or_falls_over_the_answer_is_a_502_sentence(

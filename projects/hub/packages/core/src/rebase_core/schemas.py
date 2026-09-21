@@ -783,14 +783,18 @@ class LoginRead(BaseModel):
 class LoginStats(BaseModel):
     """The logins as the admin area reads them (ORB-158), the shape of `GuideStats`:
     `totale` every login, `membri` the distinct people behind them, `membri_totali`
-    everybody on file, `ultimi_7_giorni` the last week, `recenti` the latest, newest
-    first, with a name each."""
+    everybody on file, `ultimi_7_giorni` the last week -- four counters unaffected by
+    `q` (REB-313), always read off the whole table. `recenti` is the searched, paged
+    part: newest first with no term, best-match first once `q` narrows it by name or
+    email, no longer capped at 20. `next_cursor` is `None` on the last page, additive
+    to the shape `GET /api/hub/logins` already answered."""
 
     totale: int
     membri: int
     membri_totali: int
     ultimi_7_giorni: int
     recenti: list[LoginRead]
+    next_cursor: str | None = None
 
 
 class GuideStats(BaseModel):

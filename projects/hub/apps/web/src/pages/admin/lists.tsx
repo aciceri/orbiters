@@ -436,22 +436,110 @@ function StatusEditor({
   )
 }
 
+/** What REB-284 adds to the freelancer detail beyond `Freelancer`: everywhere else in
+ *  the hub that already knows this address, fetched server-side in the same call so
+ *  the page does not fan out four requests of its own. */
+interface FreelancerDetail extends Freelancer {
+  /** The sign-up's own attribution, if this address left one on the landing --
+   *  separate from `utm_source` above (the card's own), since the two can differ. */
+  iscrizione_utm: {
+    origine: string | null
+    utm_source: string | null
+    utm_medium: string | null
+    utm_campaign: string | null
+    utm_content: string | null
+    utm_term: string | null
+    utm_id: string | null
+  } | null
+  ultimi_accessi: { id: string; logged_at: string }[]
+  ultimi_download_guida: { id: string; downloaded_at: string }[]
+  pigro_slug: string | null
+}
+
+const ISCRIZIONE_UTM_LABELS: [key: keyof NonNullable<FreelancerDetail['iscrizione_utm']>, label: string][] = [
+  ['origine', 'Origine'],
+  ['utm_source', 'Sorgente'],
+  ['utm_medium', 'Medium'],
+  ['utm_campaign', 'Campagna'],
+  ['utm_content', 'Contenuto'],
+  ['utm_term', 'Termine'],
+  ['utm_id', 'Id'],
+]
+
+/** The sign-up this address left on the landing, if it did, with its own UTM
+ *  (REB-284): a section of its own since an admin-drafted card copies the signup's
+ *  UTM onto the card at creation but a wizard card keeps its own, and the two can
+ *  genuinely differ from what «Arrivato» shows above. */
+function FreelancerIscrizione({ utm }: { utm: FreelancerDetail['iscrizione_utm'] }) {
+  const known = utm ? ISCRIZIONE_UTM_LABELS.filter(([key]) => utm[key] !== null) : []
+  return (
+    <section className="space-y-3 px-6 pb-6">
+      <h2 className="text-sm font-medium">Iscrizione alla newsletter</h2>
+      {known.length ? (
+        <dl className="space-y-2 text-sm">
+          {known.map(([key, label]) => (
+            <Row key={key} label={label}>{utm?.[key]}</Row>
+          ))}
+        </dl>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          {utm ? 'Iscritta, senza UTM registrati.' : 'Nessuna iscrizione con questo indirizzo.'}
+        </p>
+      )}
+    </section>
+  )
+}
+
+/** A short list of dated events («Ultimi accessi», «Download della guida»), newest
+ *  first, with an empty state instead of nothing when there are none (REB-284). */
+function RecentEvents({
+  title,
+  empty,
+  items,
+}: {
+  title: string
+  empty: string
+  items: { id: string; when: string }[]
+}) {
+  return (
+    <section className="space-y-3 px-6 pb-6">
+      <h2 className="text-sm font-medium">{title}</h2>
+      {items.length ? (
+        <ul className="space-y-1 text-sm">
+          {items.map((item) => (
+            <li key={item.id}>{formatDateTime(item.when)}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">{empty}</p>
+      )}
+    </section>
+  )
+}
+
 export function AdminFreelancerDetail() {
   const { id } = useParams({ from: '/signedIn/admin/freelance/$id' })
   const client = useQueryClient()
-  const row = useQuery({ queryKey: ['freelancer', id], queryFn: () => admin.freelancer(id) })
+  const row = useQuery({
+    queryKey: ['freelancer', id],
+    queryFn: async () => (await admin.freelancer(id)) as FreelancerDetail,
+  })
   const move = useMutation({
     mutationFn: ({ stato, note }: { stato: string; note: string }) =>
       admin.moveFreelancer(id, stato, note.trim() || null),
+    // The PATCH answers the plain card, not the REB-284 sections: merged onto the
+    // cached detail rather than replacing it, or a save would wipe them from view.
     onSuccess: (updated: Freelancer) => {
-      client.setQueryData(['freelancer', id], updated)
+      client.setQueryData<FreelancerDetail>(['freelancer', id], (current) =>
+        current && { ...current, ...updated },
+      )
       void client.invalidateQueries({ queryKey: ['freelancers'] })
     },
   })
   // The thread lives on the detail row, so a new comment goes into the same cache entry
   // and nothing is fetched twice.
   const onCommentAdded = (created: Comment) =>
-    client.setQueryData<Freelancer>(['freelancer', id], (current) =>
+    client.setQueryData<FreelancerDetail>(['freelancer', id], (current) =>
       current && { ...current, commenti: [created, ...current.commenti] },
     )
   if (row.isError) return <Empty>Scheda non trovata.</Empty>
@@ -510,6 +598,26 @@ export function AdminFreelancerDetail() {
           onSave={(stato, note) => move.mutate({ stato, note })}
         />
       </div>
+      <FreelancerIscrizione utm={f.iscrizione_utm} />
+      <RecentEvents
+        title="Ultimi accessi"
+        empty="Non è mai entrata."
+        items={f.ultimi_accessi.map((login) => ({ id: login.id, when: login.logged_at }))}
+      />
+      <RecentEvents
+        title="Download della guida"
+        empty="Non ha scaricato la guida."
+        items={f.ultimi_download_guida.map((download) => ({
+          id: download.id,
+          when: download.downloaded_at,
+        }))}
+      />
+      {f.pigro_slug && (
+        <section className="space-y-2 px-6 pb-6">
+          <h2 className="text-sm font-medium">Spazio PigroCRM</h2>
+          <p className="text-sm"><code className="rounded bg-muted px-1.5 py-0.5">{f.pigro_slug}</code></p>
+        </section>
+      )}
       <Comments kind="freelancers" id={f.id} comments={f.commenti} onAdded={onCommentAdded} />
       <p className="px-6 pb-6">
         <Link to="/admin/talenti" className="inline-flex items-center gap-1 text-sm underline-offset-2 hover:underline">

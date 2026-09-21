@@ -10,6 +10,7 @@ the page still reads as "how many of the community's cards have logged in". The 
 """
 
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -18,6 +19,9 @@ from rebase_core.models import Freelancer, Login, User
 from rebase_core.schemas import LoginRead, LoginStats
 
 RECENT_LOGINS = 20
+# The short list a card's own detail shows (REB-284), well below the admin's own
+# `/logins` page: an admin reading one person does not need their last twenty.
+RECENT_LOGINS_FOR_CARD = 5
 
 
 class LoginService:
@@ -59,3 +63,26 @@ class LoginService:
                 for login, person in rows
             ],
         )
+
+    def for_user(self, user_id: UUID, limit: int = RECENT_LOGINS_FOR_CARD) -> list[LoginRead]:
+        """The last few times this one person entered (REB-284's freelancer detail):
+        the same shape `stats` reads for everybody, scoped to a single `user_id`
+        instead of grouped across the whole hub."""
+        rows = self.session.execute(
+            select(Login, User)
+            .join(User, User.id == Login.user_id)
+            .where(Login.user_id == user_id)
+            .order_by(Login.logged_at.desc(), Login.id.desc())
+            .limit(limit)
+        ).all()
+        return [
+            LoginRead(
+                id=login.id,
+                user_id=login.user_id,
+                nome=person.nome,
+                cognome=person.cognome,
+                email=person.email,
+                logged_at=login.logged_at,
+            )
+            for login, person in rows
+        ]

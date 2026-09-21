@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ShieldOff, UserPlus } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Badge } from '@rebase/ui/badge'
 import { Button } from '@rebase/ui/button'
 import { Input } from '@rebase/ui/input'
@@ -10,6 +10,7 @@ import { formatDate } from '@/lib/format'
 import { Empty, Header } from './lists'
 
 const ADMINS_KEY = ['admins'] as const
+const SEARCH_DEBOUNCE_MS = 300
 
 interface Draft {
   email: string
@@ -18,6 +19,17 @@ interface Draft {
 }
 
 const EMPTY: Draft = { email: '', nome: '', cognome: '' }
+
+/** The value it settles to `delayMs` after the caller stops changing it -- the search
+ *  box's own text, so a query is not sent on every keystroke (REB-313). */
+function useDebounce<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs)
+    return () => clearTimeout(timer)
+  }, [value, delayMs])
+  return debounced
+}
 
 /**
  * Who reads this area, and the one form that grants or revokes the role (ORB-123,
@@ -28,10 +40,37 @@ const EMPTY: Draft = { email: '', nome: '', cognome: '' }
  * link is the only way in, for a member and an admin alike. Demoting is one click on
  * a row and is fully reversible, since nothing is deleted -- unlike the old
  * create/update dialog this replaces, which had no deactivation at all.
+ *
+ * REB-313: a debounced search box narrows the list server-side by name or email, and
+ * the rest of it loads on scroll -- best-match first once searching, oldest first
+ * otherwise, so the page still reads as a history with no term (ORB-123).
  */
 export function AdminAdmins() {
   const client = useQueryClient()
-  const list = useQuery({ queryKey: ADMINS_KEY, queryFn: () => admin.admins() })
+  const [query, setQuery] = useState('')
+  const debouncedQuery = useDebounce(query, SEARCH_DEBOUNCE_MS)
+  const list = useInfiniteQuery({
+    queryKey: [...ADMINS_KEY, debouncedQuery] as const,
+    queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+      admin.admins({ q: debouncedQuery || undefined, cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+  })
+  const items = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data])
+  const { hasNextPage, fetchNextPage } = list
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!hasNextPage || typeof IntersectionObserver === 'undefined') return
+    const node = sentinelRef.current
+    if (!node) return
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) void fetchNextPage()
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [hasNextPage, fetchNextPage])
+
   const [draft, setDraft] = useState<Draft>(EMPTY)
   const [done, setDone] = useState<{ verb: 'promosso' | 'rimosso'; email: string } | null>(null)
 
@@ -75,7 +114,16 @@ export function AdminAdmins() {
 
   return (
     <>
-      <Header title="Amministratori" count={list.data?.length} />
+      <Header title="Amministratori" count={items.length}>
+        <Input
+          type="search"
+          placeholder="Cerca per nome o email…"
+          aria-label="Cerca amministratori"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          className="w-64"
+        />
+      </Header>
 
       <form
         onSubmit={submit}
@@ -146,49 +194,70 @@ export function AdminAdmins() {
         <Empty>Non riesco a leggere la lista.</Empty>
       ) : list.isPending ? (
         <Empty>Caricamento…</Empty>
+      ) : items.length === 0 ? (
+        <Empty>{debouncedQuery ? 'Nessun risultato per questa ricerca.' : 'Nessun amministratore ancora.'}</Empty>
       ) : (
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted-foreground">
-            <tr className="border-b">
-              <th className="px-6 py-2 font-medium">Chi</th>
-              <th className="px-3 py-2 font-medium">Stato</th>
-              <th className="px-3 py-2 text-right font-medium">Da quando</th>
-              <th className="px-6 py-2">
-                <span className="sr-only">Azioni</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.data.map((row: Admin) => (
-              <tr key={row.id} className="border-b last:border-0 hover:bg-muted">
-                <td className="px-6 py-2.5">
-                  <p className="font-medium">{row.nome}</p>
-                  <p className="text-xs text-muted-foreground">{row.email}</p>
-                </td>
-                <td className="px-3 py-2.5">
-                  <Badge variant="pill">{row.attivo ? 'Attivo' : 'Disattivato'}</Badge>
-                </td>
-                <td className="px-3 py-2.5 text-right text-muted-foreground">{formatDate(row.created_at)}</td>
-                <td className="px-6 py-1.5 text-right">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={demote.isPending}
-                    onClick={() => demote.mutate(row.id)}
-                  >
-                    <ShieldOff className="mr-2 size-4" />
-                    Rimuovi
-                    <span className="sr-only">
-                      {' '}
-                      {row.nome} ({row.email}) da amministratore
-                    </span>
-                  </Button>
-                </td>
+        <>
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-muted-foreground">
+              <tr className="border-b">
+                <th className="px-6 py-2 font-medium">Chi</th>
+                <th className="px-3 py-2 font-medium">Stato</th>
+                <th className="px-3 py-2 text-right font-medium">Da quando</th>
+                <th className="px-6 py-2">
+                  <span className="sr-only">Azioni</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((row: Admin) => (
+                <tr key={row.id} className="border-b last:border-0 hover:bg-muted">
+                  <td className="px-6 py-2.5">
+                    <p className="font-medium">{row.nome}</p>
+                    <p className="text-xs text-muted-foreground">{row.email}</p>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <Badge variant="pill">{row.attivo ? 'Attivo' : 'Disattivato'}</Badge>
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-muted-foreground">{formatDate(row.created_at)}</td>
+                  <td className="px-6 py-1.5 text-right">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={demote.isPending}
+                      onClick={() => demote.mutate(row.id)}
+                    >
+                      <ShieldOff className="mr-2 size-4" />
+                      Rimuovi
+                      <span className="sr-only">
+                        {' '}
+                        {row.nome} ({row.email}) da amministratore
+                      </span>
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div ref={sentinelRef} />
+          {list.hasNextPage && (
+            <div className="flex flex-col items-center gap-2 px-6 py-5">
+              <p className="text-sm text-muted-foreground">
+                Mostrati {items.length} amministratori, ce ne sono altri.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={list.isFetchingNextPage}
+                onClick={() => void list.fetchNextPage()}
+              >
+                {list.isFetchingNextPage ? 'Carico…' : 'Mostra altri'}
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </>
   )

@@ -140,6 +140,13 @@ export interface Admin {
   created_at: string
 }
 
+/** `GET /api/hub/admins`'s shape since REB-313: oldest first with no `q`, so the page
+ *  still reads as a history (ORB-123), best-match first once `q` narrows it. */
+export interface AdminList {
+  items: Admin[]
+  next_cursor: string | null
+}
+
 /** What `POST /admins/promote` sends: an email, and `nome`/`cognome` for an address
  *  with no `users` row yet -- ignored, harmlessly, when one already exists. */
 export interface PromoteRequest {
@@ -243,18 +250,21 @@ export interface GuideDownload {
   downloaded_at: string
 }
 
-/** The logins for the admin area (ORB-158), as `GET /api/hub/logins` answers. */
+/** The logins for the admin area (ORB-158), as `GET /api/hub/logins` answers. The four
+ *  counters read the whole table, unaffected by `q`; `recenti` is the searched,
+ *  cursor-paginated part, no longer capped at 20 (REB-313). */
 export interface LoginStats {
   totale: number
   membri: number
   membri_totali: number
   ultimi_7_giorni: number
   recenti: LoginRead[]
+  next_cursor: string | null
 }
 
 export interface LoginRead {
   id: string
-  freelancer_id: string
+  user_id: string
   nome: string
   cognome: string
   email: string
@@ -371,6 +381,31 @@ function filterQuery(params: object): string {
   return search.toString()
 }
 
+/** `GET /api/hub/tokens`'s shape since REB-313: the same search-and-cursor page beside
+ *  the newest-first order this list already had. */
+export interface AdminTokenList {
+  items: AdminToken[]
+  next_cursor: string | null
+}
+
+/** A page of one of the four small admin lists REB-313 adds `q` and `cursor` to
+ *  (Amministratori, Agenti, Accessi): a term, a cursor from the previous page's
+ *  `next_cursor`, and a page size, all optional. */
+export interface ListPageParams {
+  q?: string
+  cursor?: string
+  limit?: number
+}
+
+function listQuery({ q, cursor, limit }: ListPageParams): string {
+  const query = new URLSearchParams()
+  if (q) query.set('q', q)
+  if (cursor) query.set('cursor', cursor)
+  if (limit !== undefined) query.set('limit', String(limit))
+  const qs = query.toString()
+  return qs ? `?${qs}` : ''
+}
+
 export const admin = {
   freelancer: (id: string) => request<Freelancer>(`/api/hub/freelancers/${id}`),
   cvUrl: (id: string) => `/api/hub/freelancers/${id}/cv`,
@@ -412,17 +447,25 @@ export const admin = {
   pigroSpaces: () => request<{ totale: number; items: PigroSpace[] }>('/api/hub/pigro/istanze'),
   /** How the guide is doing: downloads, the members behind them, the latest (ORB-156). */
   guideStats: () => request<GuideStats>('/api/hub/perks/guida'),
-  /** Who comes back in: logins, the members behind them, the latest (ORB-158). */
-  loginStats: () => request<LoginStats>('/api/hub/logins'),
-  /** Who reads this area, oldest first, and one more of them (ORB-123). */
-  admins: () => request<Admin[]>('/api/hub/admins'),
+  /** Who comes back in: logins, the members behind them, the last week -- unchanged
+   *  aggregate counters. `recenti` is searched and cursor-paginated since REB-313,
+   *  no longer a hardcoded top 20 (ORB-158). */
+  loginStats: (params: ListPageParams = {}) =>
+    request<LoginStats>(`/api/hub/logins${listQuery(params)}`),
+  /** Who reads this area (ORB-123): oldest first with no `q`, so the page still reads
+   *  as a history, best-match first once `q` narrows it (REB-313). */
+  admins: (params: ListPageParams = {}) =>
+    request<AdminList>(`/api/hub/admins${listQuery(params)}`),
   /** Promotes whatever `users` row already answers to this address, or creates a bare
    *  one from `nome`/`cognome` when none exists yet (REB-279, no password anywhere). */
   promote: (data: PromoteRequest) => request<Admin>('/api/hub/admins/promote', json(data)),
   /** Sets `role = 'member'`, fully reversible since nothing is deleted. */
   demote: (id: string) => request<Admin>(`/api/hub/admins/${id}/demote`, { method: 'POST' }),
-  /** The admin's own tokens for agents, newest first, revoked ones included (REB-213). */
-  tokens: () => request<AdminToken[]>('/api/hub/tokens'),
+  /** The admin's own tokens for agents (REB-213): newest first with no `q`, revoked
+   *  ones included either way; best-match first by name once `q` narrows it, since
+   *  REB-313. */
+  tokens: (params: ListPageParams = {}) =>
+    request<AdminTokenList>(`/api/hub/tokens${listQuery(params)}`),
   createToken: (nome: string) => request<CreatedToken>('/api/hub/tokens', json({ nome })),
   revokeToken: (id: string) => request<void>(`/api/hub/tokens/${id}`, { method: 'DELETE' }),
   comments: (kind: CommentKind, id: string) =>

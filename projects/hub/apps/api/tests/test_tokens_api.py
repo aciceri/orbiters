@@ -60,7 +60,7 @@ def test_a_token_is_minted_once_listed_and_revoked(
     assert body["nome"] == "Claude Code" and body["token"].startswith("reb_")
     assert body["prefix"] == body["token"][:12]
 
-    listed = client.get("/api/hub/tokens").json()
+    listed = client.get("/api/hub/tokens").json()["items"]
     assert [row["id"] for row in listed] == [body["id"]]
     assert "token" not in listed[0] and "token_hash" not in listed[0]
 
@@ -68,7 +68,7 @@ def test_a_token_is_minted_once_listed_and_revoked(
     assert client.post("/api/hub/tokens", json={"nome": "x" * 121}).status_code == 422
 
     assert client.delete(f"/api/hub/tokens/{body['id']}").status_code == 204
-    [row] = client.get("/api/hub/tokens").json()
+    [row] = client.get("/api/hub/tokens").json()["items"]
     assert row["revoked_at"] is not None
 
 
@@ -81,5 +81,24 @@ def test_another_admins_token_is_not_found(
     client.post("/api/hub/me/logout")
 
     _login(client, sender)
-    assert client.get("/api/hub/tokens").json() == []
+    assert client.get("/api/hub/tokens").json()["items"] == []
     assert client.delete(f"/api/hub/tokens/{adas['id']}").status_code == 404
+
+
+def test_tokens_search_hits_a_partial_name(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    _login(client, sender)
+    client.post("/api/hub/tokens", json={"nome": "Claude Code laptop"})
+    client.post("/api/hub/tokens", json={"nome": "Cursor desktop"})
+
+    by_name = client.get("/api/hub/tokens", params={"q": "Claude"}).json()
+    assert [row["nome"] for row in by_name["items"]] == ["Claude Code laptop"]
+
+
+def test_a_malformed_cursor_on_tokens_is_a_422(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    _login(client, sender)
+    response = client.get("/api/hub/tokens", params={"cursor": "not-a-valid-cursor"})
+    assert response.status_code == 422, response.text

@@ -7,6 +7,10 @@ import { AdminAdmins } from './Admins'
 const IVAN = { id: '1', email: 'ivan@rebase.it', nome: 'Ivan', attivo: true, created_at: '2026-09-10T10:00:00Z' }
 const ADA = { id: '2', email: 'ada@rebase.it', nome: 'Ada', attivo: true, created_at: '2026-09-10T11:00:00Z' }
 
+function page(items: unknown[], next_cursor: string | null = null) {
+  return { items, next_cursor }
+}
+
 function answer(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
@@ -24,7 +28,7 @@ afterEach(() => vi.restoreAllMocks())
 
 describe('the Amministratori page (REB-279: promote/demote, no password anywhere)', () => {
   it('shows the list and the form on the page, no dialog, no password field', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => answer(200, [IVAN]))
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => answer(200, page([IVAN])))
     mount()
     await screen.findByText('ivan@rebase.it')
     expect(screen.getByLabelText('Email')).toBeInTheDocument()
@@ -36,9 +40,9 @@ describe('the Amministratori page (REB-279: promote/demote, no password anywhere
 
   it('promotes an address with one click, posting the email alone when nome/cognome are blank', async () => {
     const spy = vi.spyOn(globalThis, 'fetch')
-    spy.mockResolvedValueOnce(answer(200, [IVAN]))
+    spy.mockResolvedValueOnce(answer(200, page([IVAN])))
     spy.mockResolvedValueOnce(answer(200, ADA))
-    spy.mockResolvedValueOnce(answer(200, [IVAN, ADA]))
+    spy.mockResolvedValueOnce(answer(200, page([IVAN, ADA])))
     mount()
     await screen.findByText('ivan@rebase.it')
     const user = userEvent.setup()
@@ -58,9 +62,9 @@ describe('the Amministratori page (REB-279: promote/demote, no password anywhere
 
   it('sends nome/cognome too when typed, for a brand-new address', async () => {
     const spy = vi.spyOn(globalThis, 'fetch')
-    spy.mockResolvedValueOnce(answer(200, []))
+    spy.mockResolvedValueOnce(answer(200, page([])))
     spy.mockResolvedValueOnce(answer(201, ADA))
-    spy.mockResolvedValueOnce(answer(200, [ADA]))
+    spy.mockResolvedValueOnce(answer(200, page([ADA])))
     mount()
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
     const user = userEvent.setup()
@@ -75,7 +79,7 @@ describe('the Amministratori page (REB-279: promote/demote, no password anywhere
 
   it('keeps a refused promotion on the field the server names', async () => {
     const spy = vi.spyOn(globalThis, 'fetch')
-    spy.mockResolvedValueOnce(answer(200, [IVAN]))
+    spy.mockResolvedValueOnce(answer(200, page([IVAN])))
     spy.mockResolvedValueOnce(
       answer(422, { detail: [{ loc: ['body', 'email'], msg: 'indirizzo già usato da un altro account' }] }),
     )
@@ -93,9 +97,9 @@ describe('the Amministratori page (REB-279: promote/demote, no password anywhere
 
   it('demotes a row on the click, no confirmation dialog, fully reversible', async () => {
     const spy = vi.spyOn(globalThis, 'fetch')
-    spy.mockResolvedValueOnce(answer(200, [IVAN, ADA]))
+    spy.mockResolvedValueOnce(answer(200, page([IVAN, ADA])))
     spy.mockResolvedValueOnce(answer(200, ADA))
-    spy.mockResolvedValueOnce(answer(200, [IVAN]))
+    spy.mockResolvedValueOnce(answer(200, page([IVAN])))
     mount()
     await screen.findByText('ada@rebase.it')
     const user = userEvent.setup()
@@ -106,5 +110,36 @@ describe('the Amministratori page (REB-279: promote/demote, no password anywhere
     const [url, init] = spy.mock.calls[1]!
     expect(url).toBe('/api/hub/admins/2/demote')
     expect(init?.method).toBe('POST')
+  })
+
+  it('debounces the search box and asks the server, not the browser, to narrow the list', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch')
+    spy.mockResolvedValueOnce(answer(200, page([IVAN, ADA])))
+    spy.mockResolvedValueOnce(answer(200, page([ADA])))
+    mount()
+    await screen.findByText('ivan@rebase.it')
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('Cerca amministratori'), 'Ada')
+    // No request fires per keystroke; one fires once typing settles.
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2), { timeout: 2000 })
+    expect(spy.mock.calls[1]![0]).toBe('/api/hub/admins?q=Ada')
+    await waitFor(() => expect(screen.queryByText('ivan@rebase.it')).toBeNull())
+    expect(screen.getByText('ada@rebase.it')).toBeInTheDocument()
+  })
+
+  it('loads the next page on demand, appending rows rather than replacing them', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch')
+    spy.mockResolvedValueOnce(answer(200, page([IVAN], 'cursor-1')))
+    spy.mockResolvedValueOnce(answer(200, page([ADA])))
+    mount()
+    await screen.findByText('ivan@rebase.it')
+    expect(screen.getByText(/Mostrati 1 amministratori, ce ne sono altri\./)).toBeInTheDocument()
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Mostra altri' }))
+    await screen.findByText('ada@rebase.it')
+    expect(screen.getByText('ivan@rebase.it')).toBeInTheDocument()
+    expect(spy.mock.calls[1]![0]).toBe('/api/hub/admins?cursor=cursor-1')
+    expect(screen.queryByRole('button', { name: 'Mostra altri' })).toBeNull()
   })
 })

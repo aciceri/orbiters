@@ -304,6 +304,62 @@ def test_admindep_is_enforced_before_the_new_search_params_are_even_read(
     assert client.get("/api/hub/companies", params=params).status_code == 401
 
 
+def test_admins_search_hits_a_partial_name(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    _login(client, sender)
+    promoted = client.post(
+        "/api/hub/admins/promote",
+        json={"email": "grace@rebase.it", "nome": "Grace", "cognome": "Hopper"},
+    )
+    assert promoted.status_code == 200, promoted.text
+
+    by_name = client.get("/api/hub/admins", params={"q": "Hopper"}).json()
+    assert [row["email"] for row in by_name["items"]] == ["grace@rebase.it"]
+
+
+def test_admins_list_stays_oldest_first_with_no_term(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    """ORB-123: REB-313's cursor keeps the admins list reading as a history."""
+    _login(client, sender)
+    client.post(
+        "/api/hub/admins/promote",
+        json={"email": "grace@rebase.it", "nome": "Grace", "cognome": "Hopper"},
+    )
+    listed = client.get("/api/hub/admins").json()["items"]
+    assert [row["email"] for row in listed] == [ADMIN_EMAIL, "grace@rebase.it"]
+
+
+def test_logins_search_hits_a_partial_name_and_keeps_the_counters(
+    client: TestClient, admin: None, sender: RecordingSender, api_session: Session
+) -> None:
+    _login(client, sender)
+    _apply(client, "ada@studio.it")
+    ada_user_id = api_session.scalar(
+        select(Freelancer.user_id)
+        .join(User, User.id == Freelancer.user_id)
+        .where(User.email == "ada@studio.it")
+    )
+    api_session.add(Login(user_id=ada_user_id))
+    api_session.commit()
+
+    by_name = client.get("/api/hub/logins", params={"q": "Ada"}).json()
+    assert [row["email"] for row in by_name["recenti"]] == ["ada@studio.it"]
+    # The aggregate counters read the whole table -- the admin's own sign-in above and
+    # Ada's -- unaffected by `q` narrowing `recenti` to Ada alone (REB-313).
+    assert by_name["totale"] == 2 and by_name["membri"] == 2
+
+
+def test_a_malformed_cursor_is_a_422_on_admins_and_logins(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    _login(client, sender)
+    for path in ("/api/hub/admins", "/api/hub/logins"):
+        response = client.get(path, params={"cursor": "not-a-valid-cursor"})
+        assert response.status_code == 422, (path, response.text)
+
+
 # ---- comments --------------------------------------------------------------------------
 
 MISSING = "00000000-0000-7000-8000-000000000000"

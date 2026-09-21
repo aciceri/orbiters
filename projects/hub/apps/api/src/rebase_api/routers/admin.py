@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from rebase_api.deps import AdminDep, HttpCallDep, SenderDep, SessionDep, SettingsDep
 from rebase_api.downloads import cv_response
-from rebase_core.admin_tokens import AdminRead
+from rebase_core.admin_tokens import AdminList, AdminRead
 from rebase_core.comments import CommentService
 from rebase_core.companies import CompanyService
 from rebase_core.freelancers import FreelancerService
@@ -66,6 +66,15 @@ def _send(sender: EmailSender, mail: Mail) -> None:
         _log.warning("a promotion's magic link mail was refused by the provider")
 
 
+Limit = Annotated[int, Query(ge=1, le=500)]
+# REB-285: shared by every list a cursor and a search box were added to (`/talenti`,
+# `/companies`, and since REB-313 `/admins` and `/logins`). `SearchQ`'s bound is
+# `search.SEARCH_MAX_LENGTH`, `Cursor`'s is `pagination.CURSOR_MAX_LENGTH` -- both
+# bounded for the reason every free-text query parameter in this codebase is: an
+# unbounded one reaching the database is a denial of service with extra steps.
+SearchQ = Annotated[str | None, Query(max_length=SEARCH_MAX_LENGTH)]
+Cursor = Annotated[str | None, Query(max_length=CURSOR_MAX_LENGTH)]
+
 # ---- the admins ------------------------------------------------------------------------
 #
 # Who reads this area, and the one form that grants or revokes the role (ORB-123,
@@ -75,9 +84,18 @@ def _send(sender: EmailSender, mail: Mail) -> None:
 # yet, and demoting is fully reversible since nothing is deleted.
 
 
-@router.get("/admins", response_model=list[AdminRead])
-def list_admins(_: AdminDep, session: SessionDep, settings: SettingsDep) -> list[AdminRead]:
-    return [AdminRead.model_validate(u) for u in UserService(session, settings).list_admins()]
+@router.get("/admins", response_model=AdminList)
+def list_admins(
+    _: AdminDep,
+    session: SessionDep,
+    settings: SettingsDep,
+    limit: Limit = 100,
+    q: SearchQ = None,
+    cursor: Cursor = None,
+) -> AdminList:
+    """REB-313 adds `q` (nome/cognome/email, trigram-ordered once searching) and
+    `cursor` beside the oldest-first order ORB-123 gave this list."""
+    return UserService(session, settings).list_admins(limit=limit, q=q, cursor=cursor)
 
 
 class PromoteRequest(BaseModel):
@@ -122,15 +140,6 @@ def demote_admin(
 
 
 # ---- the lists -------------------------------------------------------------------------
-
-Limit = Annotated[int, Query(ge=1, le=500)]
-# REB-285: shared by `/talenti` and `/companies`, the two lists a cursor and a search
-# box were added to. `SearchQ`'s bound is `search.SEARCH_MAX_LENGTH`, `Cursor`'s is
-# `pagination.CURSOR_MAX_LENGTH` -- both bounded for the reason every free-text query
-# parameter in this codebase is: an unbounded one reaching the database is a denial of
-# service with extra steps.
-SearchQ = Annotated[str | None, Query(max_length=SEARCH_MAX_LENGTH)]
-Cursor = Annotated[str | None, Query(max_length=CURSOR_MAX_LENGTH)]
 
 
 @router.get("/freelancers", response_model=FreelancerList)
@@ -211,11 +220,15 @@ def move_company(
 
 
 @router.get("/logins", response_model=LoginStats)
-def login_stats(_: AdminDep, session: SessionDep) -> LoginStats:
+def login_stats(
+    _: AdminDep, session: SessionDep, limit: Limit = 100, q: SearchQ = None, cursor: Cursor = None
+) -> LoginStats:
     """Who entered the hub and when (ORB-158): every login through a magic link, the
-    distinct members behind them, the last week, the latest by name. Written by
-    `POST /auth/enter` and by nothing else."""
-    return LoginService(session).stats()
+    distinct members behind them, the last week -- unchanged aggregate counters. REB-313
+    adds `q` (nome/cognome/email, trigram-ordered once searching) and `cursor` to
+    `recenti`, no longer a hardcoded top 20. Written by `POST /auth/enter` and by
+    nothing else."""
+    return LoginService(session).stats(limit=limit, q=q, cursor=cursor)
 
 
 @router.get("/perks/guida", response_model=GuideStats)

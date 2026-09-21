@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AdminPigro } from './Pigro'
 
@@ -68,5 +69,39 @@ describe('the Istanze Pigro page', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [] }))
     mount()
     await screen.findByText('Nessuna istanza ancora.')
+  })
+
+  it('filters the already-fetched rows client-side, by slug or by owner email (REB-313)', async () => {
+    // No query params on the request: the CRM's registry has none of its own, so
+    // searching narrows what is already on the page rather than asking again.
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 2, items: [ADA, BOB] }))
+    mount()
+    await screen.findByRole('link', { name: 'studio-ada' })
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('Cerca istanze'), 'bob@example')
+    await waitFor(() => expect(screen.queryByRole('link', { name: 'studio-ada' })).toBeNull())
+    expect(screen.getByText('bob@example.org')).toBeInTheDocument()
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('heading', { name: /Istanze Pigro/ })).toHaveTextContent('1')
+  })
+
+  it('reveals more of the already-fetched rows a page at a time', async () => {
+    const many = Array.from({ length: 25 }, (_, i) => ({
+      slug: `spazio-${i}`,
+      owner_email: `persona${i}@studio.it`,
+      created_at: '2026-09-10T09:00:00Z',
+      url: `https://pigro.letsrebase.com/spazio-${i}/app/`,
+      membro: null,
+    }))
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 25, items: many }))
+    mount()
+    await screen.findByRole('link', { name: 'spazio-0' })
+    expect(screen.queryByRole('link', { name: 'spazio-20' })).toBeNull()
+    expect(screen.getByText('Mostrate 20 istanze, ce ne sono altre.')).toBeInTheDocument()
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Mostra altre' }))
+    expect(await screen.findByRole('link', { name: 'spazio-20' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mostra altre' })).toBeNull()
   })
 })

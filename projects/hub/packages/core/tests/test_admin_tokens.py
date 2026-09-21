@@ -1,7 +1,7 @@
 """An admin's personal tokens: minted once, resolved to the admin, refused uniformly."""
 
 from collections.abc import Iterator
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import Engine, text
@@ -90,3 +90,56 @@ def test_a_token_belongs_to_its_admin_alone(ivan: User, hub_session: Session) ->
         tokens.create(uuid4(), "Nessuno")
     with pytest.raises(ValidationFailed):
         tokens.create(ivan.id, "   ")
+
+
+# ---- search and cursor pagination (REB-313) ----------------------------------------------
+
+
+def test_search_hits_a_partial_token_name(ivan: User, hub_session: Session) -> None:
+    tokens = AdminTokenService(hub_session)
+    tokens.create(ivan.id, "Claude Code laptop")
+    tokens.create(ivan.id, "Cursor desktop")
+
+    by_name = tokens.list_page(ivan.id, q="Claude")
+    assert [item.nome for item in by_name.items] == ["Claude Code laptop"]
+
+
+def test_the_cursor_walks_every_token_once_with_no_dupes_or_gaps(
+    ivan: User, hub_session: Session
+) -> None:
+    tokens = AdminTokenService(hub_session)
+    for i in range(7):
+        tokens.create(ivan.id, f"Token {i}")
+
+    full = tokens.list_page(ivan.id, limit=100)
+    assert len(full.items) == 7
+
+    seen: list[UUID] = []
+    cursor: str | None = None
+    for _ in range(20):  # generous upper bound: 7 rows over a page size of 2
+        page = tokens.list_page(ivan.id, limit=2, cursor=cursor)
+        seen.extend(item.id for item in page.items)
+        if page.next_cursor is None:
+            break
+        cursor = page.next_cursor
+    else:
+        pytest.fail("the cursor never reached its last page")
+
+    assert len(seen) == len(set(seen)) == 7
+    assert set(seen) == {item.id for item in full.items}
+
+
+def test_list_page_stays_scoped_to_the_caller_and_keeps_revoked_ones(
+    ivan: User, hub_session: Session
+) -> None:
+    tokens = AdminTokenService(hub_session)
+    read, _ = tokens.create(ivan.id, "Claude Code")
+    tokens.revoke(ivan.id, read.id)
+
+    assert [item.id for item in tokens.list_page(ivan.id).items] == [read.id]
+    assert tokens.list_page(uuid4()).items == []
+
+
+def test_a_malformed_cursor_is_refused(ivan: User, hub_session: Session) -> None:
+    with pytest.raises(ValidationFailed):
+        AdminTokenService(hub_session).list_page(ivan.id, cursor="not-a-valid-cursor")

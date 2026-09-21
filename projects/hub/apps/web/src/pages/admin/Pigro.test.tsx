@@ -43,7 +43,9 @@ afterEach(() => vi.restoreAllMocks())
 describe('the Istanze Pigro page', () => {
   it('lists every space with a link to it, and names the member who owns one', async () => {
     // ORB-142: which spaces exist and whose they are.
-    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 2, items: [ADA, BOB] }))
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(answer(200, { totale: 2, items: [ADA, BOB], next_cursor: null }))
     mount()
     const space = await screen.findByRole('link', { name: 'studio-ada' })
     expect(space).toHaveAttribute('href', 'https://pigro.letsrebase.com/studio-ada/app/')
@@ -66,42 +68,40 @@ describe('the Istanze Pigro page', () => {
   })
 
   it('says when there is nothing yet', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [] }))
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [], next_cursor: null }))
     mount()
     await screen.findByText('Nessuna istanza ancora.')
   })
 
-  it('filters the already-fetched rows client-side, by slug or by owner email (REB-313)', async () => {
-    // No query params on the request: the CRM's registry has none of its own, so
-    // searching narrows what is already on the page rather than asking again.
-    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 2, items: [ADA, BOB] }))
+  it('debounces the search box and asks the server, not the browser, to narrow the list (REB-313)', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch')
+    spy.mockResolvedValueOnce(answer(200, { totale: 2, items: [ADA, BOB], next_cursor: null }))
+    spy.mockResolvedValueOnce(answer(200, { totale: 1, items: [BOB], next_cursor: null }))
     mount()
     await screen.findByRole('link', { name: 'studio-ada' })
     const user = userEvent.setup()
     await user.type(screen.getByLabelText('Cerca istanze'), 'bob@example')
+    // No request fires per keystroke; one fires once typing settles.
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2), { timeout: 2000 })
+    expect(spy.mock.calls[1]![0]).toBe('/api/hub/pigro/istanze?q=bob%40example')
     await waitFor(() => expect(screen.queryByRole('link', { name: 'studio-ada' })).toBeNull())
     expect(screen.getByText('bob@example.org')).toBeInTheDocument()
-    expect(spy).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('heading', { name: /Istanze Pigro/ })).toHaveTextContent('1')
   })
 
-  it('reveals more of the already-fetched rows a page at a time', async () => {
-    const many = Array.from({ length: 25 }, (_, i) => ({
-      slug: `spazio-${i}`,
-      owner_email: `persona${i}@studio.it`,
-      created_at: '2026-09-10T09:00:00Z',
-      url: `https://pigro.letsrebase.com/spazio-${i}/app/`,
-      membro: null,
-    }))
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 25, items: many }))
+  it('loads the next page on demand, appending rows rather than replacing them', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch')
+    spy.mockResolvedValueOnce(answer(200, { totale: 2, items: [ADA], next_cursor: 'cursor-1' }))
+    spy.mockResolvedValueOnce(answer(200, { totale: 2, items: [BOB], next_cursor: null }))
     mount()
-    await screen.findByRole('link', { name: 'spazio-0' })
-    expect(screen.queryByRole('link', { name: 'spazio-20' })).toBeNull()
-    expect(screen.getByText('Mostrate 20 istanze, ce ne sono altre.')).toBeInTheDocument()
+    await screen.findByRole('link', { name: 'studio-ada' })
+    expect(screen.getByText('Mostrate 1 istanze, ce ne sono altre.')).toBeInTheDocument()
 
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Mostra altre' }))
-    expect(await screen.findByRole('link', { name: 'spazio-20' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'bob-dev' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'studio-ada' })).toBeInTheDocument()
+    expect(spy.mock.calls[1]![0]).toBe('/api/hub/pigro/istanze?cursor=cursor-1')
     expect(screen.queryByRole('button', { name: 'Mostra altre' })).toBeNull()
   })
 })

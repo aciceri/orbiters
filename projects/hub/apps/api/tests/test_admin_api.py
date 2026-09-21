@@ -582,6 +582,53 @@ def test_a_member_is_matched_whatever_the_case_of_the_address(
     assert items[1]["membro"]["nome"] == "Ada"
 
 
+def test_q_searches_the_slug_and_the_owner_address(
+    client: TestClient, admin: None, pigro: FakePigro, sender: RecordingSender
+) -> None:
+    _login(client, sender)
+    by_slug = client.get("/api/hub/pigro/istanze", params={"q": "studio"}).json()
+    assert [item["slug"] for item in by_slug["items"]] == ["studio-ada"]
+    by_email = client.get("/api/hub/pigro/istanze", params={"q": "bob@"}).json()
+    assert [item["slug"] for item in by_email["items"]] == ["bob-dev"]
+    no_match = client.get("/api/hub/pigro/istanze", params={"q": "nessuno"}).json()
+    assert no_match["items"] == [] and no_match["totale"] == 0
+
+
+def test_the_cursor_walks_every_space_once_with_no_gap_or_repeat(
+    client: TestClient, admin: None, pigro: FakePigro, sender: RecordingSender
+) -> None:
+    rows = [
+        {
+            "id": f"0192c6f0-0000-7000-8000-{i:012d}",
+            "slug": f"spazio-{i}",
+            "owner_email": f"persona{i}@studio.it",
+            "created_at": f"2026-09-{10 + i:02d}T09:00:00Z",
+        }
+        for i in range(5)
+    ]
+    pigro.body = json.dumps(rows).encode()
+    _login(client, sender)
+
+    seen: list[str] = []
+    cursor: str | None = None
+    for _ in range(10):
+        params = {"limit": 2} | ({"cursor": cursor} if cursor else {})
+        page = client.get("/api/hub/pigro/istanze", params=params).json()
+        seen.extend(item["slug"] for item in page["items"])
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+    assert seen == [f"spazio-{i}" for i in reversed(range(5))]
+
+
+def test_a_malformed_cursor_is_a_422(
+    client: TestClient, admin: None, pigro: FakePigro, sender: RecordingSender
+) -> None:
+    _login(client, sender)
+    response = client.get("/api/hub/pigro/istanze", params={"cursor": "non-un-cursore"})
+    assert response.status_code == 422, response.text
+
+
 def test_when_the_crm_refuses_or_falls_over_the_answer_is_a_502_sentence(
     client: TestClient, admin: None, pigro: FakePigro, sender: RecordingSender
 ) -> None:

@@ -443,8 +443,14 @@ export const admin = {
   draftFromSignup: (signupId: string, data: FreelancerDraft) =>
     request<Freelancer>(`/api/hub/signups/${signupId}/scheda`, json(data)),
   /** PigroCRM's spaces, read by the hub's API with the token it holds: the browser
-   *  never talks to the CRM (ORB-142). A 503 carries the sentence the page shows. */
-  pigroSpaces: () => request<{ totale: number; items: PigroSpace[] }>('/api/hub/pigro/istanze'),
+   *  never talks to the CRM (ORB-142). A 503 carries the sentence the page shows.
+   *  Newest first, `q` matched against the slug or the owner's address, paged with a
+   *  cursor (REB-313): the registry itself takes no query parameters, but the hub's
+   *  own route filters and slices what it already fetched before answering. */
+  pigroSpaces: (params: ListPageParams = {}) =>
+    request<{ totale: number; items: PigroSpace[]; next_cursor: string | null }>(
+      `/api/hub/pigro/istanze${listQuery(params)}`,
+    ),
   /** How the guide is doing: downloads, the members behind them, the latest (ORB-156). */
   guideStats: () => request<GuideStats>('/api/hub/perks/guida'),
   /** Who comes back in: logins, the members behind them, the last week -- unchanged

@@ -140,6 +140,13 @@ export interface Admin {
   created_at: string
 }
 
+/** `GET /api/hub/admins`'s shape since REB-313: oldest first with no `q`, so the page
+ *  still reads as a history (ORB-123), best-match first once `q` narrows it. */
+export interface AdminList {
+  items: Admin[]
+  next_cursor: string | null
+}
+
 /** What `POST /admins/promote` sends: an email, and `nome`/`cognome` for an address
  *  with no `users` row yet -- ignored, harmlessly, when one already exists. */
 export interface PromoteRequest {
@@ -225,7 +232,7 @@ export interface PigroSpace {
   membro: { id: string; nome: string; cognome: string } | null
 }
 
-/** The guide's numbers for the admin area (ORB-156), as `GET /api/hub/perks/guida` answers. */
+/** The guide's numbers for the admin area (ORB-156), as `GET /api/hub/perks/guide` answers. */
 export interface GuideStats {
   totale: number
   membri: number
@@ -243,34 +250,59 @@ export interface GuideDownload {
   downloaded_at: string
 }
 
-/** The logins for the admin area (ORB-158), as `GET /api/hub/logins` answers. */
+/** The logins for the admin area (ORB-158), as `GET /api/hub/logins` answers. The four
+ *  counters read the whole table, unaffected by `q`; `recenti` is the searched,
+ *  cursor-paginated part, no longer capped at 20 (REB-313). */
 export interface LoginStats {
   totale: number
   membri: number
   membri_totali: number
   ultimi_7_giorni: number
   recenti: LoginRead[]
+  next_cursor: string | null
 }
 
 export interface LoginRead {
   id: string
-  freelancer_id: string
+  user_id: string
   nome: string
   cognome: string
   email: string
   logged_at: string
 }
 
-export interface Signup {
+/** One row of `talenti` (REB-282/283): every freelancer card and every bare sign-up
+ *  as one row, `stato` `lead` for the bare ones and the freelancer's own state
+ *  otherwise, as `GET /api/hub/talenti` answers -- the single list that replaced
+ *  «Developer e CTO» and «Iscrizioni». `origine` names how the row came to be:
+ *  `form` for a bare sign-up, `wizard` for a card the person filled in themselves,
+ *  `admin` for one an admin drafted from research (ORB-155). */
+export interface Talento {
   id: string
-  email: string
   nome: string | null
   cognome: string | null
+  email: string
   linkedin_url: string | null
+  stato: string
+  origine: 'form' | 'wizard' | 'admin'
   utm_source: string | null
   created_at: string
-  /** The card with the same address, if one exists (ORB-155). */
-  freelancer_id: string | null
+}
+
+/** What an admin found about a signup on the public web (ORB-155): a name, maybe a
+ *  LinkedIn profile, a position, some links, and at least one source, since a card
+ *  written from research with no source is a card nobody can check. The body
+ *  `POST /api/hub/signups/{id}/card` expects -- the same `draft_from_signup` the
+ *  MCP tool `create_freelancer_from_signup` calls. */
+export interface FreelancerDraft {
+  nome: string
+  cognome: string
+  linkedin_url?: string
+  posizione?: string
+  tariffa_giornaliera?: string
+  remoto?: Remoto
+  links?: string[]
+  fonti: string[]
 }
 
 /** A personal token of the admin, as `GET /api/hub/tokens` lists it (REB-213): never the value. */
@@ -288,13 +320,93 @@ export interface CreatedToken extends AdminToken {
   token: string
 }
 
+/** What `GET /api/hub/talent` takes beside `limit` (REB-285/286): `q` searches
+ *  name/surname/email/`posizione`, trigram-ordered when present; every other field
+ *  narrows the merged list of cards and bare sign-ups the same way the state pills
+ *  always have. Mirrors `list_talenti`'s own parameters in
+ *  `apps/api/src/rebase_api/routers/admin.py` one for one -- this is also the shape
+ *  `/admin/talent`'s own `validateSearch` carries in the URL (`router.tsx`). */
+export interface TalentiFilters {
+  stato?: string
+  q?: string
+  posizione?: string
+  remoto?: Remoto
+  tariffa_min?: string
+  tariffa_max?: string
+  origine?: string
+  utm_source?: string
+  has_cv?: boolean
+  con_accessi?: boolean
+  creato_da?: string
+  creato_a?: string
+}
+
+export interface TalentoList {
+  totale: number
+  items: Talento[]
+  per_stato: Record<string, number>
+  next_cursor: string | null
+}
+
+/** What `GET /api/hub/companies` takes beside `limit` (REB-285/286), mirroring
+ *  `list_companies`'s own parameters -- the shape `/admin/companies`'s own
+ *  `validateSearch` carries in the URL. */
+export interface CompaniesFilters {
+  stato?: string
+  q?: string
+  budget_min?: string
+  budget_max?: string
+  periodo_da?: string
+  origine?: string
+  creato_da?: string
+  creato_a?: string
+}
+
+export interface CompanyList {
+  totale: number
+  items: Company[]
+  per_stato: Record<string, number>
+  next_cursor: string | null
+}
+
+/** Every value in `params` that is not `undefined` or `""`, as a query string: the two
+ *  list endpoints below send exactly the filters an admin actually set, rather than
+ *  the fixed `limit=500` that fetched everything in one page before REB-285/286 gave
+ *  both a cursor. */
+function filterQuery(params: object): string {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params) as [string, string | number | boolean | undefined][]) {
+    if (value !== undefined && value !== '') search.set(key, String(value))
+  }
+  return search.toString()
+}
+
+/** `GET /api/hub/tokens`'s shape since REB-313: the same search-and-cursor page beside
+ *  the newest-first order this list already had. */
+export interface AdminTokenList {
+  items: AdminToken[]
+  next_cursor: string | null
+}
+
+/** A page of one of the four small admin lists REB-313 adds `q` and `cursor` to
+ *  (Amministratori, Agenti, Accessi): a term, a cursor from the previous page's
+ *  `next_cursor`, and a page size, all optional. */
+export interface ListPageParams {
+  q?: string
+  cursor?: string
+  limit?: number
+}
+
+function listQuery({ q, cursor, limit }: ListPageParams): string {
+  const query = new URLSearchParams()
+  if (q) query.set('q', q)
+  if (cursor) query.set('cursor', cursor)
+  if (limit !== undefined) query.set('limit', String(limit))
+  const qs = query.toString()
+  return qs ? `?${qs}` : ''
+}
+
 export const admin = {
-  /** Cards and, beside them, the leads: signups whose address has no card yet (ORB-163).
-   *  `stato: 'lead'` answers leads alone; another state answers cards alone. */
-  freelancers: (stato?: string) =>
-    request<{ totale: number; items: Freelancer[]; totale_lead: number; lead: Signup[] }>(
-      `/api/hub/freelancers?limit=500${stato ? `&stato=${encodeURIComponent(stato)}` : ''}`,
-    ),
   freelancer: (id: string) => request<Freelancer>(`/api/hub/freelancers/${id}`),
   cvUrl: (id: string) => `/api/hub/freelancers/${id}/cv`,
   moveFreelancer: (id: string, stato: string, note: string | null) =>
@@ -303,10 +415,10 @@ export const admin = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stato, note }),
     }),
-  companies: (stato?: string) =>
-    request<{ totale: number; items: Company[] }>(
-      `/api/hub/companies?limit=500${stato ? `&stato=${encodeURIComponent(stato)}` : ''}`,
-    ),
+  companies: (filters: CompaniesFilters & { cursor?: string; limit?: number } = {}) => {
+    const qs = filterQuery(filters)
+    return request<CompanyList>(`/api/hub/companies${qs ? `?${qs}` : ''}`)
+  },
   company: (id: string) => request<Company>(`/api/hub/companies/${id}`),
   moveCompany: (id: string, stato: string, note: string | null) =>
     request<Company>(`/api/hub/companies/${id}`, {
@@ -314,23 +426,52 @@ export const admin = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stato, note }),
     }),
-  signups: () => request<{ totale: number; iscrizioni: Signup[] }>('/api/hub/signups?limit=500'),
+  /** Every card and every bare sign-up as one list (REB-282/283), `stato` `lead` for
+   *  the bare ones alone -- the read model «Talenti» replaced «Developer e CTO» and
+   *  «Iscrizioni» with. `filters` beside `stato` and `cursor` are REB-285's search and
+   *  its per-field narrowing, REB-286's own filter row sends straight through; `limit`
+   *  is the one override `AdminTalentoLead` needs to see every lead at once rather
+   *  than the server's own default page. */
+  talent: (filters: TalentiFilters & { cursor?: string; limit?: number } = {}) => {
+    const qs = filterQuery(filters)
+    return request<TalentoList>(`/api/hub/talent${qs ? `?${qs}` : ''}`)
+  },
+  /** Drafts a card from a bare sign-up in place (ORB-155): the same `draft_from_signup`
+   *  the MCP tool `create_freelancer_from_signup` calls, here behind the admin's
+   *  cookie. 201 with the new (incomplete) card, or a 422 naming `email` when the
+   *  person has already filled their own. */
+  draftFromSignup: (signupId: string, data: FreelancerDraft) =>
+    request<Freelancer>(`/api/hub/signups/${signupId}/card`, json(data)),
   /** PigroCRM's spaces, read by the hub's API with the token it holds: the browser
-   *  never talks to the CRM (ORB-142). A 503 carries the sentence the page shows. */
-  pigroSpaces: () => request<{ totale: number; items: PigroSpace[] }>('/api/hub/pigro/istanze'),
+   *  never talks to the CRM (ORB-142). A 503 carries the sentence the page shows.
+   *  Newest first, `q` matched against the slug or the owner's address, paged with a
+   *  cursor (REB-313): the registry itself takes no query parameters, but the hub's
+   *  own route filters and slices what it already fetched before answering. */
+  pigroSpaces: (params: ListPageParams = {}) =>
+    request<{ totale: number; items: PigroSpace[]; next_cursor: string | null }>(
+      `/api/hub/pigro/instances${listQuery(params)}`,
+    ),
   /** How the guide is doing: downloads, the members behind them, the latest (ORB-156). */
-  guideStats: () => request<GuideStats>('/api/hub/perks/guida'),
-  /** Who comes back in: logins, the members behind them, the latest (ORB-158). */
-  loginStats: () => request<LoginStats>('/api/hub/logins'),
-  /** Who reads this area, oldest first, and one more of them (ORB-123). */
-  admins: () => request<Admin[]>('/api/hub/admins'),
+  guideStats: () => request<GuideStats>('/api/hub/perks/guide'),
+  /** Who comes back in: logins, the members behind them, the last week -- unchanged
+   *  aggregate counters. `recenti` is searched and cursor-paginated since REB-313,
+   *  no longer a hardcoded top 20 (ORB-158). */
+  loginStats: (params: ListPageParams = {}) =>
+    request<LoginStats>(`/api/hub/logins${listQuery(params)}`),
+  /** Who reads this area (ORB-123): oldest first with no `q`, so the page still reads
+   *  as a history, best-match first once `q` narrows it (REB-313). */
+  admins: (params: ListPageParams = {}) =>
+    request<AdminList>(`/api/hub/admins${listQuery(params)}`),
   /** Promotes whatever `users` row already answers to this address, or creates a bare
    *  one from `nome`/`cognome` when none exists yet (REB-279, no password anywhere). */
   promote: (data: PromoteRequest) => request<Admin>('/api/hub/admins/promote', json(data)),
   /** Sets `role = 'member'`, fully reversible since nothing is deleted. */
   demote: (id: string) => request<Admin>(`/api/hub/admins/${id}/demote`, { method: 'POST' }),
-  /** The admin's own tokens for agents, newest first, revoked ones included (REB-213). */
-  tokens: () => request<AdminToken[]>('/api/hub/tokens'),
+  /** The admin's own tokens for agents (REB-213): newest first with no `q`, revoked
+   *  ones included either way; best-match first by name once `q` narrows it, since
+   *  REB-313. */
+  tokens: (params: ListPageParams = {}) =>
+    request<AdminTokenList>(`/api/hub/tokens${listQuery(params)}`),
   createToken: (nome: string) => request<CreatedToken>('/api/hub/tokens', json({ nome })),
   revokeToken: (id: string) => request<void>(`/api/hub/tokens/${id}`, { method: 'DELETE' }),
   comments: (kind: CommentKind, id: string) =>
@@ -346,7 +487,9 @@ export const admin = {
  *  `MemberProfile`): a `users` row is not necessarily an applicant with a card any
  *  more, so `ha_scheda` says whether one exists, and the seven card fields answer
  *  blank -- `null`, `false`, `[]` -- when it does not, the shape a signed-in admin
- *  with no card gets. */
+ *  with no card gets. `ha_azienda` and the four request fields mirror `ha_scheda`'s
+ *  own shape for a company contact's most recent request (REB-314): a person can
+ *  carry both, one, or neither. */
 export interface Me {
   id: string
   nome: string
@@ -363,6 +506,11 @@ export interface Me {
   posizione: string | null
   remoto: Remoto | null
   links: string[]
+  ha_azienda: boolean
+  progetto: string | null
+  periodo_da: string | null
+  durata: string | null
+  budget_giornaliero: string | null
   /** CV, rate, position and remote preference all present. Always `false` without a
    *  card (`ha_scheda`). */
   completa: boolean
@@ -379,6 +527,15 @@ export interface MemberUpdate {
   links: string[]
 }
 
+/** The four answers a company contact may change about their most recent request
+ *  (REB-314): never `stato`, `note` or the company's own identity. */
+export interface CompanyUpdate {
+  progetto: string
+  periodo_da: string
+  durata: string
+  budget_giornaliero: string
+}
+
 export const member = {
   /** 202 whether the address is known or not; the page says one thing in both cases. */
   requestLink: (email: string) => request<{ ok: true }>('/api/hub/auth/link', json({ email })),
@@ -386,6 +543,12 @@ export const member = {
   me: () => request<Me>('/api/hub/me'),
   update: (data: MemberUpdate) =>
     request<Me>('/api/hub/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+  updateCompany: (data: CompanyUpdate) =>
+    request<Me>('/api/hub/me/company', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -399,6 +562,6 @@ export const member = {
   /** The guide, the community's second perk. A plain href rather than a fetch: the
    *  route answers with an attachment, and a session cookie travels with a navigation
    *  the same way it travels with a request. */
-  guideUrl: '/api/hub/me/guida',
+  guideUrl: '/api/hub/me/guide',
   logout: () => request<void>('/api/hub/me/logout', { method: 'POST' }),
 }

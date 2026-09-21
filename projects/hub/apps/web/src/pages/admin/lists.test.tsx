@@ -7,9 +7,12 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AdminFreelancerDetail, AdminFreelancers, AdminSignups } from './lists'
+import type { CompaniesFilters, Remoto, TalentiFilters } from '@/lib/api'
+import { strParam } from '@/router'
+import { AdminCompanies, AdminFreelancerDetail, AdminTalenti, AdminTalentoLead } from './lists'
 
 function answer(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -40,6 +43,10 @@ const INCOMPLETE = {
   accessi: 0,
   provenienza: 'form',
   ultimo_accesso: null,
+  iscrizione_utm: null,
+  ultimi_accessi: [],
+  ultimi_download_guida: [],
+  pigro_slug: null,
 }
 
 const COMPLETE = {
@@ -60,45 +67,142 @@ const COMPLETE = {
   ultimo_accesso: '2026-09-11T12:04:00Z',
 }
 
-const SIGNUPS = [
-  {
-    id: 's1',
-    email: 'ada@studio.it',
-    nome: 'Ada',
-    cognome: 'Lovelace',
-    linkedin_url: 'https://www.linkedin.com/in/ada',
-    utm_source: 'linkedin',
-    created_at: '2026-09-09T10:00:00Z',
-    freelancer_id: 'f1',
-  },
-  {
-    id: 's2',
-    email: 'bob@example.org',
-    nome: 'Bob',
-    cognome: 'Ross',
-    linkedin_url: 'https://www.linkedin.com/in/bob',
-    utm_source: 'newsletter',
-    created_at: '2026-09-08T10:00:00Z',
-    freelancer_id: null,
-  },
-]
+/** A card in `talenti` (REB-282/283): a freelancer already written, `origine` naming
+ *  the wizard the person filled in themselves. */
+const CARD_TALENTO = {
+  id: 'f1',
+  nome: 'Ada',
+  cognome: 'Lovelace',
+  email: 'ada@studio.it',
+  linkedin_url: 'https://www.linkedin.com/in/ada',
+  stato: 'nuovo',
+  origine: 'wizard',
+  utm_source: 'linkedin',
+  created_at: '2026-09-10T10:00:00Z',
+}
 
-/** The admin routes the three pages sit on, without the frame and its guard: the
- *  pages read `useParams` and render `Link`s, so a router has to be there. The
- *  pathless `signedIn` id mirrors the real tree (REB-279's `SignedInLayout`), since
- *  `AdminFreelancerDetail`'s own `useParams({ from })` names that full route id. */
+/** A bare sign-up in `talenti` (ORB-163): `stato` `lead`, no card behind it yet. */
+const LEAD_TALENTO = {
+  id: 's2',
+  nome: 'Bob',
+  cognome: 'Ross',
+  email: 'bob@example.org',
+  linkedin_url: 'https://www.linkedin.com/in/bob',
+  stato: 'lead',
+  origine: 'form',
+  utm_source: 'newsletter',
+  created_at: '2026-09-08T10:00:00Z',
+}
+
+/** A company request in `GET /api/hub/companies` (REB-286's own new coverage: the
+ *  list had none before). */
+const COMPANY_A = {
+  id: 'c1',
+  nome_azienda: 'Rossi Studio',
+  referente: 'Mario Rossi',
+  email: 'mario@rossi.it',
+  progetto: 'Piattaforma di prenotazione',
+  periodo_da: '2026-10-01',
+  durata: '3 mesi',
+  budget_giornaliero: '450.00',
+  stato: 'nuovo',
+  note: null,
+  origine: 'home',
+  utm_source: 'linkedin',
+  created_at: '2026-09-10T10:00:00Z',
+  commenti: [],
+}
+
+const COMPANY_B = { ...COMPANY_A, id: 'c2', nome_azienda: 'Bianchi Srl', stato: 'contattato' }
+
+// The project's `lib` target is ES2022 and does not declare `Promise.withResolvers`
+// (Node 22 and Vitest's own runtime both support it regardless): this augments the
+// ambient type for this file alone, rather than raising the shared `tsconfig.json`'s
+// `lib` for the whole app over one helper.
+declare global {
+  interface PromiseConstructor {
+    withResolvers<T>(): {
+      promise: Promise<T>
+      resolve: (value: T | PromiseLike<T>) => void
+      reject: (reason?: unknown) => void
+    }
+  }
+}
+
+/** The 300ms debounce plus a margin, in real time -- real timers, not fake ones, so
+ *  `userEvent`'s own awaiting and the debounce never deadlock each other (same
+ *  reasoning as PigroCRM's `CommandPalette.test.tsx`). */
+function settle(): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>()
+  setTimeout(resolve, 500)
+  return promise
+}
+
+/** The admin routes these pages sit on, without the frame and its guard: the pages
+ *  read `useParams` and render `Link`s, so a router has to be there. The pathless
+ *  `signedIn` id mirrors the real tree (REB-279's `SignedInLayout`), since
+ *  `AdminFreelancerDetail`'s and `AdminTalentoLead`'s own `useParams({ from })` name
+ *  that full route id. `talent`/`companies` carry the same `validateSearch` shape
+ *  `router.tsx` gives them (REB-286), duplicated rather than imported the same way
+ *  `Thanks.test.tsx` duplicates `thanks`'s own. Returns the router so a test can read
+ *  `router.state.location.search` back out after an interaction. */
 function mount(path: string) {
   const root = createRootRoute({ component: () => <Outlet /> })
   const signedIn = createRoute({ getParentRoute: () => root, id: 'signedIn', component: () => <Outlet /> })
-  const iscrizioni = createRoute({ getParentRoute: () => signedIn, path: '/admin/iscrizioni', component: AdminSignups })
-  const freelance = createRoute({ getParentRoute: () => signedIn, path: '/admin/freelance', component: AdminFreelancers })
-  const detail = createRoute({
+  const talent = createRoute({
+    getParentRoute: () => signedIn,
+    path: '/admin/talent',
+    component: AdminTalenti,
+    validateSearch: (search: Record<string, unknown>): TalentiFilters => ({
+      stato: strParam(search.stato),
+      q: strParam(search.q),
+      posizione: strParam(search.posizione),
+      remoto:
+        search.remoto === 'remoto' || search.remoto === 'ibrido' || search.remoto === 'in_sede'
+          ? (search.remoto as Remoto)
+          : undefined,
+      tariffa_min: strParam(search.tariffa_min),
+      tariffa_max: strParam(search.tariffa_max),
+      origine: strParam(search.origine),
+      utm_source: strParam(search.utm_source),
+      has_cv: search.has_cv === true || search.has_cv === 'true' ? true : search.has_cv === false || search.has_cv === 'false' ? false : undefined,
+      con_accessi:
+        search.con_accessi === true || search.con_accessi === 'true'
+          ? true
+          : search.con_accessi === false || search.con_accessi === 'false'
+            ? false
+            : undefined,
+      creato_da: strParam(search.creato_da),
+      creato_a: strParam(search.creato_a),
+    }),
+  })
+  const talentLead = createRoute({
+    getParentRoute: () => signedIn,
+    path: '/admin/talent/$id',
+    component: AdminTalentoLead,
+  })
+  const freelanceDetail = createRoute({
     getParentRoute: () => signedIn,
     path: '/admin/freelance/$id',
     component: AdminFreelancerDetail,
   })
+  const companies = createRoute({
+    getParentRoute: () => signedIn,
+    path: '/admin/companies',
+    component: AdminCompanies,
+    validateSearch: (search: Record<string, unknown>): CompaniesFilters => ({
+      stato: strParam(search.stato),
+      q: strParam(search.q),
+      budget_min: strParam(search.budget_min),
+      budget_max: strParam(search.budget_max),
+      periodo_da: strParam(search.periodo_da),
+      origine: strParam(search.origine),
+      creato_da: strParam(search.creato_da),
+      creato_a: strParam(search.creato_a),
+    }),
+  })
   const router = createRouter({
-    routeTree: root.addChildren([signedIn.addChildren([iscrizioni, freelance, detail])]),
+    routeTree: root.addChildren([signedIn.addChildren([talent, talentLead, freelanceDetail, companies])]),
     history: createMemoryHistory({ initialEntries: [path] }),
   })
   render(
@@ -106,6 +210,7 @@ function mount(path: string) {
       <RouterProvider router={router} />
     </QueryClientProvider>,
   )
+  return router
 }
 
 /** The cell under a given column header, so a «—» is checked where it is expected and
@@ -120,72 +225,80 @@ function cellUnder(row: HTMLElement, header: string): HTMLElement {
 
 afterEach(() => vi.restoreAllMocks())
 
-describe('the Iscrizioni page', () => {
-  it('links a signup to its card when one exists, and prints a dash otherwise', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 2, iscrizioni: SIGNUPS }))
-    mount('/admin/iscrizioni')
+describe('the Talenti list (REB-282/283)', () => {
+  it('lists a card and a lead together, each with its own state and origin, and links to the right page', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      answer(200, { totale: 2, items: [CARD_TALENTO, LEAD_TALENTO], per_stato: { nuovo: 1, lead: 1 } }),
+    )
+    mount('/admin/talent')
+
     const ada = (await screen.findByText('ada@studio.it')).closest('tr')!
-    const link = within(cellUnder(ada, 'Scheda')).getByRole('link', { name: 'apri' })
-    expect(link.getAttribute('href')).toMatch(/\/f1$/)
+    expect(within(cellUnder(ada, 'Stato')).getByText('Nuovo')).toBeInTheDocument()
+    expect(cellUnder(ada, 'Provenienza')).toHaveTextContent('wizard')
+    const adaLink = within(ada).getByRole('link')
+    expect(adaLink.getAttribute('href')).toMatch(/\/admin\/freelance\/f1$/)
 
     const bob = screen.getByText('bob@example.org').closest('tr')!
-    expect(cellUnder(bob, 'Scheda')).toHaveTextContent('—')
-    expect(within(cellUnder(bob, 'Scheda')).queryByRole('link')).toBeNull()
-  })
-})
+    expect(within(cellUnder(bob, 'Stato')).getByText('Lead')).toBeInTheDocument()
+    expect(cellUnder(bob, 'Provenienza')).toHaveTextContent('form')
+    const bobLink = within(bob).getByRole('link')
+    expect(bobLink.getAttribute('href')).toMatch(/\/admin\/talent\/s2$/)
 
-describe('the Developer e CTO list', () => {
-  it('renders an incomplete card with dashes and a «Da completare» pill', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 2, items: [INCOMPLETE, COMPLETE], totale_lead: 0, lead: [] }))
-    mount('/admin/freelance')
-    const ada = (await screen.findByText('ada@studio.it')).closest('tr')!
-    expect(cellUnder(ada, 'Posizione')).toHaveTextContent('—')
-    expect(cellUnder(ada, 'Tariffa')).toHaveTextContent('—')
-    expect(cellUnder(ada, 'Dove')).toHaveTextContent('—')
-    expect(within(cellUnder(ada, 'Stato')).getByText('Nuovo')).toBeInTheDocument()
-    expect(within(cellUnder(ada, 'Stato')).getByText('Da completare')).toBeInTheDocument()
-
-    const grace = screen.getByText('grace@studio.it').closest('tr')!
-    expect(cellUnder(grace, 'Posizione')).toHaveTextContent('CTO')
-    expect(cellUnder(grace, 'Tariffa')).toHaveTextContent('500,00')
-    expect(cellUnder(grace, 'Dove')).toHaveTextContent('Da remoto')
-    expect(within(grace).queryByText('Da completare')).toBeNull()
-  })
-
-  it('shows when each member last came in, or a dash for one who never did (ORB-158)', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 2, items: [INCOMPLETE, COMPLETE], totale_lead: 0, lead: [] }))
-    mount('/admin/freelance')
-    const ada = (await screen.findByText('ada@studio.it')).closest('tr')!
-    expect(cellUnder(ada, 'Ultimo accesso')).toHaveTextContent('—')
-    const grace = screen.getByText('grace@studio.it').closest('tr')!
-    expect(cellUnder(grace, 'Ultimo accesso')).toHaveTextContent(/11 set 2026/)
-  })
-
-  it('says where each lead came from: «form» when the address also signed up, «landing» otherwise (ORB-161)', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 2, items: [INCOMPLETE, COMPLETE], totale_lead: 0, lead: [] }))
-    mount('/admin/freelance')
-    const ada = (await screen.findByText('ada@studio.it')).closest('tr')!
-    expect(cellUnder(ada, 'Provenienza')).toHaveTextContent('form')
-    const grace = screen.getByText('grace@studio.it').closest('tr')!
-    expect(cellUnder(grace, 'Provenienza')).toHaveTextContent('landing')
-  })
-})
-
-describe('the leads on the Developer e CTO list (ORB-163)', () => {
-  it('lists a signup with no card as a «Lead» row with dashes and no link, and counts it', async () => {
-    const lead = SIGNUPS.find((signup) => signup.freelancer_id === null)!
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      answer(200, { totale: 1, items: [COMPLETE], totale_lead: 1, lead: [lead] }),
-    )
-    mount('/admin/freelance')
-    const row = (await screen.findByText(lead.email)).closest('tr')!
-    expect(cellUnder(row, 'Stato')).toHaveTextContent('Lead')
-    expect(cellUnder(row, 'Provenienza')).toHaveTextContent('form')
-    expect(cellUnder(row, 'Posizione')).toHaveTextContent('—')
-    expect(cellUnder(row, 'Ultimo accesso')).toHaveTextContent('—')
-    expect(within(row).queryByRole('link')).toBeNull()
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('2')
+  })
+
+  it('filters by state through the same pills as before, «Lead» included', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [], per_stato: {} }))
+    mount('/admin/talent')
+    await screen.findByRole('heading', { name: 'Talenti' })
+    expect(screen.getByRole('button', { name: 'Nuovo' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Lead' })).toBeInTheDocument()
+  })
+})
+
+describe('a lead offers to draft a card in place (ORB-155, REB-283)', () => {
+  it('shows what the sign-up says, drafts a card from the given sources, and opens the new card', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (init?.method === 'POST') {
+        expect(url).toBe('/api/hub/signups/s2/card')
+        expect(JSON.parse(init.body as string)).toEqual({
+          nome: 'Bob',
+          cognome: 'Ross',
+          linkedin_url: 'https://www.linkedin.com/in/bob',
+          links: [],
+          fonti: ['https://bob.dev'],
+        })
+        return answer(201, { ...INCOMPLETE, id: 'f9', nome: 'Bob', cognome: 'Ross' })
+      }
+      if (url === '/api/hub/freelancers/f9') {
+        return answer(200, { ...INCOMPLETE, id: 'f9', nome: 'Bob', cognome: 'Ross' })
+      }
+      return answer(200, { totale: 1, items: [LEAD_TALENTO], per_stato: { lead: 1 } })
+    })
+    mount('/admin/talent/s2')
+
+    await screen.findByRole('heading', { name: 'Bob Ross' })
+    expect(screen.getByDisplayValue('Bob')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Ross')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText('Fonti'), 'https://bob.dev')
+    await userEvent.click(screen.getByRole('button', { name: 'Crea scheda' }))
+
+    // Landing on the existing freelancer detail (not rewritten here, REB-284's job):
+    // its own ownership sentence for a card an admin wrote is proof the redirect worked,
+    // and the GET above proves the redirect's $id is the card the POST actually created.
+    expect(await screen.findByText('scritta dall’admin, da completare')).toBeInTheDocument()
+    expect(spy).toHaveBeenCalled()
+  })
+
+  it('refuses without at least one source, since a card written from research needs one', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      answer(200, { totale: 1, items: [LEAD_TALENTO], per_stato: { lead: 1 } }),
+    )
+    mount('/admin/talent/s2')
+    await screen.findByRole('heading', { name: 'Bob Ross' })
+    expect(screen.getByLabelText('Fonti')).toBeRequired()
   })
 })
 
@@ -213,5 +326,248 @@ describe('the freelancer detail', () => {
     expect(screen.getByText('compilata dalla persona')).toBeInTheDocument()
     expect(screen.getByText('Da remoto')).toBeInTheDocument()
     expect(screen.getByText(/^3 · ultimo 11 set 2026/)).toBeInTheDocument()
+  })
+})
+
+describe('the enriched detail: sign-up, logins, downloads, Pigro space (REB-284)', () => {
+  const ENRICHED = {
+    ...COMPLETE,
+    iscrizione_utm: {
+      utm_source: 'newsletter',
+      utm_medium: 'email',
+      utm_campaign: 'autunno-2026',
+      utm_content: null,
+      utm_term: null,
+      utm_id: null,
+    },
+    ultimi_accessi: [
+      { id: 'l1', logged_at: '2026-09-12T09:00:00Z' },
+      { id: 'l2', logged_at: '2026-09-11T09:00:00Z' },
+    ],
+    ultimi_download_guida: [{ id: 'd1', downloaded_at: '2026-09-10T09:00:00Z' }],
+    pigro_slug: 'studio-grace',
+  }
+
+  it('shows the sign-up utm, the recent logins and downloads, and the Pigro slug, in order', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, ENRICHED))
+    mount('/admin/freelance/f2')
+    await screen.findByRole('heading', { name: 'Grace Hopper' })
+    const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
+    expect(headings).toEqual([
+      'Iscrizione alla newsletter',
+      'Ultimi accessi',
+      'Download della guida',
+      'Spazio PigroCRM',
+      'Commenti',
+    ])
+    expect(screen.getByText('newsletter')).toBeInTheDocument()
+    expect(screen.getByText('email')).toBeInTheDocument()
+    expect(screen.getByText('autunno-2026')).toBeInTheDocument()
+    expect(screen.getByText('studio-grace')).toBeInTheDocument()
+  })
+
+  it('shows sensible empty values with none of the four sources, not a crash', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      answer(200, {
+        ...INCOMPLETE,
+        iscrizione_utm: null,
+        ultimi_accessi: [],
+        ultimi_download_guida: [],
+        pigro_slug: null,
+      }),
+    )
+    mount('/admin/freelance/f1')
+    await screen.findByRole('heading', { name: 'Ada Lovelace' })
+    expect(screen.getByText('Nessuna iscrizione con questo indirizzo.')).toBeInTheDocument()
+    expect(screen.getByText('Non è mai entrata.')).toBeInTheDocument()
+    expect(screen.getByText('Non ha scaricato la guida.')).toBeInTheDocument()
+    // No slug at all: the section does not render rather than showing an empty one.
+    expect(screen.queryByText('Spazio PigroCRM')).toBeNull()
+  })
+
+  it('keeps the enriched sections after saving a state change from the plain PATCH response', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch')
+    spy.mockResolvedValueOnce(answer(200, ENRICHED))
+    mount('/admin/freelance/f2')
+    await screen.findByRole('heading', { name: 'Grace Hopper' })
+    expect(screen.getByText('studio-grace')).toBeInTheDocument()
+
+    // `PATCH /freelancers/{id}` answers a plain `FreelancerRead`: none of REB-284's
+    // keys even exist on the body, since only `get`'s response model carries them.
+    const plainCard: Record<string, unknown> = { ...ENRICHED, stato: 'contattato' }
+    delete plainCard.iscrizione_utm
+    delete plainCard.ultimi_accessi
+    delete plainCard.ultimi_download_guida
+    delete plainCard.pigro_slug
+    spy.mockResolvedValueOnce(answer(200, plainCard))
+    await userEvent.click(screen.getByRole('button', { name: 'Contattato' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Salva' }))
+    const banner = await screen.findByRole('banner')
+    await within(banner).findByText('Contattato')
+    // The save must merge onto the cached detail, not replace it: the Pigro slug and
+    // the other REB-284 sections the PATCH never answers stay on the page.
+    expect(screen.getByText('studio-grace')).toBeInTheDocument()
+    expect(screen.getByText('newsletter')).toBeInTheDocument()
+  })
+})
+
+describe('the search box debounces before it reaches the API and the URL (REB-286)', () => {
+  it('waits for a pause in typing before searching Talenti', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      answer(200, { totale: 0, items: [], per_stato: {} }),
+    )
+    mount('/admin/talent')
+    await screen.findByRole('heading', { name: 'Talenti' })
+    spy.mockClear()
+
+    await userEvent.type(screen.getByLabelText('Cerca'), 'ada')
+    await settle()
+
+    const calls = spy.mock.calls.map((call) => String(call[0])).filter((url) => url.includes('/api/hub/talent'))
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toContain('q=ada')
+  })
+
+  it('waits for a pause in typing before searching Aziende', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      answer(200, { totale: 0, items: [], per_stato: {} }),
+    )
+    mount('/admin/companies')
+    await screen.findByRole('heading', { name: 'Aziende' })
+    spy.mockClear()
+
+    await userEvent.type(screen.getByLabelText('Cerca'), 'rossi')
+    await settle()
+
+    const calls = spy.mock.calls.map((call) => String(call[0])).filter((url) => url.includes('/api/hub/companies'))
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toContain('q=rossi')
+  })
+})
+
+describe('every filter and the search box live in the URL, both ways (REB-286)', () => {
+  it('reflects a state pill and a filter field into the address for Talenti', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [], per_stato: {} }))
+    const router = mount('/admin/talent')
+    await screen.findByRole('heading', { name: 'Talenti' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuovo' }))
+    await userEvent.type(screen.getByLabelText('Posizione'), 'CTO')
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ stato: 'nuovo', posizione: 'CTO' }),
+    )
+  })
+
+  it('reads a filter and a state back out of a URL a link already carries, for Talenti', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [], per_stato: {} }))
+    mount('/admin/talent?posizione=CTO&stato=nuovo')
+    await screen.findByRole('heading', { name: 'Talenti' })
+    expect(screen.getByLabelText('Posizione')).toHaveValue('CTO')
+  })
+
+  it('keeps a purely numeric filter value on a fresh load, not just an in-app navigation', async () => {
+    // The router's default parseSearch runs JSON.parse on every raw query value before
+    // validateSearch sees it, so a digit-only value in the URL arrives as a JS number,
+    // not a string -- exactly what happens opening a shared link or reloading, never
+    // on an in-app navigate(). strParam has to coerce it back.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [], per_stato: {} }))
+    mount('/admin/talent?tariffa_min=50')
+    await screen.findByRole('heading', { name: 'Talenti' })
+    expect(screen.getByLabelText('Tariffa min (€/giorno)')).toHaveValue(50)
+  })
+
+  it('reflects a filter field into the address for Aziende', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [], per_stato: {} }))
+    const router = mount('/admin/companies')
+    await screen.findByRole('heading', { name: 'Aziende' })
+
+    await userEvent.type(screen.getByLabelText('Pagina di provenienza'), 'home')
+
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ origine: 'home' }))
+  })
+
+  it('reads a filter back out of a URL a link already carries, for Aziende', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [], per_stato: {} }))
+    mount('/admin/companies?origine=pigrocrm')
+    await screen.findByRole('heading', { name: 'Aziende' })
+    expect(screen.getByLabelText('Pagina di provenienza')).toHaveValue('pigrocrm')
+  })
+})
+
+describe('infinite scroll walks the cursor, a page at a time (REB-286)', () => {
+  it('shows a second page of Talenti after «Mostra altri», cursor included in the request', async () => {
+    const page1 = { totale: 2, items: [CARD_TALENTO], per_stato: { nuovo: 1 }, next_cursor: 'CURSOR1' }
+    const page2 = { totale: 2, items: [LEAD_TALENTO], per_stato: { nuovo: 1, lead: 1 }, next_cursor: null }
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new URL(String(input), 'http://test')
+      return answer(200, url.searchParams.get('cursor') === 'CURSOR1' ? page2 : page1)
+    })
+    mount('/admin/talent')
+
+    await screen.findByText('ada@studio.it')
+    expect(screen.queryByText('bob@example.org')).toBeNull()
+    expect(screen.getByText('Mostrati 1 talenti, ce ne sono altri.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Mostra altri' }))
+
+    await screen.findByText('bob@example.org')
+    expect(screen.getByText('ada@studio.it')).toBeInTheDocument()
+    expect(spy.mock.calls.some((call) => String(call[0]).includes('cursor=CURSOR1'))).toBe(true)
+  })
+
+  it('shows a second page of Aziende after «Mostra altri»', async () => {
+    const page1 = { totale: 2, items: [COMPANY_A], per_stato: { nuovo: 1 }, next_cursor: 'CURSOR1' }
+    const page2 = { totale: 2, items: [COMPANY_B], per_stato: { nuovo: 1, contattato: 1 }, next_cursor: null }
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new URL(String(input), 'http://test')
+      return answer(200, url.searchParams.get('cursor') === 'CURSOR1' ? page2 : page1)
+    })
+    mount('/admin/companies')
+
+    await screen.findByText('Rossi Studio')
+    expect(screen.getByText('Mostrate 1 aziende, ce ne sono altre.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Mostra altri' }))
+
+    await screen.findByText('Bianchi Srl')
+    expect(screen.getByText('Rossi Studio')).toBeInTheDocument()
+  })
+})
+
+describe('two empty states, in Italian (REB-286)', () => {
+  it('says the Talenti table itself is empty with no filter active', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [], per_stato: {} }))
+    mount('/admin/talent')
+    expect(await screen.findByText('Nessun profilo qui.')).toBeInTheDocument()
+  })
+
+  it('names the filters when one narrows Talenti to nothing', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [], per_stato: {} }))
+    mount('/admin/talent?posizione=Astrofisico')
+    expect(await screen.findByText('Nessun risultato per questi filtri.')).toBeInTheDocument()
+  })
+
+  it('says the Aziende table itself is empty with no filter active', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [], per_stato: {} }))
+    mount('/admin/companies')
+    expect(await screen.findByText('Nessuna richiesta qui.')).toBeInTheDocument()
+  })
+
+  it('names the filters when one narrows Aziende to nothing', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [], per_stato: {} }))
+    mount('/admin/companies?origine=home')
+    expect(await screen.findByText('Nessun risultato per questi filtri.')).toBeInTheDocument()
+  })
+})
+
+describe('the Aziende list renders a request (REB-286, previously untested)', () => {
+  it('lists a request with its budget and period, and the total count', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      answer(200, { totale: 1, items: [COMPANY_A], per_stato: { nuovo: 1 } }),
+    )
+    mount('/admin/companies')
+    expect(await screen.findByText('Rossi Studio')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('1')
   })
 })

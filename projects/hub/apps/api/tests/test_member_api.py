@@ -44,6 +44,7 @@ def clean(api_session: Session) -> Iterator[None]:
         "sessions",
         "magic_link_tokens",
         "comments",
+        "companies",
         "freelancers",
         "users",
     ):
@@ -64,6 +65,22 @@ def _apply(client: TestClient, email: str, nome: str = "Ada") -> None:
         },
         files={"cv": ("Ada CV.pdf", PDF, "application/pdf")},
     )
+    assert response.status_code == 201, response.text
+
+
+def _request_company(client: TestClient, email: str = "wile@acme.it", **extra: object) -> None:
+    payload: dict[str, object] = {
+        "nome_azienda": "ACME Srl",
+        "referente_nome": "Wile",
+        "referente_cognome": "E.",
+        "email": email,
+        "progetto": "Serve un backend developer per tre mesi, da ottobre.",
+        "periodo_da": "2026-10-01",
+        "durata": "3 mesi",
+        "budget_giornaliero": "500",
+    }
+    payload.update(extra)
+    response = client.post("/api/hub/companies", json=payload)
     assert response.status_code == 201, response.text
 
 
@@ -121,7 +138,7 @@ def test_the_link_enters_once_sets_the_member_cookie_and_opens_only_the_members_
     client: TestClient, sender: RecordingSender, clean: None
 ) -> None:
     _apply(client, "ada@studio.it")
-    for path in ("/api/hub/me", "/api/hub/me/cv", "/api/hub/me/guida"):
+    for path in ("/api/hub/me", "/api/hub/me/cv", "/api/hub/me/guide"):
         assert client.get(path).status_code == 401, path
 
     profile, entered = _enter(client, sender, "ada@studio.it")
@@ -233,10 +250,10 @@ def test_the_guide_is_a_perk_of_the_session_and_not_a_public_file(
     downloads folder.
     """
     _apply(client, "ada@studio.it")
-    assert client.get("/api/hub/me/guida").status_code == 401
+    assert client.get("/api/hub/me/guide").status_code == 401
 
     _enter(client, sender, "ada@studio.it")
-    answer = client.get("/api/hub/me/guida")
+    answer = client.get("/api/hub/me/guide")
     assert answer.status_code == 200
     assert answer.headers["content-type"] == "application/pdf"
     assert (
@@ -246,7 +263,7 @@ def test_the_guide_is_a_perk_of_the_session_and_not_a_public_file(
     assert answer.content == GUIDE_PATH.read_bytes()
 
     client.post("/api/hub/me/logout")
-    assert client.get("/api/hub/me/guida").status_code == 401
+    assert client.get("/api/hub/me/guide").status_code == 401
 
 
 def test_every_download_of_the_guide_is_written_down_with_the_member_behind_it(
@@ -256,12 +273,12 @@ def test_every_download_of_the_guide_is_written_down_with_the_member_behind_it(
     by the same member are two rows for one person, an anonymous 401 writes nothing,
     and the bytes still arrive: recording is a side of the route, not a gate."""
     _apply(client, "ada@studio.it")
-    assert client.get("/api/hub/me/guida").status_code == 401
+    assert client.get("/api/hub/me/guide").status_code == 401
     assert api_session.scalar(select(func.count()).select_from(GuideDownload)) == 0
 
     profile, _ = _enter(client, sender, "ada@studio.it")
     for _ in range(2):
-        answer = client.get("/api/hub/me/guida")
+        answer = client.get("/api/hub/me/guide")
         assert answer.status_code == 200 and answer.content == GUIDE_PATH.read_bytes()
     api_session.expire_all()
     rows = api_session.scalars(select(GuideDownload)).all()
@@ -363,6 +380,83 @@ def test_a_member_never_sees_another_members_row(
     assert client.get("/api/hub/me").json()["email"] == "grace@studio.it"
     # There is no route that takes an id: the only row reachable is the session's.
     assert client.get("/api/hub/me/00000000-0000-7000-8000-000000000000").status_code == 404
+
+
+# ---- a company contact's own request (REB-314) -----------------------------------------
+
+
+def test_a_company_contact_edits_their_most_recent_request(
+    client: TestClient, sender: RecordingSender, api_session: Session, clean: None
+) -> None:
+    _request_company(client, durata="1 mese")
+    _request_company(client, durata="3 mesi")
+    profile, _ = _enter(client, sender, "wile@acme.it")
+    assert profile["ha_azienda"] is True and profile["durata"] == "3 mesi"
+
+    refused = client.patch(
+        "/api/hub/me/company",
+        json={
+            "progetto": "Serve un backend developer per tre mesi, da ottobre.",
+            "periodo_da": "2026-10-01",
+            "durata": "4 mesi",
+            "budget_giornaliero": "600",
+            "stato": "chiuso",
+        },
+    )
+    assert refused.status_code == 422
+    assert refused.json()["detail"][0]["loc"][-1] == "stato"
+
+    changed = client.patch(
+        "/api/hub/me/company",
+        json={
+            "progetto": "Serve un backend developer per tre mesi, da ottobre.",
+            "periodo_da": "2026-10-01",
+            "durata": "4 mesi",
+            "budget_giornaliero": "600",
+        },
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["durata"] == "4 mesi"
+
+    # The admin reads the comment the referente left, and the older request stands.
+    # `POST /auth/link` and `POST /auth/enter` both spend from the public bucket this
+    # test's two `_request_company` calls already drew on; a fresh minute here keeps
+    # the test about the thread, not about the rate limit's budget.
+    reset_rate_limit()
+    api_session.add(User(email=ADMIN_EMAIL, nome="Ivan", cognome="", role="admin"))
+    api_session.commit()
+    assert client.post("/api/hub/me/logout").status_code == 204
+    _enter(client, sender, ADMIN_EMAIL)
+    listed = client.get("/api/hub/companies").json()["items"]
+    assert len(listed) == 2
+    newest = next(item for item in listed if item["durata"] == "4 mesi")
+    thread = client.get(f"/api/hub/companies/{newest['id']}/comments").json()
+    assert [comment["testo"] for comment in thread] == [
+        "Richiesta aggiornata dal referente: durata, budget giornaliero"
+    ]
+    assert thread[0]["autore"] == "Wile E."
+    older = next(item for item in listed if item["durata"] == "1 mese")
+    assert older["budget_giornaliero"] == "500.00"
+
+
+def test_a_member_with_no_company_gets_ha_azienda_false_and_a_404_on_edit(
+    client: TestClient, sender: RecordingSender, clean: None
+) -> None:
+    _apply(client, "ada@studio.it")
+    profile, _ = _enter(client, sender, "ada@studio.it")
+    assert profile["ha_azienda"] is False
+    assert profile["progetto"] is None and profile["budget_giornaliero"] is None
+
+    refused = client.patch(
+        "/api/hub/me/company",
+        json={
+            "progetto": "Un progetto qualsiasi abbastanza lungo da passare",
+            "periodo_da": "2026-10-01",
+            "durata": "3 mesi",
+            "budget_giornaliero": "500",
+        },
+    )
+    assert refused.status_code == 404
 
 
 # ---- completing a card an admin wrote from a signup (ORB-155) -------------------------

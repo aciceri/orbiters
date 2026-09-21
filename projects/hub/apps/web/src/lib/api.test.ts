@@ -43,9 +43,9 @@ describe('the api client', () => {
   it('has a sentence for a 429 and for an unexplained failure', async () => {
     const spy = vi.spyOn(globalThis, 'fetch')
     spy.mockResolvedValueOnce(new Response('', { status: 429 }))
-    await expect(admin.signups()).rejects.toMatchObject({ status: 429, message: /Riprova/ })
+    await expect(admin.talent()).rejects.toMatchObject({ status: 429, message: /Riprova/ })
     spy.mockResolvedValueOnce(new Response('boom', { status: 500 }))
-    await expect(admin.signups()).rejects.toMatchObject({ status: 500, message: /500/ })
+    await expect(admin.talent()).rejects.toMatchObject({ status: 500, message: /500/ })
   })
 
   it('sends the freelancer as multipart with the UTM and without empty optionals', async () => {
@@ -80,13 +80,24 @@ describe('the api client', () => {
   it('lists the admins and promotes one by email, no password anywhere', async () => {
     // ORB-123, REB-279: the list and the promote/demote pair behind «Amministratori».
     const spy = vi.spyOn(globalThis, 'fetch')
-    spy.mockResolvedValueOnce(answer(200, [{ id: '1', email: 'ivan@rebase.it', nome: 'Ivan', attivo: true, created_at: '2026-09-10T10:00:00Z' }]))
+    spy.mockResolvedValueOnce(
+      answer(200, {
+        items: [{ id: '1', email: 'ivan@rebase.it', nome: 'Ivan', attivo: true, created_at: '2026-09-10T10:00:00Z' }],
+        next_cursor: null,
+      }),
+    )
     const listed = await admin.admins()
     expect(spy.mock.calls[0]![0]).toBe('/api/hub/admins')
-    expect(listed[0]!.email).toBe('ivan@rebase.it')
+    expect(listed.items[0]!.email).toBe('ivan@rebase.it')
+    expect(listed.next_cursor).toBeNull()
+
+    spy.mockResolvedValueOnce(answer(200, { items: [], next_cursor: null }))
+    await admin.admins({ q: 'ivan', cursor: 'abc', limit: 10 })
+    expect(spy.mock.calls[1]![0]).toBe('/api/hub/admins?q=ivan&cursor=abc&limit=10')
+
     spy.mockResolvedValueOnce(answer(200, { id: '2', email: 'lorenzo@rebase.it', nome: 'Lorenzo', attivo: true, created_at: '2026-09-10T10:01:00Z' }))
     const promoted = await admin.promote({ email: 'lorenzo@rebase.it', nome: 'Lorenzo' })
-    const [url, init] = spy.mock.calls[1]!
+    const [url, init] = spy.mock.calls[2]!
     expect(url).toBe('/api/hub/admins/promote')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(init?.body as string)).toEqual({ email: 'lorenzo@rebase.it', nome: 'Lorenzo' })
@@ -108,7 +119,7 @@ describe('the api client', () => {
     const spy = vi.spyOn(globalThis, 'fetch')
     spy.mockResolvedValueOnce(answer(200, { totale: 1, items: [{ slug: 'studio-ada', owner_email: 'ada@studio.it', created_at: '2026-09-10T09:00:00Z', url: 'https://pigro.letsrebase.com/studio-ada/app/', membro: null }] }))
     const spaces = await admin.pigroSpaces()
-    expect(spy.mock.calls[0]![0]).toBe('/api/hub/pigro/istanze')
+    expect(spy.mock.calls[0]![0]).toBe('/api/hub/pigro/instances')
     expect(spaces.items[0]!.slug).toBe('studio-ada')
   })
 

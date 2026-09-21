@@ -14,27 +14,31 @@ stopped being their last caller.
 """
 
 import logging
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Query, Response, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from rebase_api.deps import AdminDep, SenderDep, SessionDep, SettingsDep
+from rebase_api.deps import AdminDep, HttpCallDep, SenderDep, SessionDep, SettingsDep
 from rebase_api.downloads import cv_response
-from rebase_core.admin_tokens import AdminRead
+from rebase_core.admin_tokens import AdminList, AdminRead
 from rebase_core.comments import CommentService
 from rebase_core.companies import CompanyService
 from rebase_core.freelancers import FreelancerService
 from rebase_core.logins import LoginService
 from rebase_core.mail import EmailSender, Mail
 from rebase_core.models import NAME_MAX_LENGTH
+from rebase_core.pagination import CURSOR_MAX_LENGTH
 from rebase_core.perks import PerkService
 from rebase_core.schemas import (
     CommentCreate,
     CommentRead,
     CompanyList,
     CompanyRead,
+    FreelancerDetail,
     FreelancerDraft,
     FreelancerList,
     FreelancerRead,
@@ -44,6 +48,7 @@ from rebase_core.schemas import (
     StatusChange,
     TalentoList,
 )
+from rebase_core.search import SEARCH_MAX_LENGTH
 from rebase_core.service import SignupService
 from rebase_core.talenti import TalentiService
 from rebase_core.users import UserService
@@ -61,6 +66,15 @@ def _send(sender: EmailSender, mail: Mail) -> None:
         _log.warning("a promotion's magic link mail was refused by the provider")
 
 
+Limit = Annotated[int, Query(ge=1, le=500)]
+# REB-285: shared by every list a cursor and a search box were added to (`/talent`,
+# `/companies`, and since REB-313 `/admins` and `/logins`). `SearchQ`'s bound is
+# `search.SEARCH_MAX_LENGTH`, `Cursor`'s is `pagination.CURSOR_MAX_LENGTH` -- both
+# bounded for the reason every free-text query parameter in this codebase is: an
+# unbounded one reaching the database is a denial of service with extra steps.
+SearchQ = Annotated[str | None, Query(max_length=SEARCH_MAX_LENGTH)]
+Cursor = Annotated[str | None, Query(max_length=CURSOR_MAX_LENGTH)]
+
 # ---- the admins ------------------------------------------------------------------------
 #
 # Who reads this area, and the one form that grants or revokes the role (ORB-123,
@@ -70,9 +84,18 @@ def _send(sender: EmailSender, mail: Mail) -> None:
 # yet, and demoting is fully reversible since nothing is deleted.
 
 
-@router.get("/admins", response_model=list[AdminRead])
-def list_admins(_: AdminDep, session: SessionDep, settings: SettingsDep) -> list[AdminRead]:
-    return [AdminRead.model_validate(u) for u in UserService(session, settings).list_admins()]
+@router.get("/admins", response_model=AdminList)
+def list_admins(
+    _: AdminDep,
+    session: SessionDep,
+    settings: SettingsDep,
+    limit: Limit = 100,
+    q: SearchQ = None,
+    cursor: Cursor = None,
+) -> AdminList:
+    """REB-313 adds `q` (nome/cognome/email, trigram-ordered once searching) and
+    `cursor` beside the oldest-first order ORB-123 gave this list."""
+    return UserService(session, settings).list_admins(limit=limit, q=q, cursor=cursor)
 
 
 class PromoteRequest(BaseModel):
@@ -118,8 +141,6 @@ def demote_admin(
 
 # ---- the lists -------------------------------------------------------------------------
 
-Limit = Annotated[int, Query(ge=1, le=500)]
-
 
 @router.get("/freelancers", response_model=FreelancerList)
 def list_freelancers(
@@ -128,9 +149,18 @@ def list_freelancers(
     return FreelancerService(session).list_recent(limit=limit, stato=stato)
 
 
-@router.get("/freelancers/{freelancer_id}", response_model=FreelancerRead)
-def get_freelancer(_: AdminDep, session: SessionDep, freelancer_id: UUID) -> FreelancerRead:
-    return FreelancerService(session).get(freelancer_id)
+@router.get("/freelancers/{freelancer_id}", response_model=FreelancerDetail)
+def get_freelancer(
+    _: AdminDep,
+    session: SessionDep,
+    settings: SettingsDep,
+    http: HttpCallDep,
+    freelancer_id: UUID,
+) -> FreelancerDetail:
+    """The card, its state and comments, and since REB-284 everywhere else the hub
+    already knows this address: the sign-up's own UTM, the last logins and guide
+    downloads, and the PigroCRM space when it owns one -- one call, not four."""
+    return FreelancerService(session, settings, http).get(freelancer_id)
 
 
 @router.get("/freelancers/{freelancer_id}/cv")
@@ -148,9 +178,33 @@ def move_freelancer(
 
 @router.get("/companies", response_model=CompanyList)
 def list_companies(
-    _: AdminDep, session: SessionDep, limit: Limit = 100, stato: str | None = None
+    _: AdminDep,
+    session: SessionDep,
+    limit: Limit = 100,
+    stato: str | None = None,
+    q: SearchQ = None,
+    cursor: Cursor = None,
+    budget_min: Decimal | None = None,
+    budget_max: Decimal | None = None,
+    periodo_da: date | None = None,
+    origine: str | None = None,
+    creato_da: datetime | None = None,
+    creato_a: datetime | None = None,
 ) -> CompanyList:
-    return CompanyService(session).list_recent(limit=limit, stato=stato)
+    """REB-285 adds `q` (nome_azienda/referente/email/progetto, trigram-ordered),
+    `cursor`, and every filter after `origine` beside the original `limit`/`stato`."""
+    return CompanyService(session).list_recent(
+        limit=limit,
+        stato=stato,
+        q=q,
+        cursor=cursor,
+        budget_min=budget_min,
+        budget_max=budget_max,
+        periodo_da=periodo_da,
+        origine=origine,
+        creato_da=creato_da,
+        creato_a=creato_a,
+    )
 
 
 @router.get("/companies/{company_id}", response_model=CompanyRead)
@@ -166,18 +220,22 @@ def move_company(
 
 
 @router.get("/logins", response_model=LoginStats)
-def login_stats(_: AdminDep, session: SessionDep) -> LoginStats:
+def login_stats(
+    _: AdminDep, session: SessionDep, limit: Limit = 100, q: SearchQ = None, cursor: Cursor = None
+) -> LoginStats:
     """Who entered the hub and when (ORB-158): every login through a magic link, the
-    distinct members behind them, the last week, the latest by name. Written by
-    `POST /auth/enter` and by nothing else."""
-    return LoginService(session).stats()
+    distinct members behind them, the last week -- unchanged aggregate counters. REB-313
+    adds `q` (nome/cognome/email, trigram-ordered once searching) and `cursor` to
+    `recenti`, no longer a hardcoded top 20. Written by `POST /auth/enter` and by
+    nothing else."""
+    return LoginService(session).stats(limit=limit, q=q, cursor=cursor)
 
 
-@router.get("/perks/guida", response_model=GuideStats)
+@router.get("/perks/guide", response_model=GuideStats)
 def guide_stats(_: AdminDep, session: SessionDep) -> GuideStats:
     """How the guide is doing (ORB-156): every download, the distinct members behind
     them, the last week, and the latest ones by name. Read-only; the rows are written by
-    `GET /me/guida` and by nothing else."""
+    `GET /me/guide` and by nothing else."""
     return PerkService(session).guide_stats()
 
 
@@ -186,19 +244,50 @@ def list_signups(_: AdminDep, session: SessionDep, limit: Limit = 100) -> Signup
     return SignupService(session).list_recent(limit=limit)
 
 
-@router.get("/talenti", response_model=TalentoList)
+@router.get("/talent", response_model=TalentoList)
 def list_talenti(
-    _: AdminDep, session: SessionDep, limit: Limit = 100, stato: str | None = None
+    _: AdminDep,
+    session: SessionDep,
+    limit: Limit = 100,
+    stato: str | None = None,
+    q: SearchQ = None,
+    cursor: Cursor = None,
+    posizione: str | None = None,
+    remoto: str | None = None,
+    tariffa_min: Decimal | None = None,
+    tariffa_max: Decimal | None = None,
+    origine: str | None = None,
+    utm_source: str | None = None,
+    has_cv: bool | None = None,
+    con_accessi: bool | None = None,
+    creato_da: datetime | None = None,
+    creato_a: datetime | None = None,
 ) -> TalentoList:
     """`talenti` (REB-282): every freelancer card and every bare sign-up as one list,
     `stato` «lead» for the bare ones -- the read model «Developer e CTO» and
     «Iscrizioni» read as two overlapping lists, merged. Additive beside both: neither
-    changes here."""
-    return TalentiService(session).list_recent(limit=limit, stato=stato)
+    changes here. REB-285 adds `q` (nome/cognome/email/posizione, trigram-ordered),
+    `cursor`, and every filter after `stato`."""
+    return TalentiService(session).list_recent(
+        limit=limit,
+        stato=stato,
+        q=q,
+        cursor=cursor,
+        posizione=posizione,
+        remoto=remoto,
+        tariffa_min=tariffa_min,
+        tariffa_max=tariffa_max,
+        origine=origine,
+        utm_source=utm_source,
+        has_cv=has_cv,
+        con_accessi=con_accessi,
+        creato_da=creato_da,
+        creato_a=creato_a,
+    )
 
 
 @router.post(
-    "/signups/{signup_id}/scheda",
+    "/signups/{signup_id}/card",
     response_model=FreelancerRead,
     status_code=status.HTTP_201_CREATED,
 )

@@ -12,19 +12,26 @@ from rebase_core.pigro import PigroRegistry, PigroSpaceList, PigroUnavailable
 router = APIRouter(prefix="/api/hub/pigro", tags=["hub-admin"])
 
 
-@router.get("/istanze", response_model=PigroSpaceList)
+@router.get("/instances", response_model=PigroSpaceList)
 def list_spaces(
-    _: AdminDep, session: SessionDep, settings: SettingsDep, http: HttpCallDep
+    _: AdminDep,
+    session: SessionDep,
+    settings: SettingsDep,
+    http: HttpCallDep,
+    q: str | None = None,
+    cursor: str | None = None,
+    limit: int = 100,
 ) -> PigroSpaceList:
     """Every space in PigroCRM's registry, newest first, each with the hub member who
-    opened it when the address is one the wizard knows. 503 with a sentence when the
-    token is not configured, 502 when the CRM does not answer with a list."""
+    opened it when the address is one the wizard knows; `q` searches the slug and the
+    owner's address, `cursor`/`limit` page the result (REB-313). 503 with a sentence
+    when the token is not configured, 502 when the CRM does not answer with a list."""
     if not settings.pigro_registry_token:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "Il registro di Pigro non è configurato: manca REBASE_PIGRO_REGISTRY_TOKEN.",
         )
     try:
-        return PigroRegistry(settings, http).list_spaces(session)
+        return PigroRegistry(settings, http).list_spaces(session, q=q, cursor=cursor, limit=limit)
     except PigroUnavailable as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc

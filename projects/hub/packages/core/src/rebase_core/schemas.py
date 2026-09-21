@@ -407,23 +407,22 @@ class FreelancerDraft(BaseModel):
         return FreelancerFields._links(value)
 
 
-class CompanyCreate(BaseModel):
+class CompanyFields(BaseModel):
+    """The four answers about a request that its referente may write and later
+    change: what `CompanyCreate` collects together with the company's own identity,
+    and what `CompanyUpdate` alone accepts once signed in, mirroring
+    `FreelancerFields`' split for the freelancer side (REB-314)."""
+
     model_config = ConfigDict(extra="forbid")
 
-    nome_azienda: SafeStr = Field(min_length=1, max_length=AZIENDA_MAX_LENGTH)
-    referente_nome: SafeStr = Field(min_length=1, max_length=NAME_MAX_LENGTH)
-    referente_cognome: SafeStr = Field(min_length=1, max_length=NAME_MAX_LENGTH)
-    email: EmailStr
     progetto: SafeStr = Field(min_length=1, max_length=PROGETTO_MAX_LENGTH)
     periodo_da: date
     durata: SafeStr = Field(min_length=1, max_length=DURATA_MAX_LENGTH)
     budget_giornaliero: Decimal = Field(
         max_digits=7, decimal_places=2, ge=TARIFFA_MIN, le=TARIFFA_MAX
     )
-    utm: SignupUtm | None = None
-    distinct_id: SafeStr | None = Field(default=None, max_length=DISTINCT_ID_MAX_LENGTH)
 
-    @field_validator("nome_azienda", "referente_nome", "referente_cognome", "durata", mode="after")
+    @field_validator("durata", mode="after")
     @classmethod
     def _trimmed(cls, value: str) -> str:
         return _clean_text(value, what="un valore")
@@ -433,6 +432,30 @@ class CompanyCreate(BaseModel):
     def _progetto(cls, value: str) -> str:
         """Multi-line is the point of a project description, so newlines stay."""
         return clean_multiline(value, what="una descrizione del progetto")
+
+
+class CompanyCreate(CompanyFields):
+    """What the wizard collects: the four `CompanyFields` answers plus the company's
+    own identity and its referente's, get-or-created by email."""
+
+    nome_azienda: SafeStr = Field(min_length=1, max_length=AZIENDA_MAX_LENGTH)
+    referente_nome: SafeStr = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    referente_cognome: SafeStr = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    email: EmailStr
+    utm: SignupUtm | None = None
+    distinct_id: SafeStr | None = Field(default=None, max_length=DISTINCT_ID_MAX_LENGTH)
+
+    @field_validator("nome_azienda", "referente_nome", "referente_cognome", mode="after")
+    @classmethod
+    def _trimmed_identity(cls, value: str) -> str:
+        return _clean_text(value, what="un valore")
+
+
+class CompanyUpdate(CompanyFields):
+    """What a company contact changes about their most recent request (REB-314): the
+    four project answers, never `stato`, `note`, `nome_azienda` or the referente's
+    identity -- the same field-isolation `MemberUpdate` keeps for the freelancer
+    card."""
 
 
 class Ack(BaseModel):
@@ -513,7 +536,12 @@ class MeRead(BaseModel):
     on `GET /me` (REB-278): a `users` row is not necessarily an applicant with a card
     any more, so `ha_scheda` says whether one exists, and the seven card fields answer
     blank -- `None`, `False`, `[]` -- when it does not, the shape a signed-in admin
-    with no card now gets. `role` is `member` or `admin` (`USER_ROLES`)."""
+    with no card now gets. `role` is `member` or `admin` (`USER_ROLES`).
+
+    `ha_azienda` and the four request fields mirror `ha_scheda`'s own shape for the
+    company side (REB-314): populated from the signed-in person's most recent
+    `Company` row when one exists, blank otherwise. A person can carry both, or
+    neither, or just one -- the two pairs are independent."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -532,6 +560,11 @@ class MeRead(BaseModel):
     posizione: str | None = None
     remoto: str | None = None
     links: list[str] = Field(default_factory=list)
+    ha_azienda: bool
+    progetto: str | None = None
+    periodo_da: date | None = None
+    durata: str | None = None
+    budget_giornaliero: Decimal | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -666,14 +699,18 @@ class TalentoRead(BaseModel):
 
 
 class TalentoList(BaseModel):
-    """Newest first across both tables (REB-282), at most `limit` rows. `totale` counts
-    every row the `stato` filter selects, not only the page returned; `per_stato` counts
-    the whole list per state, `lead` included, whatever `stato` was asked for -- the
-    numbers the admin area's tabs need beside the page itself."""
+    """Newest-or-best-match first across both tables (REB-282; REB-285 adds search and
+    the cursor), at most `limit` rows. `totale` counts every row every active filter
+    selects, `stato` included, not only the page returned; `per_stato` is the same
+    count broken down by state with every filter but `stato` applied -- the numbers
+    the admin area's tabs need beside the page itself, answering "how many if I picked
+    this one" rather than "how many exist at all". `next_cursor` is `None` on the last
+    page."""
 
     totale: int
     items: list[TalentoRead]
     per_stato: dict[str, int]
+    next_cursor: str | None = None
 
 
 class CompanyRead(BaseModel):
@@ -703,8 +740,15 @@ class CompanyRead(BaseModel):
 
 
 class CompanyList(BaseModel):
+    """Newest-or-best-match first (REB-285 adds search, filters and the cursor beside
+    `stato`). `totale` and `per_stato` follow `TalentoList`'s own reasoning; both are
+    additive to the shape `GET /api/hub/companies` already answered, so an older caller
+    that ignores unknown fields sees nothing change."""
+
     totale: int
     items: list[CompanyRead]
+    per_stato: dict[str, int]
+    next_cursor: str | None = None
 
 
 class StatusChange(BaseModel):
@@ -739,14 +783,18 @@ class LoginRead(BaseModel):
 class LoginStats(BaseModel):
     """The logins as the admin area reads them (ORB-158), the shape of `GuideStats`:
     `totale` every login, `membri` the distinct people behind them, `membri_totali`
-    everybody on file, `ultimi_7_giorni` the last week, `recenti` the latest, newest
-    first, with a name each."""
+    everybody on file, `ultimi_7_giorni` the last week -- four counters unaffected by
+    `q` (REB-313), always read off the whole table. `recenti` is the searched, paged
+    part: newest first with no term, best-match first once `q` narrows it by name or
+    email, no longer capped at 20. `next_cursor` is `None` on the last page, additive
+    to the shape `GET /api/hub/logins` already answered."""
 
     totale: int
     membri: int
     membri_totali: int
     ultimi_7_giorni: int
     recenti: list[LoginRead]
+    next_cursor: str | None = None
 
 
 class GuideStats(BaseModel):
@@ -760,6 +808,21 @@ class GuideStats(BaseModel):
     membri_totali: int
     ultimi_7_giorni: int
     recenti: list[GuideDownloadRead]
+
+
+class FreelancerDetail(FreelancerRead):
+    """`FreelancerRead` plus every other place the hub already knows this address
+    (REB-284): the sign-up's own UTM set (`iscrizione_utm`, never the card's own utm
+    fields above -- an admin-drafted card copies the signup's UTM at creation but a
+    wizard card carries its own, and the two can differ), the last handful of logins
+    and guide downloads, and the PigroCRM space slug when the address owns one. Only
+    `FreelancerService.get` fills these: the list stays `FreelancerRead` alone, since
+    two hundred people are not two hundred fan-outs to four sources."""
+
+    iscrizione_utm: SignupUtm | None = None
+    ultimi_accessi: list[LoginRead] = Field(default_factory=list)
+    ultimi_download_guida: list[GuideDownloadRead] = Field(default_factory=list)
+    pigro_slug: str | None = None
 
 
 class CvFile(BaseModel):

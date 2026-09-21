@@ -9,8 +9,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from rebase_core.comments import CommentService
+from rebase_core.config import Settings
 from rebase_core.cv_text import CvText, extract_text
 from rebase_core.errors import NotFound, ValidationFailed
+from rebase_core.http import HttpCall
+from rebase_core.logins import LoginService
 from rebase_core.models import (
     CV_MAX_BYTES,
     FREELANCER_STATES,
@@ -20,13 +23,17 @@ from rebase_core.models import (
     Signup,
     User,
 )
+from rebase_core.perks import PerkService
+from rebase_core.pigro import PigroRegistry, PigroUnavailable
 from rebase_core.schemas import (
     CvFile,
     FreelancerCreate,
+    FreelancerDetail,
     FreelancerDraft,
     FreelancerList,
     FreelancerRead,
     SignupListItem,
+    SignupUtm,
     StatusChange,
 )
 from rebase_core.users import UserService
@@ -152,9 +159,27 @@ def _read_with_logins(
     return read
 
 
+def _signup_utm(signup: Signup | None) -> SignupUtm | None:
+    """The sign-up's own attribution (REB-284), never the card's: an admin-drafted
+    card copies the signup's UTM onto the row at creation (`draft_from_signup`), but
+    a wizard card carries its own, so the two can differ and the detail should show
+    where this address actually first appeared."""
+    if signup is None:
+        return None
+    return SignupUtm(**{column: getattr(signup, column) for column in UTM_COLUMNS})
+
+
 class FreelancerService:
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self, session: Session, settings: Settings | None = None, http: HttpCall | None = None
+    ) -> None:
+        """`settings`/`http` are for exactly one thing: the PigroCRM lookup in `get`'s
+        enriched detail (REB-284). Every other caller -- the list, the wizard, the MCP
+        tools -- hands only `session` and gets a `pigro_slug` of `None`, never an
+        outbound request it did not ask for."""
         self.session = session
+        self.settings = settings
+        self.http = http
 
     def apply(
         self,
@@ -336,9 +361,12 @@ class FreelancerService:
         )
         return [SignupListItem.model_validate(row) for row in rows], totale
 
-    def get(self, freelancer_id: UUID) -> FreelancerRead:
-        """The row with its thread of comments, newest first. Only here: the list
-        leaves `commenti` empty."""
+    def get(self, freelancer_id: UUID) -> FreelancerDetail:
+        """The row with its thread of comments, newest first, and since REB-284 every
+        other place the hub already knows this address: the sign-up's own UTM set,
+        the last handful of logins and guide downloads, and the PigroCRM space when
+        the address owns one. Only here: the list stays `FreelancerRead` alone, since
+        two hundred people are not two hundred fan-outs to four sources."""
         row = self._require(freelancer_id)
         user = self.session.get(User, row.user_id)
         assert user is not None
@@ -346,13 +374,30 @@ class FreelancerService:
         counted = self.session.execute(
             select(logins.c.accessi, logins.c.ultimo_accesso).where(logins.c.user_id == row.user_id)
         ).first()
-        signed_up = self.session.scalar(
-            select(Signup.id).where(func.lower(Signup.email) == user.email.lower())
+        signup_row = self.session.scalar(
+            select(Signup).where(func.lower(Signup.email) == user.email.lower())
         )
         accessi, ultimo = counted if counted is not None else (None, None)
-        read = _read_with_logins(row, user, accessi, ultimo, signed_up)
+        read = _read_with_logins(row, user, accessi, ultimo, signup_row)
         read.commenti = CommentService(self.session).list(ENTITY, freelancer_id)
-        return read
+        detail = FreelancerDetail.model_validate(read)
+        detail.iscrizione_utm = _signup_utm(signup_row)
+        detail.ultimi_accessi = LoginService(self.session).for_user(user.id)
+        detail.ultimi_download_guida = PerkService(self.session).recent_for_user(user.id)
+        detail.pigro_slug = self._pigro_slug(user.email)
+        return detail
+
+    def _pigro_slug(self, email: str) -> str | None:
+        """`None` whenever Pigro is not configured, not reachable, or the address
+        owns no space (REB-284): an admin reading a candidate's card is never blocked
+        by a CRM the hub does not control."""
+        if self.settings is None or self.http is None or not self.settings.pigro_registry_token:
+            return None
+        try:
+            space = PigroRegistry(self.settings, self.http).find_by_email(email, self.session)
+        except PigroUnavailable:
+            return None
+        return space.slug if space is not None else None
 
     def cv(self, freelancer_id: UUID) -> CvFile:
         return cv_of(self._require(freelancer_id))

@@ -11,18 +11,25 @@ everything else that means the person.
 import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from rebase_core.admin_tokens import AdminList, AdminRead
 from rebase_core.config import Settings
 from rebase_core.errors import NotFound, ValidationFailed
 from rebase_core.mail import Mail, magic_link_mail
 from rebase_core.models import USER_ROLES, Login, MagicLinkToken, User, UserSession
+from rebase_core.pagination import SortSpec, decode_cursor, encode_cursor, keyset_predicate
+from rebase_core.search import matches_any, similarity_score
 
 ENTITY = "user"
+ADMIN_LIST_LIMIT_DEFAULT = 100
+ADMIN_LIST_LIMIT_MAX = 500
+_ADMIN_SEARCH_COLUMNS = (User.nome, User.cognome, User.email)
 
 
 def _hash(raw: str) -> str:
@@ -67,13 +74,52 @@ class UserService:
             return existing
         return row
 
-    def list_admins(self) -> list[User]:
-        """Every admin, oldest first, so the page reads as a history (ORB-123) -- the
-        same order `AdminService.list` gave `admin_users`, now a filter on `users`."""
-        return list(
-            self.session.scalars(
-                select(User).where(User.role == "admin").order_by(User.created_at, User.id)
-            ).all()
+    def list_admins(
+        self,
+        limit: int = ADMIN_LIST_LIMIT_DEFAULT,
+        *,
+        q: str | None = None,
+        cursor: str | None = None,
+    ) -> AdminList:
+        """Every admin (ORB-123): oldest first with no search term, so the page still
+        reads as a history -- the same order `AdminService.list` gave `admin_users`,
+        now a filter on `users` -- or best-match first once `q` narrows it (REB-313,
+        the same search-and-cursor shape REB-285 gives Talenti and Aziende).
+        `next_cursor` is `None` on the last page."""
+        limit = max(1, min(limit, ADMIN_LIST_LIMIT_MAX))
+        term = (q or "").strip()
+        stmt = select(User).where(User.role == "admin")
+        if term:
+            stmt = stmt.where(matches_any(_ADMIN_SEARCH_COLUMNS, term))
+        sort_spec = SortSpec("score", "float") if term else SortSpec("created_at", "datetime")
+        sort_column: Any
+        if term:
+            score = similarity_score(_ADMIN_SEARCH_COLUMNS, term).label("score")
+            stmt = stmt.add_columns(score)
+            sort_column = score
+        else:
+            sort_column = User.created_at
+        descending = bool(term)
+        if cursor:
+            value, row_id = decode_cursor(sort_spec, cursor)
+            stmt = stmt.where(
+                keyset_predicate(sort_column, User.id, value, row_id, descending=descending)
+            )
+        order = (
+            (sort_column.desc(), User.id.desc())
+            if descending
+            else (sort_column.asc(), User.id.asc())
+        )
+        rows = self.session.execute(stmt.order_by(*order).limit(limit + 1)).all()
+        page_rows = rows[:limit]
+        next_cursor = None
+        if len(rows) > limit and page_rows:
+            last = page_rows[-1]
+            last_sort = last.score if term else last[0].created_at
+            next_cursor = encode_cursor(sort_spec, last_sort, last[0].id)
+        return AdminList(
+            items=[AdminRead.model_validate(row[0]) for row in page_rows],
+            next_cursor=next_cursor,
         )
 
     def promote(

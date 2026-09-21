@@ -16,6 +16,7 @@ shape unchanged: a thin read of a `users` row, never the card fields, never a jo
 import hashlib
 import secrets
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -24,12 +25,17 @@ from sqlalchemy.orm import Session
 
 from rebase_core.errors import NotFound, ValidationFailed
 from rebase_core.models import NAME_MAX_LENGTH, AdminToken, User
+from rebase_core.pagination import SortSpec, decode_cursor, encode_cursor, keyset_predicate
+from rebase_core.search import matches_any, similarity_score
 
 ENTITY = "token"
 TOKEN_PREFIX = "reb_"
 PREFIX_VISIBLE_CHARS = 8
 INVALID_TOKEN = "Token non valido"
 DEFAULT_NAME = "Claude Code"
+TOKEN_LIST_LIMIT_DEFAULT = 100
+TOKEN_LIST_LIMIT_MAX = 500
+_TOKEN_SEARCH_COLUMNS = (AdminToken.nome,)
 
 
 class AdminRead(BaseModel):
@@ -56,6 +62,24 @@ class AdminTokenRead(BaseModel):
     created_at: datetime
     last_used_at: datetime | None
     revoked_at: datetime | None
+
+
+class AdminList(BaseModel):
+    """Every admin (ORB-123), oldest first with no search term so the page still reads
+    as a history, or best-match first once `q` narrows it (REB-313, the shape REB-285
+    gives Talenti and Aziende). `next_cursor` is `None` on the last page."""
+
+    items: list[AdminRead]
+    next_cursor: str | None = None
+
+
+class AdminTokenList(BaseModel):
+    """The admin's own tokens (REB-313), the same search-and-cursor shape beside
+    `AdminTokenService.list`'s full, unpaginated read. `next_cursor` is `None` on the
+    last page."""
+
+    items: list[AdminTokenRead]
+    next_cursor: str | None = None
 
 
 def _digest(raw: str) -> str:
@@ -126,6 +150,49 @@ class AdminTokenService:
         row.last_used_at = datetime.now(UTC)
         self.session.commit()
         return AdminRead.model_validate(owner)
+
+    def list_page(
+        self,
+        user_id: UUID,
+        limit: int = TOKEN_LIST_LIMIT_DEFAULT,
+        *,
+        q: str | None = None,
+        cursor: str | None = None,
+    ) -> AdminTokenList:
+        """The admin's own tokens with search and a cursor beside `list`'s full read
+        (REB-313): newest first with no term, as `list` already orders them, or
+        best-match first by name once `q` narrows it. Revoked ones included either
+        way, since a list that hides what was revoked cannot show that somebody
+        revoked it."""
+        limit = max(1, min(limit, TOKEN_LIST_LIMIT_MAX))
+        term = (q or "").strip()
+        stmt = select(AdminToken).where(AdminToken.user_id == user_id)
+        if term:
+            stmt = stmt.where(matches_any(_TOKEN_SEARCH_COLUMNS, term))
+        sort_spec = SortSpec("score", "float") if term else SortSpec("created_at", "datetime")
+        sort_column: Any
+        if term:
+            score = similarity_score(_TOKEN_SEARCH_COLUMNS, term).label("score")
+            stmt = stmt.add_columns(score)
+            sort_column = score
+        else:
+            sort_column = AdminToken.created_at
+        if cursor:
+            value, row_id = decode_cursor(sort_spec, cursor)
+            stmt = stmt.where(keyset_predicate(sort_column, AdminToken.id, value, row_id))
+        rows = self.session.execute(
+            stmt.order_by(sort_column.desc(), AdminToken.id.desc()).limit(limit + 1)
+        ).all()
+        page_rows = rows[:limit]
+        next_cursor = None
+        if len(rows) > limit and page_rows:
+            last = page_rows[-1]
+            last_sort = last.score if term else last[0].created_at
+            next_cursor = encode_cursor(sort_spec, last_sort, last[0].id)
+        return AdminTokenList(
+            items=[AdminTokenRead.model_validate(row[0]) for row in page_rows],
+            next_cursor=next_cursor,
+        )
 
     # Last on purpose: a method named `list` rebinds the name in the class body, and a
     # bare `list[...]` annotation below it would fail at import time.

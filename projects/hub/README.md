@@ -16,14 +16,14 @@ Read it before changing the shape of anything here; this file does not restate i
 Three public flows and the admin area behind them:
 
 - `/hub/` — the chooser: «Sono un freelance» / «Cerco persone per un progetto».
-- `/hub/freelance` — the freelancer wizard, ending at `/hub/grazie`. The CV is a step
+- `/hub/freelance` — the freelancer wizard, ending at `/hub/thanks`. The CV is a step
   of it and an optional one: a card without a PDF is stored, reads «da completare»,
-  and the person adds the file from `/hub/io` whenever they have it.
-- `/hub/aziende` — the company wizard.
-- `/hub/accedi` and `/hub/io`: a freelancer gets back in with a magic link by mail, to
+  and the person adds the file from `/hub/me` whenever they have it.
+- `/hub/companies` — the company wizard.
+- `/hub/login` and `/hub/me`: a freelancer gets back in with a magic link by mail, to
   see or change what they sent.
 - `/hub/admin/*` — the freelancer, company and signup lists — reached by the same
-  magic-link session as `/hub/io` (`/hub/accedi`), open only when the signed-in
+  magic-link session as `/hub/me` (`/hub/login`), open only when the signed-in
   person's role is `admin`. The first admin is granted with `rebase setrole` (below);
   the next ones with one click from «Amministratori» inside the area, no form, no
   password.
@@ -32,7 +32,7 @@ Three public flows and the admin area behind them:
   count and its last login. The link request itself is not counted.
 - A freelancer card can also be born from a signup (ORB-155): an admin writes what the
   public web says about the person through `POST /api/hub/signups/{id}/scheda` or the
-  MCP tool `create_freelancer_from_signup`, «Iscrizioni» links to it, and the card stays
+  MCP tool `create_freelancer_from_signup`, «Talenti» links to it, and the card stays
   «da completare» until the person adds the CV, the rate and the rest from `/hub/io`.
   Research never overwrites a card the person filled. Spec:
   `docs/superpowers/specs/2026-09-11-freelancer-card-from-a-signup-design.md`.

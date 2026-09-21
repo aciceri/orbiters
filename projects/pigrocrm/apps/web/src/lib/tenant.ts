@@ -31,7 +31,7 @@ export const RESERVED_SLUGS = new Set([
   'mcp',
 ])
 
-/** `"/studio"` for `/studio/app/clienti`, `""` for `/app/clienti` or anything else. */
+/** `"/studio"` for `/studio/app/customers`, `""` for `/app/customers` or anything else. */
 export function tenantPrefixFrom(pathname: string): string {
   const match = /^\/([a-z0-9][a-z0-9-]{1,30}[a-z0-9])\/app(?:\/|$)/.exec(pathname)
   if (!match) return ''
@@ -73,4 +73,44 @@ export const tenantPrefix: string =
  *  different application instance, so it is a navigation, not a router push. */
 export function spaceLoginUrl(slug: string): string {
   return `/${slug}/app/login`
+}
+
+/** The three pages a visitor reaches under `/app` without a session (routes/app.tsx's
+ *  guard never bounces them): the login, the signup that makes a space (spec
+ *  2026-09-08) and the page that spends a link by mail (spec 2026-09-12 §6.2). Shared
+ *  with the guard so the two checks below cannot drift apart. */
+export const PUBLIC_APP_ROUTES = new Set(['/app/login', '/app/register', '/app/verify'])
+
+/**
+ * Whether a `redirect` search value captured by `/app`'s guard is safe to send a
+ * freshly authenticated visitor to. The guard only ever records the router's own
+ * basepath-relative `href` (never the tenant prefix, never another origin), so a
+ * legitimate value always resolves under `/app/`; a hand-edited query string could
+ * claim anything, including a scheme, a protocol-relative address, or a `..` segment
+ * walking back out of `/app` (plain or percent-encoded: `%2e%2e` is a dot segment to
+ * the URL parser exactly as `..` is), so the value is parsed and normalized by `URL`
+ * itself -- the same parser `navigate({ href })` uses -- rather than pattern-matched.
+ * `PUBLIC_APP_ROUTES` is excluded too, case- and trailing-slash-insensitively and
+ * after decoding, since the guard never records them (they are the pages a visitor
+ * without a session already reaches): a value naming one, in any spelling, is not a
+ * deep link that got interrupted, it is a query string someone wrote by hand.
+ */
+export function safeAppRedirect(target: string | undefined): string | undefined {
+  if (!target || !target.startsWith('/') || target.startsWith('//')) return undefined
+  let parsed: URL
+  try {
+    parsed = new URL(target, 'http://internal.invalid')
+  } catch {
+    return undefined
+  }
+  if (parsed.origin !== 'http://internal.invalid') return undefined
+  let decodedPath: string
+  try {
+    decodedPath = decodeURIComponent(parsed.pathname)
+  } catch {
+    return undefined
+  }
+  const normalized = decodedPath.toLowerCase().replace(/\/+$/, '')
+  if (!normalized.startsWith('/app/') || PUBLIC_APP_ROUTES.has(normalized)) return undefined
+  return decodedPath + parsed.search + parsed.hash
 }

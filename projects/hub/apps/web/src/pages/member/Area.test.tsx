@@ -41,6 +41,11 @@ const PROFILE = {
   remoto: 'ibrido',
   links: ['https://github.com/ada'],
   completa: true,
+  ha_azienda: false,
+  progetto: null,
+  periodo_da: null,
+  durata: null,
+  budget_giornaliero: null,
 }
 
 /** The card an admin wrote from Ada's signup (ORB-155): the person has yet to add the
@@ -75,6 +80,42 @@ const CARDLESS_ADMIN = {
   completa: false,
 }
 
+/** A company contact with no freelancer card, and the referente's most recent
+ *  request (REB-314): `ha_scheda` false, `ha_azienda` true, the project's own four
+ *  fields answered. */
+const COMPANY_ONLY = {
+  ...PROFILE,
+  id: 'c1',
+  nome: 'Wile',
+  cognome: 'E.',
+  email: 'wile@acme.it',
+  linkedin_url: null,
+  ha_scheda: false,
+  cv_filename: null,
+  cv_size: null,
+  tariffa_giornaliera: null,
+  posizione: null,
+  remoto: null,
+  links: [],
+  completa: false,
+  ha_azienda: true,
+  progetto: 'Serve un backend developer per tre mesi, da ottobre.',
+  periodo_da: '2026-10-01',
+  durata: '3 mesi',
+  budget_giornaliero: '500.00',
+}
+
+/** The same request, on a person who also has a freelancer card (REB-314): both
+ *  sections render together. */
+const BOTH = {
+  ...PROFILE,
+  ha_azienda: true,
+  progetto: COMPANY_ONLY.progetto,
+  periodo_da: COMPANY_ONLY.periodo_da,
+  durata: COMPANY_ONLY.durata,
+  budget_giornaliero: COMPANY_ONLY.budget_giornaliero,
+}
+
 function mount(path = '/io') {
   const root = createRootRoute({ component: () => <Outlet /> })
   const io = createRoute({ getParentRoute: () => root, path: '/io', component: () => <Outlet /> })
@@ -87,8 +128,13 @@ function mount(path = '/io') {
     }),
   })
   const modifica = createRoute({ getParentRoute: () => io, path: '/modifica', component: () => <h1>Modifica</h1> })
+  const modificaAzienda = createRoute({
+    getParentRoute: () => io,
+    path: '/modifica-azienda',
+    component: () => <h1>Modifica azienda</h1>,
+  })
   const router = createRouter({
-    routeTree: root.addChildren([io.addChildren([index, modifica])]),
+    routeTree: root.addChildren([io.addChildren([index, modifica, modificaAzienda])]),
     history: createMemoryHistory({ initialEntries: [path] }),
   })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -191,9 +237,46 @@ describe('/io, no card (REB-279: a card-less admin reads name, email and role, n
     expect(screen.queryByText('Come ti chiami?')).toBeNull()
     expect(screen.queryByRole('link', { name: 'Modifica' })).toBeNull()
     expect(screen.queryByText('Nessun CV')).toBeNull()
+    // No company request either: neither section replaces the bare identity one.
+    expect(screen.queryByText('La tua richiesta più recente')).toBeNull()
+    expect(screen.queryByRole('link', { name: /Modifica richiesta/ })).toBeNull()
     // The perks stay unconditional even with no card.
     expect(screen.getByRole('link', { name: /Apri PigroCRM/ })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Scarica la guida/ })).toBeInTheDocument()
+  })
+})
+
+describe('/io, a company request (REB-314: reads `ha_azienda` independently of `ha_scheda`)', () => {
+  it('shows the project under the wizard’s own questions, with its own edit link', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, COMPANY_ONLY))
+    mount()
+    expect(await screen.findByText('La tua richiesta più recente')).toBeInTheDocument()
+    expect(
+      screen.getByText('Serve un backend developer per tre mesi, da ottobre.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('dal 2026-10-01, 3 mesi')).toBeInTheDocument()
+    expect(screen.getByText('500.00 € / giorno')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Modifica richiesta/ })).toHaveAttribute(
+      'href',
+      '/io/modifica-azienda',
+    )
+    // No freelancer card: no wizard-shaped card section, and the "Chi sei" fallback
+    // does not show either, since the company section already says who this is.
+    expect(screen.queryByText('Come ti chiami?')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Modifica' })).toBeNull()
+    expect(screen.queryByLabelText('Chi sei')).toBeNull()
+  })
+
+  it('renders alongside the freelancer card when a person has both (REB-314)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, BOTH))
+    mount()
+    expect(await screen.findByText('Come ti chiami?')).toBeInTheDocument()
+    expect(screen.getByText('La tua richiesta più recente')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Modifica' })).toHaveAttribute('href', '/io/modifica')
+    expect(screen.getByRole('link', { name: /Modifica richiesta/ })).toHaveAttribute(
+      'href',
+      '/io/modifica-azienda',
+    )
   })
 })
 

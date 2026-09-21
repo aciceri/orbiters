@@ -407,23 +407,22 @@ class FreelancerDraft(BaseModel):
         return FreelancerFields._links(value)
 
 
-class CompanyCreate(BaseModel):
+class CompanyFields(BaseModel):
+    """The four answers about a request that its referente may write and later
+    change: what `CompanyCreate` collects together with the company's own identity,
+    and what `CompanyUpdate` alone accepts once signed in, mirroring
+    `FreelancerFields`' split for the freelancer side (REB-314)."""
+
     model_config = ConfigDict(extra="forbid")
 
-    nome_azienda: SafeStr = Field(min_length=1, max_length=AZIENDA_MAX_LENGTH)
-    referente_nome: SafeStr = Field(min_length=1, max_length=NAME_MAX_LENGTH)
-    referente_cognome: SafeStr = Field(min_length=1, max_length=NAME_MAX_LENGTH)
-    email: EmailStr
     progetto: SafeStr = Field(min_length=1, max_length=PROGETTO_MAX_LENGTH)
     periodo_da: date
     durata: SafeStr = Field(min_length=1, max_length=DURATA_MAX_LENGTH)
     budget_giornaliero: Decimal = Field(
         max_digits=7, decimal_places=2, ge=TARIFFA_MIN, le=TARIFFA_MAX
     )
-    utm: SignupUtm | None = None
-    distinct_id: SafeStr | None = Field(default=None, max_length=DISTINCT_ID_MAX_LENGTH)
 
-    @field_validator("nome_azienda", "referente_nome", "referente_cognome", "durata", mode="after")
+    @field_validator("durata", mode="after")
     @classmethod
     def _trimmed(cls, value: str) -> str:
         return _clean_text(value, what="un valore")
@@ -433,6 +432,30 @@ class CompanyCreate(BaseModel):
     def _progetto(cls, value: str) -> str:
         """Multi-line is the point of a project description, so newlines stay."""
         return clean_multiline(value, what="una descrizione del progetto")
+
+
+class CompanyCreate(CompanyFields):
+    """What the wizard collects: the four `CompanyFields` answers plus the company's
+    own identity and its referente's, get-or-created by email."""
+
+    nome_azienda: SafeStr = Field(min_length=1, max_length=AZIENDA_MAX_LENGTH)
+    referente_nome: SafeStr = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    referente_cognome: SafeStr = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    email: EmailStr
+    utm: SignupUtm | None = None
+    distinct_id: SafeStr | None = Field(default=None, max_length=DISTINCT_ID_MAX_LENGTH)
+
+    @field_validator("nome_azienda", "referente_nome", "referente_cognome", mode="after")
+    @classmethod
+    def _trimmed_identity(cls, value: str) -> str:
+        return _clean_text(value, what="un valore")
+
+
+class CompanyUpdate(CompanyFields):
+    """What a company contact changes about their most recent request (REB-314): the
+    four project answers, never `stato`, `note`, `nome_azienda` or the referente's
+    identity -- the same field-isolation `MemberUpdate` keeps for the freelancer
+    card."""
 
 
 class Ack(BaseModel):
@@ -513,7 +536,12 @@ class MeRead(BaseModel):
     on `GET /me` (REB-278): a `users` row is not necessarily an applicant with a card
     any more, so `ha_scheda` says whether one exists, and the seven card fields answer
     blank -- `None`, `False`, `[]` -- when it does not, the shape a signed-in admin
-    with no card now gets. `role` is `member` or `admin` (`USER_ROLES`)."""
+    with no card now gets. `role` is `member` or `admin` (`USER_ROLES`).
+
+    `ha_azienda` and the four request fields mirror `ha_scheda`'s own shape for the
+    company side (REB-314): populated from the signed-in person's most recent
+    `Company` row when one exists, blank otherwise. A person can carry both, or
+    neither, or just one -- the two pairs are independent."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -532,6 +560,11 @@ class MeRead(BaseModel):
     posizione: str | None = None
     remoto: str | None = None
     links: list[str] = Field(default_factory=list)
+    ha_azienda: bool
+    progetto: str | None = None
+    periodo_da: date | None = None
+    durata: str | None = None
+    budget_giornaliero: Decimal | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property

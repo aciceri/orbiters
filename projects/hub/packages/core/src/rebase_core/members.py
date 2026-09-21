@@ -1,10 +1,12 @@
-"""The member area: the freelancer card, and what its owner may change once signed in.
+"""The member area: the freelancer card, and the referente's own company request,
+and what each owner may change once signed in.
 
 The way in -- the magic link, session open/close, `resolve` -- moved to
 `rebase_core.users` (REB-278): a person signs in as a `users` row, member or admin
-alike, and this module keeps only what is specific to the freelancer card. Every change
-the person makes is a comment in the row's thread (ORB-59), so the admin sees what moved
-without an audit table.
+alike. Every change the person makes is a comment in the row's thread (ORB-59), so
+the admin sees what moved without an audit table. Self-edit of a company request
+(REB-314) reaches only the signed-in person's most recent `Company` row -- a company
+files several requests over time, and older ones stay admin-editable-only.
 """
 
 from uuid import UUID
@@ -15,8 +17,8 @@ from sqlalchemy.orm import Session
 from rebase_core.comments import CommentService
 from rebase_core.errors import NotFound
 from rebase_core.freelancers import check_cv, cv_of
-from rebase_core.models import AUTORE_MAX_LENGTH, Freelancer, User
-from rebase_core.schemas import CvFile, MemberLookup, MemberProfile, MemberUpdate, MeRead
+from rebase_core.models import AUTORE_MAX_LENGTH, Company, Freelancer, User
+from rebase_core.schemas import CompanyUpdate, CvFile, MemberLookup, MemberProfile, MemberUpdate, MeRead
 
 ENTITY = "freelancer"
 # What the comment calls each field, in the admin's language, in the wizard's order.
@@ -33,6 +35,16 @@ FIELD_LABELS: dict[str, str] = {
 # (REB-281) they live on `users` alone, so a change here writes there instead of the
 # card, and `GET /me` never reads a stale name the person just corrected.
 _IDENTITY_FIELDS = ("nome", "cognome", "linkedin_url")
+
+COMPANY_ENTITY = "company"
+# What the comment calls each field, in the admin's language, in the wizard's order
+# (REB-314): the four a company contact may change about their most recent request.
+COMPANY_FIELD_LABELS: dict[str, str] = {
+    "progetto": "progetto",
+    "periodo_da": "data di inizio",
+    "durata": "durata",
+    "budget_giornaliero": "budget giornaliero",
+}
 
 
 def _to_profile(row: Freelancer, user: User) -> MemberProfile:
@@ -73,25 +85,41 @@ class MemberService:
             raise NotFound("scheda", user_id)
         return row
 
+    # ---- the identity behind a company request -----------------------------------------
+
+    def company_for_user(self, user_id: UUID) -> Company | None:
+        """The signed-in person's most recent request (REB-314 decision): a company
+        contact may have filed several over time, and self-edit reaches only the
+        newest, the same one the admin's list shows first."""
+        return self.session.scalar(
+            select(Company)
+            .where(Company.user_id == user_id)
+            # `id` (UUIDv7, time-ordered) breaks a tie on `created_at`, the same
+            # tiebreak `_list_stmt`'s own ordering uses (`companies.py`): two requests
+            # a `func.now()` transaction start could otherwise date identically.
+            .order_by(Company.created_at.desc(), Company.id.desc())
+            .limit(1)
+        )
+
+    def require_company(self, user_id: UUID) -> Company:
+        """The signed-in person's most recent request, or a 404 named "azienda": a
+        person with no request yet is the ordinary case for anyone who is not a
+        company contact."""
+        row = self.company_for_user(user_id)
+        if row is None:
+            raise NotFound("azienda", user_id)
+        return row
+
     def me_read(self, user_id: UUID) -> MeRead:
         """The full `GET /me` shape for whoever `user_id` names: the identity off
-        `users`, plus the card's own fields when one exists, blank otherwise."""
+        `users`, plus the freelancer card's own fields when one exists and the most
+        recent company request's own fields when one exists (REB-314), blank
+        otherwise."""
         user = self.session.get(User, user_id)
         if user is None:
             raise NotFound("user", user_id)
         card = self.card_for_user(user_id)
-        if card is None:
-            return MeRead(
-                id=user.id,
-                nome=user.nome,
-                cognome=user.cognome,
-                email=user.email,
-                linkedin_url=user.linkedin_url,
-                role=user.role,
-                created_at=user.created_at,
-                updated_at=user.updated_at,
-                ha_scheda=False,
-            )
+        company = self.company_for_user(user_id)
         return MeRead(
             id=user.id,
             nome=user.nome,
@@ -101,13 +129,18 @@ class MemberService:
             role=user.role,
             created_at=user.created_at,
             updated_at=user.updated_at,
-            ha_scheda=True,
-            cv_filename=card.cv_filename,
-            cv_size=card.cv_size,
-            tariffa_giornaliera=card.tariffa_giornaliera,
-            posizione=card.posizione,
-            remoto=card.remoto,
-            links=list(card.links),
+            ha_scheda=card is not None,
+            cv_filename=card.cv_filename if card else None,
+            cv_size=card.cv_size if card else None,
+            tariffa_giornaliera=card.tariffa_giornaliera if card else None,
+            posizione=card.posizione if card else None,
+            remoto=card.remoto if card else None,
+            links=list(card.links) if card else [],
+            ha_azienda=company is not None,
+            progetto=company.progetto if company else None,
+            periodo_da=company.periodo_da if company else None,
+            durata=company.durata if company else None,
+            budget_giornaliero=company.budget_giornaliero if company else None,
         )
 
     # ---- what another product may ask ------------------------------------------------
@@ -160,6 +193,32 @@ class MemberService:
         else:
             self._comment(user, row, "Scheda confermata dalla persona")
         return _to_profile(row, user)
+
+    def update_company(self, user_id: UUID, data: CompanyUpdate) -> MeRead:
+        """Applies the four project answers to the signed-in person's most recent
+        request (REB-314 decision: self-edit reaches only the newest) and leaves a
+        comment naming what moved, the same discipline `update` keeps for the
+        freelancer card. `stato`, `note`, `nome_azienda` and the referente's identity
+        are never touched here."""
+        row = self.require_company(user_id)
+        user = self.session.get(User, user_id)
+        assert user is not None
+        changed: list[str] = []
+        for field, label in COMPANY_FIELD_LABELS.items():
+            value = getattr(data, field)
+            if getattr(row, field) != value:
+                setattr(row, field, value)
+                changed.append(label)
+        if changed:
+            self.session.commit()
+            author = f"{user.nome} {user.cognome}"[:AUTORE_MAX_LENGTH]
+            CommentService(self.session).add(
+                COMPANY_ENTITY,
+                row.id,
+                f"Richiesta aggiornata dal referente: {', '.join(changed)}",
+                author,
+            )
+        return self.me_read(user_id)
 
     def replace_cv(
         self, freelancer_id: UUID, content: bytes, filename: str, mime: str

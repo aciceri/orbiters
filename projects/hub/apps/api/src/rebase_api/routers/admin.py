@@ -42,8 +42,10 @@ from rebase_core.schemas import (
     LoginStats,
     SignupList,
     StatusChange,
+    TalentoList,
 )
 from rebase_core.service import SignupService
+from rebase_core.talenti import TalentiService
 from rebase_core.users import UserService
 from rebase_core.validation import SafeStr
 
@@ -182,6 +184,17 @@ def guide_stats(_: AdminDep, session: SessionDep) -> GuideStats:
 @router.get("/signups", response_model=SignupList)
 def list_signups(_: AdminDep, session: SessionDep, limit: Limit = 100) -> SignupList:
     return SignupService(session).list_recent(limit=limit)
+
+
+@router.get("/talenti", response_model=TalentoList)
+def list_talenti(
+    _: AdminDep, session: SessionDep, limit: Limit = 100, stato: str | None = None
+) -> TalentoList:
+    """`talenti` (REB-282): every freelancer card and every bare sign-up as one list,
+    `stato` «lead» for the bare ones -- the read model «Developer e CTO» and
+    «Iscrizioni» read as two overlapping lists, merged. Additive beside both: neither
+    changes here."""
+    return TalentiService(session).list_recent(limit=limit, stato=stato)
 
 
 @router.post(

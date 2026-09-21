@@ -34,9 +34,19 @@ import { ModificaAzienda } from '@/pages/member/ModificaAzienda'
 /** A present, non-empty string out of `Record<string, unknown>`'s raw search params,
  *  or `undefined` -- the shape every optional filter on `/admin/talenti` and
  *  `/admin/aziende` shares (REB-286), the same narrowing `grazie`'s `chi` and
- *  `entra`'s `t` do below for their own single required param. */
-function strParam(value: unknown): string | undefined {
-  return typeof value === 'string' && value !== '' ? value : undefined
+ *  `entra`'s `t` do below for their own single required param.
+ *
+ *  The router's default `parseSearch` runs `JSON.parse` on every raw query-string
+ *  value before `validateSearch` sees it, so a purely numeric value in the URL
+ *  (`?tariffa_min=50`) or a bare `true`/`false` arrives as that JS type, not a
+ *  string -- on first load, a reload, a shared link, or back/forward, never on an
+ *  in-app `navigate()`, which is why this only shows up outside the tab that set it.
+ *  Coerced back to the string it was in the URL, the same treatment the `has_cv`/
+ *  `con_accessi` booleans below already needed for the same reason. */
+export function strParam(value: unknown): string | undefined {
+  if (typeof value === 'string') return value !== '' ? value : undefined
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return undefined
 }
 
 /**

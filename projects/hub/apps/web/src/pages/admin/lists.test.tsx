@@ -11,6 +11,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CompaniesFilters, Remoto, TalentiFilters } from '@/lib/api'
+import { strParam } from '@/router'
 import { AdminCompanies, AdminFreelancerDetail, AdminTalenti, AdminTalentoLead } from './lists'
 
 function answer(status: number, body: unknown) {
@@ -153,17 +154,17 @@ function mount(path: string) {
     path: '/admin/talenti',
     component: AdminTalenti,
     validateSearch: (search: Record<string, unknown>): TalentiFilters => ({
-      stato: typeof search.stato === 'string' ? search.stato : undefined,
-      q: typeof search.q === 'string' ? search.q : undefined,
-      posizione: typeof search.posizione === 'string' ? search.posizione : undefined,
+      stato: strParam(search.stato),
+      q: strParam(search.q),
+      posizione: strParam(search.posizione),
       remoto:
         search.remoto === 'remoto' || search.remoto === 'ibrido' || search.remoto === 'in_sede'
           ? (search.remoto as Remoto)
           : undefined,
-      tariffa_min: typeof search.tariffa_min === 'string' ? search.tariffa_min : undefined,
-      tariffa_max: typeof search.tariffa_max === 'string' ? search.tariffa_max : undefined,
-      origine: typeof search.origine === 'string' ? search.origine : undefined,
-      utm_source: typeof search.utm_source === 'string' ? search.utm_source : undefined,
+      tariffa_min: strParam(search.tariffa_min),
+      tariffa_max: strParam(search.tariffa_max),
+      origine: strParam(search.origine),
+      utm_source: strParam(search.utm_source),
       has_cv: search.has_cv === true || search.has_cv === 'true' ? true : search.has_cv === false || search.has_cv === 'false' ? false : undefined,
       con_accessi:
         search.con_accessi === true || search.con_accessi === 'true'
@@ -171,8 +172,8 @@ function mount(path: string) {
           : search.con_accessi === false || search.con_accessi === 'false'
             ? false
             : undefined,
-      creato_da: typeof search.creato_da === 'string' ? search.creato_da : undefined,
-      creato_a: typeof search.creato_a === 'string' ? search.creato_a : undefined,
+      creato_da: strParam(search.creato_da),
+      creato_a: strParam(search.creato_a),
     }),
   })
   const talentoLead = createRoute({
@@ -190,14 +191,14 @@ function mount(path: string) {
     path: '/admin/aziende',
     component: AdminCompanies,
     validateSearch: (search: Record<string, unknown>): CompaniesFilters => ({
-      stato: typeof search.stato === 'string' ? search.stato : undefined,
-      q: typeof search.q === 'string' ? search.q : undefined,
-      budget_min: typeof search.budget_min === 'string' ? search.budget_min : undefined,
-      budget_max: typeof search.budget_max === 'string' ? search.budget_max : undefined,
-      periodo_da: typeof search.periodo_da === 'string' ? search.periodo_da : undefined,
-      origine: typeof search.origine === 'string' ? search.origine : undefined,
-      creato_da: typeof search.creato_da === 'string' ? search.creato_da : undefined,
-      creato_a: typeof search.creato_a === 'string' ? search.creato_a : undefined,
+      stato: strParam(search.stato),
+      q: strParam(search.q),
+      budget_min: strParam(search.budget_min),
+      budget_max: strParam(search.budget_max),
+      periodo_da: strParam(search.periodo_da),
+      origine: strParam(search.origine),
+      creato_da: strParam(search.creato_da),
+      creato_a: strParam(search.creato_a),
     }),
   })
   const router = createRouter({
@@ -463,6 +464,17 @@ describe('every filter and the search box live in the URL, both ways (REB-286)',
     mount('/admin/talenti?posizione=CTO&stato=nuovo')
     await screen.findByRole('heading', { name: 'Talenti' })
     expect(screen.getByLabelText('Posizione')).toHaveValue('CTO')
+  })
+
+  it('keeps a purely numeric filter value on a fresh load, not just an in-app navigation', async () => {
+    // The router's default parseSearch runs JSON.parse on every raw query value before
+    // validateSearch sees it, so a digit-only value in the URL arrives as a JS number,
+    // not a string -- exactly what happens opening a shared link or reloading, never
+    // on an in-app navigate(). strParam has to coerce it back.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [], per_stato: {} }))
+    mount('/admin/talenti?tariffa_min=50')
+    await screen.findByRole('heading', { name: 'Talenti' })
+    expect(screen.getByLabelText('Tariffa min (€/giorno)')).toHaveValue(50)
   })
 
   it('reflects a filter field into the address for Aziende', async () => {

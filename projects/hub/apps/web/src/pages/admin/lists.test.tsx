@@ -8,8 +8,9 @@ import {
   createRouter,
 } from '@tanstack/react-router'
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AdminFreelancerDetail, AdminFreelancers, AdminSignups } from './lists'
+import { AdminFreelancerDetail, AdminTalenti, AdminTalentoLead } from './lists'
 
 function answer(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -60,45 +61,54 @@ const COMPLETE = {
   ultimo_accesso: '2026-09-11T12:04:00Z',
 }
 
-const SIGNUPS = [
-  {
-    id: 's1',
-    email: 'ada@studio.it',
-    nome: 'Ada',
-    cognome: 'Lovelace',
-    linkedin_url: 'https://www.linkedin.com/in/ada',
-    utm_source: 'linkedin',
-    created_at: '2026-09-09T10:00:00Z',
-    freelancer_id: 'f1',
-  },
-  {
-    id: 's2',
-    email: 'bob@example.org',
-    nome: 'Bob',
-    cognome: 'Ross',
-    linkedin_url: 'https://www.linkedin.com/in/bob',
-    utm_source: 'newsletter',
-    created_at: '2026-09-08T10:00:00Z',
-    freelancer_id: null,
-  },
-]
+/** A card in `talenti` (REB-282/283): a freelancer already written, `origine` naming
+ *  the wizard the person filled in themselves. */
+const CARD_TALENTO = {
+  id: 'f1',
+  nome: 'Ada',
+  cognome: 'Lovelace',
+  email: 'ada@studio.it',
+  linkedin_url: 'https://www.linkedin.com/in/ada',
+  stato: 'nuovo',
+  origine: 'wizard',
+  utm_source: 'linkedin',
+  created_at: '2026-09-10T10:00:00Z',
+}
 
-/** The admin routes the three pages sit on, without the frame and its guard: the
- *  pages read `useParams` and render `Link`s, so a router has to be there. The
- *  pathless `signedIn` id mirrors the real tree (REB-279's `SignedInLayout`), since
- *  `AdminFreelancerDetail`'s own `useParams({ from })` names that full route id. */
+/** A bare sign-up in `talenti` (ORB-163): `stato` `lead`, no card behind it yet. */
+const LEAD_TALENTO = {
+  id: 's2',
+  nome: 'Bob',
+  cognome: 'Ross',
+  email: 'bob@example.org',
+  linkedin_url: 'https://www.linkedin.com/in/bob',
+  stato: 'lead',
+  origine: 'form',
+  utm_source: 'newsletter',
+  created_at: '2026-09-08T10:00:00Z',
+}
+
+/** The admin routes these pages sit on, without the frame and its guard: the pages
+ *  read `useParams` and render `Link`s, so a router has to be there. The pathless
+ *  `signedIn` id mirrors the real tree (REB-279's `SignedInLayout`), since
+ *  `AdminFreelancerDetail`'s and `AdminTalentoLead`'s own `useParams({ from })` name
+ *  that full route id. */
 function mount(path: string) {
   const root = createRootRoute({ component: () => <Outlet /> })
   const signedIn = createRoute({ getParentRoute: () => root, id: 'signedIn', component: () => <Outlet /> })
-  const iscrizioni = createRoute({ getParentRoute: () => signedIn, path: '/admin/iscrizioni', component: AdminSignups })
-  const freelance = createRoute({ getParentRoute: () => signedIn, path: '/admin/freelance', component: AdminFreelancers })
-  const detail = createRoute({
+  const talenti = createRoute({ getParentRoute: () => signedIn, path: '/admin/talenti', component: AdminTalenti })
+  const talentoLead = createRoute({
+    getParentRoute: () => signedIn,
+    path: '/admin/talenti/$id',
+    component: AdminTalentoLead,
+  })
+  const freelanceDetail = createRoute({
     getParentRoute: () => signedIn,
     path: '/admin/freelance/$id',
     component: AdminFreelancerDetail,
   })
   const router = createRouter({
-    routeTree: root.addChildren([signedIn.addChildren([iscrizioni, freelance, detail])]),
+    routeTree: root.addChildren([signedIn.addChildren([talenti, talentoLead, freelanceDetail])]),
     history: createMemoryHistory({ initialEntries: [path] }),
   })
   render(
@@ -120,72 +130,68 @@ function cellUnder(row: HTMLElement, header: string): HTMLElement {
 
 afterEach(() => vi.restoreAllMocks())
 
-describe('the Iscrizioni page', () => {
-  it('links a signup to its card when one exists, and prints a dash otherwise', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 2, iscrizioni: SIGNUPS }))
-    mount('/admin/iscrizioni')
+describe('the Talenti list (REB-282/283)', () => {
+  it('lists a card and a lead together, each with its own state and origin, and links to the right page', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      answer(200, { totale: 2, items: [CARD_TALENTO, LEAD_TALENTO], per_stato: { nuovo: 1, lead: 1 } }),
+    )
+    mount('/admin/talenti')
+
     const ada = (await screen.findByText('ada@studio.it')).closest('tr')!
-    const link = within(cellUnder(ada, 'Scheda')).getByRole('link', { name: 'apri' })
-    expect(link.getAttribute('href')).toMatch(/\/f1$/)
+    expect(within(cellUnder(ada, 'Stato')).getByText('Nuovo')).toBeInTheDocument()
+    expect(cellUnder(ada, 'Provenienza')).toHaveTextContent('wizard')
+    const adaLink = within(ada).getByRole('link')
+    expect(adaLink.getAttribute('href')).toMatch(/\/admin\/freelance\/f1$/)
 
     const bob = screen.getByText('bob@example.org').closest('tr')!
-    expect(cellUnder(bob, 'Scheda')).toHaveTextContent('—')
-    expect(within(cellUnder(bob, 'Scheda')).queryByRole('link')).toBeNull()
-  })
-})
+    expect(within(cellUnder(bob, 'Stato')).getByText('Lead')).toBeInTheDocument()
+    expect(cellUnder(bob, 'Provenienza')).toHaveTextContent('form')
+    const bobLink = within(bob).getByRole('link')
+    expect(bobLink.getAttribute('href')).toMatch(/\/admin\/talenti\/s2$/)
 
-describe('the Developer e CTO list', () => {
-  it('renders an incomplete card with dashes and a «Da completare» pill', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 2, items: [INCOMPLETE, COMPLETE], totale_lead: 0, lead: [] }))
-    mount('/admin/freelance')
-    const ada = (await screen.findByText('ada@studio.it')).closest('tr')!
-    expect(cellUnder(ada, 'Posizione')).toHaveTextContent('—')
-    expect(cellUnder(ada, 'Tariffa')).toHaveTextContent('—')
-    expect(cellUnder(ada, 'Dove')).toHaveTextContent('—')
-    expect(within(cellUnder(ada, 'Stato')).getByText('Nuovo')).toBeInTheDocument()
-    expect(within(cellUnder(ada, 'Stato')).getByText('Da completare')).toBeInTheDocument()
-
-    const grace = screen.getByText('grace@studio.it').closest('tr')!
-    expect(cellUnder(grace, 'Posizione')).toHaveTextContent('CTO')
-    expect(cellUnder(grace, 'Tariffa')).toHaveTextContent('500,00')
-    expect(cellUnder(grace, 'Dove')).toHaveTextContent('Da remoto')
-    expect(within(grace).queryByText('Da completare')).toBeNull()
-  })
-
-  it('shows when each member last came in, or a dash for one who never did (ORB-158)', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 2, items: [INCOMPLETE, COMPLETE], totale_lead: 0, lead: [] }))
-    mount('/admin/freelance')
-    const ada = (await screen.findByText('ada@studio.it')).closest('tr')!
-    expect(cellUnder(ada, 'Ultimo accesso')).toHaveTextContent('—')
-    const grace = screen.getByText('grace@studio.it').closest('tr')!
-    expect(cellUnder(grace, 'Ultimo accesso')).toHaveTextContent(/11 set 2026/)
-  })
-
-  it('says where each lead came from: «form» when the address also signed up, «landing» otherwise (ORB-161)', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 2, items: [INCOMPLETE, COMPLETE], totale_lead: 0, lead: [] }))
-    mount('/admin/freelance')
-    const ada = (await screen.findByText('ada@studio.it')).closest('tr')!
-    expect(cellUnder(ada, 'Provenienza')).toHaveTextContent('form')
-    const grace = screen.getByText('grace@studio.it').closest('tr')!
-    expect(cellUnder(grace, 'Provenienza')).toHaveTextContent('landing')
-  })
-})
-
-describe('the leads on the Developer e CTO list (ORB-163)', () => {
-  it('lists a signup with no card as a «Lead» row with dashes and no link, and counts it', async () => {
-    const lead = SIGNUPS.find((signup) => signup.freelancer_id === null)!
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      answer(200, { totale: 1, items: [COMPLETE], totale_lead: 1, lead: [lead] }),
-    )
-    mount('/admin/freelance')
-    const row = (await screen.findByText(lead.email)).closest('tr')!
-    expect(cellUnder(row, 'Stato')).toHaveTextContent('Lead')
-    expect(cellUnder(row, 'Provenienza')).toHaveTextContent('form')
-    expect(cellUnder(row, 'Posizione')).toHaveTextContent('—')
-    expect(cellUnder(row, 'Ultimo accesso')).toHaveTextContent('—')
-    expect(within(row).queryByRole('link')).toBeNull()
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('2')
+  })
+
+  it('filters by state through the same pills as before, «Lead» included', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, { totale: 0, items: [], per_stato: {} }))
+    mount('/admin/talenti')
+    await screen.findByRole('heading', { name: 'Talenti' })
+    expect(screen.getByRole('button', { name: 'Nuovo' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Lead' })).toBeInTheDocument()
+  })
+})
+
+describe('a lead offers to draft a card in place (ORB-155, REB-283)', () => {
+  it('shows what the sign-up says, drafts a card from the given sources, and opens the new card', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (init?.method === 'POST') return answer(201, { ...INCOMPLETE, id: 'f9', nome: 'Bob', cognome: 'Ross' })
+      const url = String(input)
+      if (url.startsWith('/api/hub/freelancers/')) {
+        return answer(200, { ...INCOMPLETE, id: 'f9', nome: 'Bob', cognome: 'Ross' })
+      }
+      return answer(200, { totale: 1, items: [LEAD_TALENTO], per_stato: { lead: 1 } })
+    })
+    mount('/admin/talenti/s2')
+
+    await screen.findByRole('heading', { name: 'Bob Ross' })
+    expect(screen.getByDisplayValue('Bob')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Ross')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText('Fonti'), 'https://bob.dev')
+    await userEvent.click(screen.getByRole('button', { name: 'Crea scheda' }))
+
+    // Landing on the existing freelancer detail (not rewritten here, REB-284's job):
+    // its own ownership sentence for a card an admin wrote is proof the redirect worked.
+    expect(await screen.findByText('scritta dall’admin, da completare')).toBeInTheDocument()
+  })
+
+  it('refuses without at least one source, since a card written from research needs one', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      answer(200, { totale: 1, items: [LEAD_TALENTO], per_stato: { lead: 1 } }),
+    )
+    mount('/admin/talenti/s2')
+    await screen.findByRole('heading', { name: 'Bob Ross' })
+    expect(screen.getByLabelText('Fonti')).toBeRequired()
   })
 })
 

@@ -1,18 +1,17 @@
 import { Link, Outlet, useNavigate } from '@tanstack/react-router'
-import { BookOpen, Boxes, Briefcase, Home, LogIn, LogOut, Mail, Plug, ShieldCheck, UserRound } from 'lucide-react'
+import { BookOpen, Boxes, Briefcase, Home, LogIn, LogOut, Plug, ShieldCheck, UserRound } from 'lucide-react'
 import { useEffect } from 'react'
 import { BrandMark } from '@/components/BrandMark'
 import { Button } from '@rebase/ui/button'
 import { useIdentify } from '@/lib/analytics'
 import { useLogout, useMe } from '@/lib/me'
 
-/** The eight admin pages (ORB-123 onward), unchanged in label, icon and path: REB-279
- *  only gates their rendering on `role === 'admin'` instead of this being the only
- *  thing the frame ever drew. Renaming or regrouping them is REB-282/283, later. */
+/** The admin pages (ORB-123 onward): «Developer e CTO» and «Iscrizioni», two
+ *  overlapping views of the same people, are one entry, «Talenti», over the read
+ *  model that merges them (REB-283); the rest keep their label, icon and path. */
 const ADMIN_NAV = [
-  { to: '/admin/freelance', label: 'Developer e CTO', icon: UserRound },
+  { to: '/admin/talenti', label: 'Talenti', icon: UserRound },
   { to: '/admin/aziende', label: 'Aziende', icon: Briefcase },
-  { to: '/admin/iscrizioni', label: 'Iscrizioni', icon: Mail },
   { to: '/admin/pigro', label: 'Istanze Pigro', icon: Boxes },
   { to: '/admin/guida', label: 'La guida', icon: BookOpen },
   { to: '/admin/accessi', label: 'Accessi', icon: LogIn },

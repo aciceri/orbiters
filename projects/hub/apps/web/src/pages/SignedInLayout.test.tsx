@@ -49,9 +49,9 @@ function answer(status: number, body: unknown) {
 /** The real shell and both its guards -- `SignedInLayout` for "signed in at all",
  *  `AdminGuard` for "and an admin" -- mounted on a router shaped like the real one:
  *  `/io` (the real `Area`, so the access-rule message has somewhere to land) and
- *  `/admin/freelance` (a stub, since the admin pages themselves are tested on their
+ *  `/admin/talenti` (a stub, since the admin pages themselves are tested on their
  *  own). `/accedi` is a stub too: only the redirect there is this file's business. */
-function mount(path = '/admin/freelance') {
+function mount(path = '/admin/talenti') {
   const root = createRootRoute({ component: () => <Outlet /> })
   const accedi = createRoute({ getParentRoute: () => root, path: '/accedi', component: () => <h1>Accedi</h1> })
   const signedIn = createRoute({ getParentRoute: () => root, id: 'signedIn', component: SignedInLayout })
@@ -65,15 +65,15 @@ function mount(path = '/admin/freelance') {
     }),
   })
   const adminArea = createRoute({ getParentRoute: () => signedIn, path: '/admin', component: AdminGuard })
-  const adminFreelance = createRoute({
+  const adminTalenti = createRoute({
     getParentRoute: () => adminArea,
-    path: '/freelance',
+    path: '/talenti',
     component: () => <h1>Dentro</h1>,
   })
   const router = createRouter({
     routeTree: root.addChildren([
       accedi,
-      signedIn.addChildren([io.addChildren([ioIndex]), adminArea.addChildren([adminFreelance])]),
+      signedIn.addChildren([io.addChildren([ioIndex]), adminArea.addChildren([adminTalenti])]),
     ]),
     history: createMemoryHistory({ initialEntries: [path] }),
   })
@@ -146,6 +146,15 @@ describe('the sidebar, gated on role', () => {
     expect(screen.getByText('Amministrazione')).toBeInTheDocument()
   })
 
+  it('reads Talenti in place of the old Developer e CTO and Iscrizioni entries (REB-283)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, IVAN))
+    mount()
+    await screen.findByRole('heading', { name: 'Dentro' })
+    expect(screen.getByRole('link', { name: /Talenti/ })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Developer e CTO/ })).toBeNull()
+    expect(screen.queryByRole('link', { name: /Iscrizioni/ })).toBeNull()
+  })
+
   it('hides the admin group and its eyebrow for a member, keeping "La tua area"', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, ADA))
     mount('/io')
@@ -175,7 +184,7 @@ describe('the frame keeps a fixed viewport height (REB-311)', () => {
 describe('/admin/* access rule (REB-279, closes REB-106)', () => {
   it('sends a signed-in non-admin to /io with a sentence, never a blank frame or a login form', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, ADA))
-    mount('/admin/freelance')
+    mount('/admin/talenti')
     const notice = await screen.findByRole('status')
     expect(notice).toHaveTextContent('riservata a chi amministra')
     expect(screen.queryByRole('heading', { name: 'Dentro' })).toBeNull()
@@ -184,7 +193,7 @@ describe('/admin/* access rule (REB-279, closes REB-106)', () => {
 
   it('lets an admin straight into /admin/*', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, IVAN))
-    mount('/admin/freelance')
+    mount('/admin/talenti')
     expect(await screen.findByRole('heading', { name: 'Dentro' })).toBeInTheDocument()
   })
 })

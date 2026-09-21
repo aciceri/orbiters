@@ -20,8 +20,8 @@ import {
   AdminCompanies,
   AdminCompanyDetail,
   AdminFreelancerDetail,
-  AdminFreelancers,
-  AdminSignups,
+  AdminTalenti,
+  AdminTalentoLead,
 } from '@/pages/admin/lists'
 import { Accedi } from '@/pages/member/Accedi'
 import { Area } from '@/pages/member/Area'
@@ -110,10 +110,15 @@ const ioIndex = createRoute({
 const ioModifica = createRoute({ getParentRoute: () => io, path: '/modifica', component: Modifica })
 
 const adminArea = createRoute({ getParentRoute: () => signedInLayout, path: '/admin', component: AdminGuard })
-const adminFreelance = createRoute({
+const adminTalenti = createRoute({
   getParentRoute: () => adminArea,
-  path: '/freelance',
-  component: AdminFreelancers,
+  path: '/talenti',
+  component: AdminTalenti,
+})
+const adminTalentoLead = createRoute({
+  getParentRoute: () => adminArea,
+  path: '/talenti/$id',
+  component: AdminTalentoLead,
 })
 const adminFreelanceDetail = createRoute({
   getParentRoute: () => adminArea,
@@ -125,11 +130,6 @@ const adminAziendeDetail = createRoute({
   getParentRoute: () => adminArea,
   path: '/aziende/$id',
   component: AdminCompanyDetail,
-})
-const adminIscrizioni = createRoute({
-  getParentRoute: () => adminArea,
-  path: '/iscrizioni',
-  component: AdminSignups,
 })
 const adminPigro = createRoute({ getParentRoute: () => adminArea, path: '/pigro', component: AdminPigro })
 const adminGuida = createRoute({ getParentRoute: () => adminArea, path: '/guida', component: AdminGuida })
@@ -147,11 +147,11 @@ const routeTree = root.addChildren([
   signedInLayout.addChildren([
     io.addChildren([ioIndex, ioModifica]),
     adminArea.addChildren([
-      adminFreelance,
+      adminTalenti,
+      adminTalentoLead,
       adminFreelanceDetail,
       adminAziende,
       adminAziendeDetail,
-      adminIscrizioni,
       adminPigro,
       adminGuida,
       adminAccessi,

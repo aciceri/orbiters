@@ -338,7 +338,10 @@ Keeping it working:
 - **A new table** PostHog should see needs its own `GRANT SELECT` (the grants are per
   table, a migration does not extend them) and then a schema refresh on the source.
 - **A renamed table or column breaks a sync**, and this is the one that has already
-  happened. A rename carries the grant with it, so nothing here refuses PostHog; the
+  happened twice: the `orbiters` → `rebase` database rename on 2026-09-15, and
+  `member_logins` → `logins` on 2026-09-21. `test_warehouse_contract.py` in the hub's
+  core now fails on the second kind, on the pull request, instead of leaving it to an
+  email nine days later. A rename carries the grant with it, so nothing here refuses PostHog; the
   sync simply names an object that no longer exists and is paused until somebody
   re-points it, which is a schema refresh on the source plus the sync enabled on the new
   name. The old sync's rows stay in PostHog under the old name: delete them there, or
@@ -355,8 +358,12 @@ Keeping it working:
   grant is per table here, so the database does not stop it; on 2026-09-21
   `pg_statio_user_tables` showed 384,866 TOAST block reads against 6,972 heap reads on a
   table of 14 MB, which is what a repeated full-table read of the binaries looks like.
-  Unchecking the column is the fix, and after it a column-level grant
-  (`REVOKE SELECT (cv_bytes) ON freelancers FROM posthog_ro`) keeps it that way.
+  Unchecking the column is the fix. **Not** a column-level grant: a sync reads whole
+  rows, so revoking one column fails the whole table. What keeps it that way in the
+  repository is `projects/hub/packages/core/tests/test_warehouse_contract.py`, which
+  fails when a synced table grows another binary column; what keeps it that way in
+  production, if the answer is ever «not even once», is a view without the column, as
+  the credential rule above already prescribes.
 - **A new project's database**: a `permitopen` for its port on the key line and in the
   `Match` block, `sshd -t`, `systemctl reload ssh`; a `posthog_ro` role with `SELECT` on
   the tables that matter; a source with the prefix the project is called.

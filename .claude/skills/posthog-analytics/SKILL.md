@@ -162,6 +162,28 @@ that leaves the column out (`CREATE VIEW <table>_posthog AS SELECT <the other co
 grant: the sync reads whole rows, so a column-level grant fails it, and a view in a
 migration would need a role the local databases do not have.
 
+**A table or column a migration moved.** The same failure as the database rename below,
+from inside this repository, and it has already happened once: the identity merge renamed
+`member_logins` to `logins` (REB-281, migration 0012) and PostHog paused that sync nine
+days later, because a `GRANT` travels with a rename and nothing here refuses anybody.
+Before a migration that renames or drops a table or a column merges, read the runbook's
+list and say what the sync becomes; `projects/hub/packages/core/tests/test_warehouse_contract.py`
+fails on a renamed or dropped table and on a new binary column in a synced one, so the
+pull request asks before the email does. Three shapes, three answers:
+
+- **a synced table renamed or dropped**: schema refresh on the source, enable the sync on
+  the new name, delete the old table's rows in PostHog, move the name in the runbook and
+  in `WAREHOUSE_TABLES`. No grant to write: the old one followed the table;
+- **a column moved out of a synced table**: nothing fails. The data simply stops arriving
+  and every dashboard that read it goes quietly empty, which is what the identity merge
+  did to `nome`, `cognome`, `email` and `linkedin_url` when they moved into `users`, a
+  table deliberately ungranted. Say so on the card, and treat granting the new table as
+  the decision it is, not as a repair;
+- **a binary column added to a synced table**: a source selects every column unless a
+  person unchecks it in «Columns», so the file leaves with the next sync.
+  `freelancers.cv_bytes` is the live case and is listed in `BINARY_COLUMNS_DECIDED`
+  because production holds it today, not because it is settled.
+
 **A database or role that moved.** The source stores the database name: the
 `orbiters` → `rebase` rename of 2026-09-15 left the hub source failing with «Something
 this sync depends on … no longer exists» and its tables switched off. The fix is on the

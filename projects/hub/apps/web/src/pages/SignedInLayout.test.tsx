@@ -137,20 +137,38 @@ describe('the signed-in frame and PostHog (ORB-185, REB-279)', () => {
 })
 
 describe('the sidebar, gated on role', () => {
-  it('shows the admin group and "La tua area" for an admin', async () => {
+  it('shows the admin group, its "Amministrazione" eyebrow, and "La tua area" for an admin', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, IVAN))
     mount()
     await screen.findByRole('heading', { name: 'Dentro' })
     expect(screen.getByRole('link', { name: /Amministratori/ })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /La tua area/ })).toBeInTheDocument()
+    expect(screen.getByText('Amministrazione')).toBeInTheDocument()
   })
 
-  it('hides the admin group for a member, keeping "La tua area"', async () => {
+  it('hides the admin group and its eyebrow for a member, keeping "La tua area"', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, ADA))
     mount('/io')
     await screen.findAllByText('Ada Lovelace')
     expect(screen.queryByRole('link', { name: /Amministratori/ })).toBeNull()
     expect(screen.getByRole('link', { name: /La tua area/ })).toBeInTheDocument()
+    expect(screen.queryByText('Amministrazione')).toBeNull()
+  })
+})
+
+describe('the frame keeps a fixed viewport height (REB-311)', () => {
+  it('pins the sidebar to the viewport height, scrolls it and main on their own axes, and drops the boxed wrapper around the page', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, IVAN))
+    mount()
+    await screen.findByRole('heading', { name: 'Dentro' })
+
+    const aside = screen.getByRole('link', { name: 'rebase' }).closest('aside')
+    expect(aside).toHaveClass('h-full', 'overflow-y-auto')
+    expect(aside?.parentElement).toHaveClass('h-full')
+
+    const main = screen.getByRole('heading', { name: 'Dentro' }).closest('main')
+    expect(main).toHaveClass('overflow-y-auto', 'bg-card')
+    expect(main?.querySelector('.rounded-2xl.border.bg-card')).toBeNull()
   })
 })
 

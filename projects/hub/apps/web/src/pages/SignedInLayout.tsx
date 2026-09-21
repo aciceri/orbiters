@@ -48,8 +48,8 @@ export function SignedInLayout() {
   const isAdmin = me.data.role === 'admin'
 
   return (
-    <div className="flex min-h-full">
-      <aside className="flex w-56 shrink-0 flex-col gap-6 bg-[var(--color-prussian-blue)] p-4 text-[var(--color-paper)]">
+    <div className="flex h-full">
+      <aside className="flex h-full w-56 shrink-0 flex-col gap-6 overflow-y-auto bg-[var(--color-prussian-blue)] p-4 text-[var(--color-paper)]">
         <Link to="/io" className="inline-flex items-center gap-2.5 px-2 font-semibold">
           <BrandMark className="size-3.5 [&>span:nth-child(1)]:bg-[var(--color-paper)] [&>span:nth-child(4)]:bg-[var(--color-paper)]" />
           rebase
@@ -61,6 +61,9 @@ export function SignedInLayout() {
           </Link>
           {isAdmin && (
             <>
+              <p className="mt-2 px-2 text-xs font-medium tracking-wide text-[var(--color-paper)]/70 uppercase">
+                Amministrazione
+              </p>
               <div role="separator" className="my-2 border-t border-white/10" />
               {ADMIN_NAV.map(({ to, label, icon: Icon }) => (
                 <Link key={to} to={to} className={NAV_LINK}>
@@ -84,10 +87,8 @@ export function SignedInLayout() {
           </Button>
         </div>
       </aside>
-      <main className="flex-1 p-6">
-        <div className="min-h-full rounded-2xl border bg-card">
-          <Outlet />
-        </div>
+      <main className="flex-1 overflow-y-auto bg-card p-6">
+        <Outlet />
       </main>
     </div>
   )

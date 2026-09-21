@@ -34,7 +34,7 @@ from rebase_core.http import HttpCall
 from rebase_core.logins import LoginService
 from rebase_core.perks import PerkService
 from rebase_core.pigro import PigroRegistry, PigroUnavailable
-from rebase_core.schemas import FreelancerDraft, StatusChange
+from rebase_core.schemas import FreelancerDraft, FreelancerRead, StatusChange
 from rebase_core.service import LIST_LIMIT_DEFAULT, SignupService
 
 SessionFactory = sessionmaker[Session]
@@ -110,9 +110,16 @@ def build_server(
             links=links or [],
             fonti=fonti,
         )
+        # `draft_from_signup` returns through `get()`, which now answers a
+        # `FreelancerDetail` for the admin HTTP route (REB-284); this tool keeps the
+        # plain `FreelancerRead` shape it always had, since it has neither the
+        # `settings`/`http` the Pigro lookup needs nor a documented reason to grow
+        # the sign-up/login/download fields the admin's screen alone asked for.
         return _run(
-            lambda s: FreelancerService(s).draft_from_signup(
-                UUID(signup_id), draft, autore or admin().nome
+            lambda s: FreelancerRead.model_validate(
+                FreelancerService(s)
+                .draft_from_signup(UUID(signup_id), draft, autore or admin().nome)
+                .model_dump()
             )
         )
 
@@ -133,7 +140,11 @@ def build_server(
     def get_freelancer(freelancer_id: str) -> dict[str, Any]:
         """Un freelance, per id, con `commenti`: il thread di chi lo ha seguito, dal più
         recente, ognuno con autore e data."""
-        return _run(lambda s: FreelancerService(s).get(UUID(freelancer_id)))
+        return _run(
+            lambda s: FreelancerRead.model_validate(
+                FreelancerService(s).get(UUID(freelancer_id)).model_dump()
+            )
+        )
 
     @mcp.tool()
     def read_freelancer_cv(freelancer_id: str) -> dict[str, Any]:

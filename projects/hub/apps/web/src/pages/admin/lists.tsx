@@ -443,6 +443,7 @@ interface FreelancerDetail extends Freelancer {
   /** The sign-up's own attribution, if this address left one on the landing --
    *  separate from `utm_source` above (the card's own), since the two can differ. */
   iscrizione_utm: {
+    origine: string | null
     utm_source: string | null
     utm_medium: string | null
     utm_campaign: string | null
@@ -456,6 +457,7 @@ interface FreelancerDetail extends Freelancer {
 }
 
 const ISCRIZIONE_UTM_LABELS: [key: keyof NonNullable<FreelancerDetail['iscrizione_utm']>, label: string][] = [
+  ['origine', 'Origine'],
   ['utm_source', 'Sorgente'],
   ['utm_medium', 'Medium'],
   ['utm_campaign', 'Campagna'],

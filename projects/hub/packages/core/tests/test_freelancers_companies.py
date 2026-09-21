@@ -480,6 +480,37 @@ def test_the_detail_carries_the_pigro_slug_when_the_address_owns_a_space(clean: 
     assert service.get(owner.id).pigro_slug is None
 
 
+def test_the_detail_carries_no_pigro_slug_when_the_registry_answers_but_has_no_match(
+    clean: Session,
+) -> None:
+    """A configured token with a real 200 answer, but no row for this address (REB-284):
+    the exact case `find_by_email`'s own docstring claims to handle, distinct from the
+    unconfigured-token case above, which never makes the request at all."""
+    service = FreelancerService(clean)
+    owner, _ = service.apply(_application("ines@studio.it"), PDF, "cv.pdf", "application/pdf")
+    settings = Settings(
+        pigro_api_url="https://pigro.test",
+        pigro_registry_token="un-token",
+        _env_file=None,  # type: ignore[call-arg]
+    )
+    body = json.dumps(
+        [
+            {
+                "slug": "someone-elses-space",
+                "owner_email": "qualcunaltro@studio.it",
+                "created_at": "2026-09-10T09:00:00Z",
+            }
+        ]
+    ).encode()
+
+    def fake_http(
+        method: str, url: str, headers: dict[str, str], payload: bytes
+    ) -> tuple[int, bytes]:
+        return 200, body
+
+    assert FreelancerService(clean, settings, fake_http).get(owner.id).pigro_slug is None
+
+
 def test_the_detail_has_sensible_empty_values_with_none_of_the_four_sources(
     clean: Session,
 ) -> None:

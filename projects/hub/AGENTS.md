@@ -93,6 +93,14 @@ The tests bring a `testcontainers` Postgres to `head` with this package's migrat
 never with `create_all`: a table the model declares and the migration forgets fails
 here rather than on the server.
 
+**A migration that renames or drops a table is also a change outside this repository.**
+Six of these tables are read by PostHog's warehouse as `posthog_ro`, and a `GRANT`
+follows a rename while a sync does not: `member_logins` became `logins` in migration
+0012 and PostHog paused that sync nine days later, in an email.
+`packages/core/tests/test_warehouse_contract.py` now fails on the pull request instead,
+and names what to do in PostHog; the runbook is `docs/adding-a-project.md` § 7 and the
+order of operations is the `posthog-analytics` skill.
+
 **Its `vite preview` serves under `/hub/`, not `/`.** The web app is built with
 `base: '/hub/'`, so the preview's root path 404s and the wizard pages are at `/hub/`,
 `/hub/freelance` and `/hub/aziende`. A blank page at `/` is that, not a broken build.

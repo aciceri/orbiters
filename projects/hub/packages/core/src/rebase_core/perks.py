@@ -91,7 +91,9 @@ class PerkService:
             ],
         )
 
-    def recent_for_user(self, user_id: UUID, limit: int = RECENT_DOWNLOADS_FOR_CARD) -> list[GuideDownloadRead]:
+    def recent_for_user(
+        self, user_id: UUID, limit: int = RECENT_DOWNLOADS_FOR_CARD
+    ) -> list[GuideDownloadRead]:
         """The last few times this one person downloaded the guide (REB-284's
         freelancer detail): the same shape `guide_stats` reads for everybody, scoped
         to a single `user_id` instead of grouped across the whole hub."""

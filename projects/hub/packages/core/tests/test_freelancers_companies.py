@@ -459,10 +459,18 @@ def test_the_detail_carries_the_pigro_slug_when_the_address_owns_a_space(clean: 
         _env_file=None,  # type: ignore[call-arg]
     )
     body = json.dumps(
-        [{"slug": "studio-ada", "owner_email": "ada@studio.it", "created_at": "2026-09-10T09:00:00Z"}]
+        [
+            {
+                "slug": "studio-ada",
+                "owner_email": "ada@studio.it",
+                "created_at": "2026-09-10T09:00:00Z",
+            }
+        ]
     ).encode()
 
-    def fake_http(method: str, url: str, headers: dict[str, str], payload: bytes) -> tuple[int, bytes]:
+    def fake_http(
+        method: str, url: str, headers: dict[str, str], payload: bytes
+    ) -> tuple[int, bytes]:
         return 200, body
 
     with_pigro = FreelancerService(clean, settings, fake_http).get(owner.id)

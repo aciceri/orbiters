@@ -261,18 +261,6 @@ export interface LoginRead {
   logged_at: string
 }
 
-export interface Signup {
-  id: string
-  email: string
-  nome: string | null
-  cognome: string | null
-  linkedin_url: string | null
-  utm_source: string | null
-  created_at: string
-  /** The card with the same address, if one exists (ORB-155). */
-  freelancer_id: string | null
-}
-
 /** One row of `talenti` (REB-282/283): every freelancer card and every bare sign-up
  *  as one row, `stato` `lead` for the bare ones and the freelancer's own state
  *  otherwise, as `GET /api/hub/talenti` answers -- the single list that replaced
@@ -323,12 +311,6 @@ export interface CreatedToken extends AdminToken {
 }
 
 export const admin = {
-  /** Cards and, beside them, the leads: signups whose address has no card yet (ORB-163).
-   *  `stato: 'lead'` answers leads alone; another state answers cards alone. */
-  freelancers: (stato?: string) =>
-    request<{ totale: number; items: Freelancer[]; totale_lead: number; lead: Signup[] }>(
-      `/api/hub/freelancers?limit=500${stato ? `&stato=${encodeURIComponent(stato)}` : ''}`,
-    ),
   freelancer: (id: string) => request<Freelancer>(`/api/hub/freelancers/${id}`),
   cvUrl: (id: string) => `/api/hub/freelancers/${id}/cv`,
   moveFreelancer: (id: string, stato: string, note: string | null) =>
@@ -348,7 +330,6 @@ export const admin = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stato, note }),
     }),
-  signups: () => request<{ totale: number; iscrizioni: Signup[] }>('/api/hub/signups?limit=500'),
   /** Every card and every bare sign-up as one list (REB-282/283), `stato` `lead` for
    *  the bare ones alone -- the read model «Talenti» replaced «Developer e CTO» and
    *  «Iscrizioni» with. */

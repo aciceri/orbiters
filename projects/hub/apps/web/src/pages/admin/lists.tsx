@@ -253,7 +253,7 @@ export function AdminTalentoLead() {
       cognome: draft.cognome.trim(),
       linkedin_url: draft.linkedin_url.trim() || undefined,
       posizione: draft.posizione.trim() || undefined,
-      tariffa_giornaliera: draft.tariffa_giornaliera.trim() || undefined,
+      tariffa_giornaliera: draft.tariffa_giornaliera.replace(',', '.').trim() || undefined,
       remoto: draft.remoto || undefined,
       links: draft.links.split('\n').map((line) => line.trim()).filter(Boolean),
       fonti: draft.fonti.split('\n').map((line) => line.trim()).filter(Boolean),

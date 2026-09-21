@@ -163,10 +163,20 @@ describe('the Talenti list (REB-282/283)', () => {
 
 describe('a lead offers to draft a card in place (ORB-155, REB-283)', () => {
   it('shows what the sign-up says, drafts a card from the given sources, and opens the new card', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-      if (init?.method === 'POST') return answer(201, { ...INCOMPLETE, id: 'f9', nome: 'Bob', cognome: 'Ross' })
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input)
-      if (url.startsWith('/api/hub/freelancers/')) {
+      if (init?.method === 'POST') {
+        expect(url).toBe('/api/hub/signups/s2/scheda')
+        expect(JSON.parse(init.body as string)).toEqual({
+          nome: 'Bob',
+          cognome: 'Ross',
+          linkedin_url: 'https://www.linkedin.com/in/bob',
+          links: [],
+          fonti: ['https://bob.dev'],
+        })
+        return answer(201, { ...INCOMPLETE, id: 'f9', nome: 'Bob', cognome: 'Ross' })
+      }
+      if (url === '/api/hub/freelancers/f9') {
         return answer(200, { ...INCOMPLETE, id: 'f9', nome: 'Bob', cognome: 'Ross' })
       }
       return answer(200, { totale: 1, items: [LEAD_TALENTO], per_stato: { lead: 1 } })
@@ -181,8 +191,10 @@ describe('a lead offers to draft a card in place (ORB-155, REB-283)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Crea scheda' }))
 
     // Landing on the existing freelancer detail (not rewritten here, REB-284's job):
-    // its own ownership sentence for a card an admin wrote is proof the redirect worked.
+    // its own ownership sentence for a card an admin wrote is proof the redirect worked,
+    // and the GET above proves the redirect's $id is the card the POST actually created.
     expect(await screen.findByText('scritta dall’admin, da completare')).toBeInTheDocument()
+    expect(spy).toHaveBeenCalled()
   })
 
   it('refuses without at least one source, since a card written from research needs one', async () => {

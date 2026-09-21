@@ -3,6 +3,7 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  redirect,
 } from '@tanstack/react-router'
 import { Shell } from '@/components/Shell'
 import { Chooser } from '@/pages/Chooser'
@@ -125,6 +126,17 @@ const adminFreelanceDetail = createRoute({
   path: '/freelance/$id',
   component: AdminFreelancerDetail,
 })
+// The website's footer links to /hub/admin/freelance (ORB-106: the hub router has no
+// index route under /admin, so a signed-in admin sent to a bare /admin would see the
+// frame with an empty panel). Talenti replaced the list this used to be (REB-283); the
+// redirect keeps that one documented door open rather than 404ing it.
+const adminFreelanceRedirect = createRoute({
+  getParentRoute: () => adminArea,
+  path: '/freelance',
+  beforeLoad: () => {
+    throw redirect({ to: '/admin/talenti' })
+  },
+})
 const adminAziende = createRoute({ getParentRoute: () => adminArea, path: '/aziende', component: AdminCompanies })
 const adminAziendeDetail = createRoute({
   getParentRoute: () => adminArea,
@@ -150,6 +162,7 @@ const routeTree = root.addChildren([
       adminTalenti,
       adminTalentoLead,
       adminFreelanceDetail,
+      adminFreelanceRedirect,
       adminAziende,
       adminAziendeDetail,
       adminPigro,

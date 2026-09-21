@@ -295,11 +295,13 @@ the repository takes TLS away on the spot.
 ### What PostHog's warehouse reads
 
 Since 2026-09-12 (REB-187) PostHog's data warehouse reads the hub's production database
-(`rebase` on 55435: `signups`, `freelancers`, `companies`, `guide_downloads`,
-`member_logins`, `comments`) and the CRM's production registry (`pigrocrm_tenants` on
-55432: `tenants`), so the events the surfaces send can be joined to the rows behind
-them. The preview databases (55434, 55436) are not connected. The design is
-`docs/design/2026-09-12-posthog-analytics-design.md`. Both Postgres answer on the
+(`rebase` on 55435: `signups`, `freelancers`, `companies`, `guide_downloads`, `logins`,
+`comments`) and the CRM's production registry (`pigrocrm_tenants` on 55432: `tenants`),
+so the events the surfaces send can be joined to the rows behind them. `logins` was
+`member_logins` until the identity merge renamed it (REB-281, migration 0012); the grant
+followed the table, the sync did not, and PostHog paused it with «something this sync
+depends on no longer exists». The preview databases (55434, 55436) are not connected.
+The design is `docs/design/2026-09-12-posthog-analytics-design.md`. Both Postgres answer on the
 loopback only, so PostHog reaches them through an SSH tunnel, and the arrangement on the
 server is:
 
@@ -335,6 +337,26 @@ Keeping it working:
 
 - **A new table** PostHog should see needs its own `GRANT SELECT` (the grants are per
   table, a migration does not extend them) and then a schema refresh on the source.
+- **A renamed table or column breaks a sync**, and this is the one that has already
+  happened. A rename carries the grant with it, so nothing here refuses PostHog; the
+  sync simply names an object that no longer exists and is paused until somebody
+  re-points it, which is a schema refresh on the source plus the sync enabled on the new
+  name. The old sync's rows stay in PostHog under the old name: delete them there, or
+  two tables claim to be the same thing. Same for a column dropped from a synced table.
+- **A column moved out of a synced table takes its data out of the warehouse**, without
+  failing anything. The identity merge moved `nome`, `cognome`, `email` and
+  `linkedin_url` from `freelancers` and `companies` into `users`, which is deliberately
+  not granted: those syncs keep running and arrive without the identity they used to
+  carry, so a dashboard that joins a person to their card is empty rather than broken.
+  Granting `users` is a decision about what a third party holds, not a repair.
+- **A source syncs every column of a table unless somebody says otherwise**, which for
+  `freelancers` means `cv_bytes`: the CV itself, up to five megabytes of PDF per person.
+  The column picker is behind «Columns» beside the table in the source's table list. The
+  grant is per table here, so the database does not stop it; on 2026-09-21
+  `pg_statio_user_tables` showed 384,866 TOAST block reads against 6,972 heap reads on a
+  table of 14 MB, which is what a repeated full-table read of the binaries looks like.
+  Unchecking the column is the fix, and after it a column-level grant
+  (`REVOKE SELECT (cv_bytes) ON freelancers FROM posthog_ro`) keeps it that way.
 - **A new project's database**: a `permitopen` for its port on the key line and in the
   `Match` block, `sshd -t`, `systemctl reload ssh`; a `posthog_ro` role with `SELECT` on
   the tables that matter; a source with the prefix the project is called.

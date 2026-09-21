@@ -5,6 +5,7 @@ import {
   createRouter,
   redirect,
 } from '@tanstack/react-router'
+import type { CompaniesFilters, Remoto, TalentiFilters } from '@/lib/api'
 import { Shell } from '@/components/Shell'
 import { Chooser } from '@/pages/Chooser'
 import { CompanyWizard } from '@/pages/CompanyWizard'
@@ -29,6 +30,24 @@ import { Area } from '@/pages/member/Area'
 import { Entra } from '@/pages/member/Entra'
 import { Modifica } from '@/pages/member/Modifica'
 import { ModificaAzienda } from '@/pages/member/ModificaAzienda'
+
+/** A present, non-empty string out of `Record<string, unknown>`'s raw search params,
+ *  or `undefined` -- the shape every optional filter on `/admin/talenti` and
+ *  `/admin/aziende` shares (REB-286), the same narrowing `grazie`'s `chi` and
+ *  `entra`'s `t` do below for their own single required param.
+ *
+ *  The router's default `parseSearch` runs `JSON.parse` on every raw query-string
+ *  value before `validateSearch` sees it, so a purely numeric value in the URL
+ *  (`?tariffa_min=50`) or a bare `true`/`false` arrives as that JS type, not a
+ *  string -- on first load, a reload, a shared link, or back/forward, never on an
+ *  in-app `navigate()`, which is why this only shows up outside the tab that set it.
+ *  Coerced back to the string it was in the URL, the same treatment the `has_cv`/
+ *  `con_accessi` booleans below already needed for the same reason. */
+export function strParam(value: unknown): string | undefined {
+  if (typeof value === 'string') return value !== '' ? value : undefined
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return undefined
+}
 
 /**
  * The route tree, in code: this many screens is not enough to want a file-based router and
@@ -121,6 +140,31 @@ const adminTalenti = createRoute({
   getParentRoute: () => adminArea,
   path: '/talenti',
   component: AdminTalenti,
+  // REB-286: every filter and the search box live here too, so a reload or a shared
+  // link reproduces the exact list -- `q` included even though the debounce that
+  // settles it lives in `AdminTalenti` itself, not here.
+  validateSearch: (search: Record<string, unknown>): TalentiFilters => ({
+    stato: strParam(search.stato),
+    q: strParam(search.q),
+    posizione: strParam(search.posizione),
+    remoto:
+      search.remoto === 'remoto' || search.remoto === 'ibrido' || search.remoto === 'in_sede'
+        ? (search.remoto as Remoto)
+        : undefined,
+    tariffa_min: strParam(search.tariffa_min),
+    tariffa_max: strParam(search.tariffa_max),
+    origine: strParam(search.origine),
+    utm_source: strParam(search.utm_source),
+    has_cv: search.has_cv === true || search.has_cv === 'true' ? true : search.has_cv === false || search.has_cv === 'false' ? false : undefined,
+    con_accessi:
+      search.con_accessi === true || search.con_accessi === 'true'
+        ? true
+        : search.con_accessi === false || search.con_accessi === 'false'
+          ? false
+          : undefined,
+    creato_da: strParam(search.creato_da),
+    creato_a: strParam(search.creato_a),
+  }),
 })
 const adminTalentoLead = createRoute({
   getParentRoute: () => adminArea,
@@ -143,7 +187,21 @@ const adminFreelanceRedirect = createRoute({
     throw redirect({ to: '/admin/talenti' })
   },
 })
-const adminAziende = createRoute({ getParentRoute: () => adminArea, path: '/aziende', component: AdminCompanies })
+const adminAziende = createRoute({
+  getParentRoute: () => adminArea,
+  path: '/aziende',
+  component: AdminCompanies,
+  validateSearch: (search: Record<string, unknown>): CompaniesFilters => ({
+    stato: strParam(search.stato),
+    q: strParam(search.q),
+    budget_min: strParam(search.budget_min),
+    budget_max: strParam(search.budget_max),
+    periodo_da: strParam(search.periodo_da),
+    origine: strParam(search.origine),
+    creato_da: strParam(search.creato_da),
+    creato_a: strParam(search.creato_a),
+  }),
+})
 const adminAziendeDetail = createRoute({
   getParentRoute: () => adminArea,
   path: '/aziende/$id',

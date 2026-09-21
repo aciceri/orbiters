@@ -310,6 +310,67 @@ export interface CreatedToken extends AdminToken {
   token: string
 }
 
+/** What `GET /api/hub/talenti` takes beside `limit` (REB-285/286): `q` searches
+ *  name/surname/email/`posizione`, trigram-ordered when present; every other field
+ *  narrows the merged list of cards and bare sign-ups the same way the state pills
+ *  always have. Mirrors `list_talenti`'s own parameters in
+ *  `apps/api/src/rebase_api/routers/admin.py` one for one -- this is also the shape
+ *  `/admin/talenti`'s own `validateSearch` carries in the URL (`router.tsx`). */
+export interface TalentiFilters {
+  stato?: string
+  q?: string
+  posizione?: string
+  remoto?: Remoto
+  tariffa_min?: string
+  tariffa_max?: string
+  origine?: string
+  utm_source?: string
+  has_cv?: boolean
+  con_accessi?: boolean
+  creato_da?: string
+  creato_a?: string
+}
+
+export interface TalentoList {
+  totale: number
+  items: Talento[]
+  per_stato: Record<string, number>
+  next_cursor: string | null
+}
+
+/** What `GET /api/hub/companies` takes beside `limit` (REB-285/286), mirroring
+ *  `list_companies`'s own parameters -- the shape `/admin/aziende`'s own
+ *  `validateSearch` carries in the URL. */
+export interface CompaniesFilters {
+  stato?: string
+  q?: string
+  budget_min?: string
+  budget_max?: string
+  periodo_da?: string
+  origine?: string
+  creato_da?: string
+  creato_a?: string
+}
+
+export interface CompanyList {
+  totale: number
+  items: Company[]
+  per_stato: Record<string, number>
+  next_cursor: string | null
+}
+
+/** Every value in `params` that is not `undefined` or `""`, as a query string: the two
+ *  list endpoints below send exactly the filters an admin actually set, rather than
+ *  the fixed `limit=500` that fetched everything in one page before REB-285/286 gave
+ *  both a cursor. */
+function filterQuery(params: object): string {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params) as [string, string | number | boolean | undefined][]) {
+    if (value !== undefined && value !== '') search.set(key, String(value))
+  }
+  return search.toString()
+}
+
 export const admin = {
   freelancer: (id: string) => request<Freelancer>(`/api/hub/freelancers/${id}`),
   cvUrl: (id: string) => `/api/hub/freelancers/${id}/cv`,
@@ -319,10 +380,10 @@ export const admin = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stato, note }),
     }),
-  companies: (stato?: string) =>
-    request<{ totale: number; items: Company[] }>(
-      `/api/hub/companies?limit=500${stato ? `&stato=${encodeURIComponent(stato)}` : ''}`,
-    ),
+  companies: (filters: CompaniesFilters & { cursor?: string; limit?: number } = {}) => {
+    const qs = filterQuery(filters)
+    return request<CompanyList>(`/api/hub/companies${qs ? `?${qs}` : ''}`)
+  },
   company: (id: string) => request<Company>(`/api/hub/companies/${id}`),
   moveCompany: (id: string, stato: string, note: string | null) =>
     request<Company>(`/api/hub/companies/${id}`, {
@@ -332,11 +393,14 @@ export const admin = {
     }),
   /** Every card and every bare sign-up as one list (REB-282/283), `stato` `lead` for
    *  the bare ones alone -- the read model «Talenti» replaced «Developer e CTO» and
-   *  «Iscrizioni» with. */
-  talenti: (stato?: string) =>
-    request<{ totale: number; items: Talento[]; per_stato: Record<string, number> }>(
-      `/api/hub/talenti?limit=500${stato ? `&stato=${encodeURIComponent(stato)}` : ''}`,
-    ),
+   *  «Iscrizioni» with. `filters` beside `stato` and `cursor` are REB-285's search and
+   *  its per-field narrowing, REB-286's own filter row sends straight through; `limit`
+   *  is the one override `AdminTalentoLead` needs to see every lead at once rather
+   *  than the server's own default page. */
+  talenti: (filters: TalentiFilters & { cursor?: string; limit?: number } = {}) => {
+    const qs = filterQuery(filters)
+    return request<TalentoList>(`/api/hub/talenti${qs ? `?${qs}` : ''}`)
+  },
   /** Drafts a card from a bare sign-up in place (ORB-155): the same `draft_from_signup`
    *  the MCP tool `create_freelancer_from_signup` calls, here behind the admin's
    *  cookie. 201 with the new (incomplete) card, or a 422 naming `email` when the

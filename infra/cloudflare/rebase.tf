@@ -124,3 +124,14 @@ resource "cloudflare_dns_record" "rebase_apex_google_site_verification_txt" {
   ttl      = 1
   comment  = "Search Console domain property (2026-09-14)"
 }
+
+resource "cloudflare_dns_record" "rebase_links_cname" {
+  provider = cloudflare.rebase
+  zone_id  = local.rebase_zone_id
+  name     = "links.letsrebase.com"
+  type     = "CNAME"
+  content  = "links2.resend-dns.com"
+  ttl      = 1
+  proxied  = false
+  comment  = "Resend click tracking subdomain (REB-315)"
+}

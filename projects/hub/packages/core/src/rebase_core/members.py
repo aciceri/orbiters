@@ -18,7 +18,14 @@ from rebase_core.comments import CommentService
 from rebase_core.errors import NotFound
 from rebase_core.freelancers import check_cv, cv_of
 from rebase_core.models import AUTORE_MAX_LENGTH, Company, Freelancer, User
-from rebase_core.schemas import CompanyUpdate, CvFile, MemberLookup, MemberProfile, MemberUpdate, MeRead
+from rebase_core.schemas import (
+    CompanyUpdate,
+    CvFile,
+    MemberLookup,
+    MemberProfile,
+    MemberUpdate,
+    MeRead,
+)
 
 ENTITY = "freelancer"
 # What the comment calls each field, in the admin's language, in the wizard's order.

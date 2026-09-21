@@ -284,9 +284,7 @@ def test_a_company_update_changes_the_most_recent_row_and_leaves_one_comment(
 
     changed = members.update_company(
         user.id,
-        CompanyUpdate(
-            **{**GOOD_COMPANY, "durata": "4 mesi", "budget_giornaliero": Decimal("600")}
-        ),
+        CompanyUpdate(**{**GOOD_COMPANY, "durata": "4 mesi", "budget_giornaliero": Decimal("600")}),
     )
     assert changed.durata == "4 mesi" and changed.budget_giornaliero == Decimal("600")
     thread = CommentService(hub_session).list("company", newest_id)

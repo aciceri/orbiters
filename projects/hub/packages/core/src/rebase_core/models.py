@@ -69,7 +69,30 @@ class Signup(Base, PrimaryKeyMixin):
     # Optional for everyone, always: a freelance with no LinkedIn is still a freelance.
     linkedin_url: Mapped[str | None] = mapped_column(String(LINKEDIN_URL_MAX_LENGTH), default=None)
 
-    __table_args__ = (Index("uq_orbiters_signups_email_lower", func.lower(email), unique=True),)
+    __table_args__ = (
+        Index("uq_orbiters_signups_email_lower", func.lower(email), unique=True),
+        # Trigram search on the merged talenti list (REB-285): a bare sign-up has no
+        # linked `users` row, so its own `nome`/`cognome`/`email` are what `q` matches
+        # against. Migration 0013 creates the GIN indexes that serve these.
+        Index(
+            "ix_signups_nome_trgm",
+            "nome",
+            postgresql_using="gin",
+            postgresql_ops={"nome": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_signups_cognome_trgm",
+            "cognome",
+            postgresql_using="gin",
+            postgresql_ops={"cognome": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_signups_email_trgm",
+            "email",
+            postgresql_using="gin",
+            postgresql_ops={"email": "gin_trgm_ops"},
+        ),
+    )
 
 
 # ---- identity: one row per person, whatever they are to the hub ------------------------
@@ -99,7 +122,30 @@ class User(Base, PrimaryKeyMixin, TimestampMixin):
     role: Mapped[str] = mapped_column(String(10), nullable=False, default="member")
     attivo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
-    __table_args__ = (Index("uq_users_email_lower", func.lower(email), unique=True),)
+    __table_args__ = (
+        Index("uq_users_email_lower", func.lower(email), unique=True),
+        # Trigram search (REB-285): `nome`/`cognome`/`email` back both the talenti
+        # search (a card's identity lives here since REB-281) and the companies search
+        # (a request's referente). Migration 0013 creates the GIN indexes.
+        Index(
+            "ix_users_nome_trgm",
+            "nome",
+            postgresql_using="gin",
+            postgresql_ops={"nome": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_users_cognome_trgm",
+            "cognome",
+            postgresql_using="gin",
+            postgresql_ops={"cognome": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_users_email_trgm",
+            "email",
+            postgresql_using="gin",
+            postgresql_ops={"email": "gin_trgm_ops"},
+        ),
+    )
 
 
 # ---- the hub proper: who wants to work, and who needs people --------------------------
@@ -182,6 +228,15 @@ class Freelancer(Base, PrimaryKeyMixin, TimestampMixin, UtmMixin):
     __table_args__ = (
         Index("ix_freelancers_created_at", "created_at"),
         Index("uq_freelancers_user_id", "user_id", unique=True),
+        # Trigram search on the merged talenti list (REB-285): `nome`/`cognome`/
+        # `email` live on `users` (indexed there); `posizione` is the one searchable
+        # field that lives here. Migration 0013 creates the GIN index.
+        Index(
+            "ix_freelancers_posizione_trgm",
+            "posizione",
+            postgresql_using="gin",
+            postgresql_ops={"posizione": "gin_trgm_ops"},
+        ),
     )
 
 
@@ -208,7 +263,24 @@ class Company(Base, PrimaryKeyMixin, TimestampMixin, UtmMixin):
     stato: Mapped[str] = mapped_column(String(20), nullable=False, default="nuovo")
     note: Mapped[str | None] = mapped_column(Text, default=None)
 
-    __table_args__ = (Index("ix_companies_created_at", "created_at"),)
+    __table_args__ = (
+        Index("ix_companies_created_at", "created_at"),
+        # Trigram search (REB-285): `nome`/`referente`/`email` are the linked `users`
+        # row's own (indexed there); `nome_azienda` and `progetto` are this table's.
+        # Migration 0013 creates the GIN indexes.
+        Index(
+            "ix_companies_nome_azienda_trgm",
+            "nome_azienda",
+            postgresql_using="gin",
+            postgresql_ops={"nome_azienda": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_companies_progetto_trgm",
+            "progetto",
+            postgresql_using="gin",
+            postgresql_ops={"progetto": "gin_trgm_ops"},
+        ),
+    )
 
 
 # ---- comments: what an admin or an assistant says about a row, over time ---------------

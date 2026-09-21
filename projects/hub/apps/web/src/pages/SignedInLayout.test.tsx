@@ -164,10 +164,10 @@ describe('the frame keeps a fixed viewport height (REB-311)', () => {
 
     const aside = screen.getByRole('link', { name: 'rebase' }).closest('aside')
     expect(aside).toHaveClass('h-full', 'overflow-y-auto')
-    expect(aside?.parentElement).toHaveClass('h-screen')
+    expect(aside?.parentElement).toHaveClass('h-full')
 
     const main = screen.getByRole('heading', { name: 'Dentro' }).closest('main')
-    expect(main).toHaveClass('overflow-y-auto')
+    expect(main).toHaveClass('overflow-y-auto', 'bg-card')
     expect(main?.querySelector('.rounded-2xl.border.bg-card')).toBeNull()
   })
 })

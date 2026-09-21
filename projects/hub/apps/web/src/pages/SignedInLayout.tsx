@@ -48,7 +48,7 @@ export function SignedInLayout() {
   const isAdmin = me.data.role === 'admin'
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-full">
       <aside className="flex h-full w-56 shrink-0 flex-col gap-6 overflow-y-auto bg-[var(--color-prussian-blue)] p-4 text-[var(--color-paper)]">
         <Link to="/io" className="inline-flex items-center gap-2.5 px-2 font-semibold">
           <BrandMark className="size-3.5 [&>span:nth-child(1)]:bg-[var(--color-paper)] [&>span:nth-child(4)]:bg-[var(--color-paper)]" />
@@ -87,7 +87,7 @@ export function SignedInLayout() {
           </Button>
         </div>
       </aside>
-      <main className="flex-1 overflow-y-auto p-6">
+      <main className="flex-1 overflow-y-auto bg-card p-6">
         <Outlet />
       </main>
     </div>

@@ -15,7 +15,7 @@ import json
 import re
 from pathlib import Path
 
-from orbiters_core.perks import GUIDE_FILENAME, GUIDE_PATH, guide_bytes
+from rebase_core.perks import GUIDE_FILENAME, GUIDE_PATH, guide_bytes
 
 REPO = Path(__file__).resolve().parents[5]
 LOCK = json.loads((REPO / "projects/hub/tools/guide-pdf.lock.json").read_text(encoding="utf-8"))
@@ -66,4 +66,4 @@ def test_every_link_in_it_is_absolute() -> None:
     uris = re.findall(rb"/URI\s*\((.*?)\)", PDF)
     assert uris
     for uri in uris:
-        assert uri.startswith(b"https://joinorbiters.com"), uri
+        assert uri.startswith(b"https://letsrebase.com"), uri

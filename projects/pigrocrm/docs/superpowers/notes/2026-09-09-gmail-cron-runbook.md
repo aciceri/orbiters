@@ -1,14 +1,21 @@
-# Runbook: il sync Gmail da cron, e il banner che non prevede più una scadenza
+# Runbook: i lavori da cron di PigroCRM, e il banner che non prevede più una scadenza
 
-Due cose decise insieme, perché insieme rispondono alla stessa domanda dell'operatore
-(«la casella si sincronizza da sola, e se smette me ne accorgo?»):
+Questo prodotto non ha un demone e non ha una coda (vedi la docstring di
+`packages/core/src/pigrocrm/core/gmail/sync.py`): tutto ciò che deve succedere da solo
+succede perché c'è una riga in `crontab`. Le righe sono due, e questo è il runbook di
+tutte e due.
+
+I §§1–3 sono il sync Gmail, deciso insieme al banner del consenso perché insieme
+rispondono alla stessa domanda dell'operatore («la casella si sincronizza da sola, e se
+smette me ne accorgo?»):
 
 1. `pigrocrm gmail-sync`, un comando che esegue **un ciclo** di sincronizzazione e
-   termina. Non è un demone: questo prodotto non ha un processo worker e non ha una
-   coda (vedi la docstring di `packages/core/src/pigrocrm/core/gmail/sync.py`), quindi i
-   quindici minuti li tiene cron.
+   termina. Non è un demone, quindi i quindici minuti li tiene cron.
 2. Il banner di scadenza del consenso, che ora esiste **solo** finché il progetto OAuth
    è in Testing.
+
+Il §4 è il secondo lavoro: `pigrocrm digest`, il resoconto settimanale che ogni lunedì
+mattina scrive a chi l'ha chiesto, uno spazio alla volta.
 
 ## 1. Installare il cron (operatore, sul server)
 
@@ -146,3 +153,109 @@ emesso. Il passo 6 del runbook di pubblicazione (ricollegare la casella una volt
 ancora. La differenza è come lo si scopre: non più da una previsione del CRM, ma da
 Google che risponde `invalid_grant`, che è un fatto, e che questo cron scrive nel log
 la prima volta che capita.
+
+## 4. Il resoconto settimanale (`pigrocrm digest`)
+
+Una riga sola, **il lunedì mattina**, nello stesso `crontab -e` dell'utente che possiede
+il deploy. Il percorso è scritto per esteso come lo si incolla; se la directory di deploy
+di questo server non è `/opt/pigrocrm`, è il `$DEPLOY_PATH` del §1 e va sostituito:
+
+```
+0 8 * * 1 cd /opt/pigrocrm/projects/pigrocrm && docker compose --env-file ../../.env exec -T api uv run --no-sync pigrocrm digest >> /var/log/pigrocrm-digest.log 2>&1
+```
+
+I quattro dettagli del §1 valgono identici qui (`cd`, `--env-file ../../.env`,
+`exec -T api`, `uv run --no-sync`) e per gli stessi motivi. Quello che cambia è
+**l'orario**, ed è l'unica parte della riga che non si può copiare senza guardare il
+server.
+
+### L'orario dipende dal fuso dell'host
+
+`0 8` significa «le otto secondo l'orologio del sistema», e cron non conosce
+`PIGROCRM_TIMEZONE`: quello decide *quale settimana* viene raccontata (il lunedì-domenica
+appena chiuso nel fuso dell'emittente), non a che ora parte il comando. Quindi, prima di
+incollare la riga:
+
+```
+timedatectl
+```
+
+- `Time zone: Europe/Rome` → `0 8` è giusto: le otto italiane.
+- `Time zone: Etc/UTC` (il default di quasi ogni VPS, ed è il caso di questo server) →
+  `0 8` vorrebbe dire le dieci italiane d'estate. In UTC le otto italiane sono `0 6`
+  durante l'ora legale (CEST, marzo–ottobre) e `0 7` durante l'ora solare (CET,
+  ottobre–marzo). Una riga sola non può essere giusta tutto l'anno: o si sceglie `0 6` e
+  d'inverno il resoconto arriva alle sette, o si cambia la riga due volte l'anno, o si
+  mette l'host su `Europe/Rome` con `timedatectl set-timezone Europe/Rome` e si torna a
+  `0 8`. L'ultima è la scelta fatta qui quando il server è solo di questo prodotto.
+
+Un'ora di scarto non sposta niente di ciò che il resoconto racconta: la settimana è già
+chiusa da ore, e il contenuto sarebbe identico anche eseguendolo il lunedì sera.
+
+### Provare la riga a mano, prima di aspettare lunedì
+
+`--dry-run` prepara davvero il resoconto di ogni spazio — legge il database, costruisce
+le sezioni, conta i destinatari — e **non manda niente e non scrive niente**:
+
+```
+cd /opt/pigrocrm/projects/pigrocrm && docker compose --env-file ../../.env exec -T api uv run --no-sync pigrocrm digest --dry-run; echo "uscita: $?"
+```
+
+Le righe della prova portano `(prova)` in fondo proprio perché nel log non si confondano
+con una settimana partita davvero. Con `--slug studio-rossi` la prova (come il comando
+vero) tocca un solo spazio.
+
+### Rimandare una settimana
+
+Una settimana già inviata non parte una seconda volta: la riga `digests.settimana` è
+unica, ed è questo che rende innocuo un cron che scatta due volte. Per rimandarla davvero
+— una mail persa, un errore di configurazione di Resend scoperto il martedì — servono
+tutte e due le opzioni, la data di **un giorno qualsiasi** di quella settimana e il
+permesso esplicito di riscriverla:
+
+```
+docker compose --env-file ../../.env exec -T api uv run --no-sync pigrocrm digest --slug studio-rossi --forza --data 2026-09-07
+```
+
+La riga della settimana non viene duplicata: viene aggiornata con i nuovi destinatari e
+la nuova ora.
+
+### Leggere il log
+
+Una riga per spazio, contatori soltanto: mai un indirizzo, mai una cifra del resoconto.
+È questo che rende sicuro appendere `/var/log/pigrocrm-digest.log` a un file sull'host.
+
+| Riga | Cosa è successo | Cosa fare |
+| --- | --- | --- |
+| `studio-rossi: inviato a 3` | Il resoconto è partito a tre persone, e la settimana è registrata | Niente |
+| `studio-rossi: inviato a 3 (prova)` | `--dry-run`: sarebbe partito a tre persone | Niente: nessuna mail, nessuna riga scritta |
+| `studio-rossi: vuoto` | Lo spazio non ha ancora né clienti, né deal, né fatture, né ore | Niente: chi non ha ancora cominciato non riceve una mail piena di zeri |
+| `studio-rossi: già inviato per 2026-W37` | Quella settimana era già partita (un secondo cron, o una riga eseguita a mano) | Niente. Se va rimandata davvero, vedi «Rimandare una settimana» |
+| `studio-rossi: nessun destinatario` | Nessun utente attivo di quello spazio ha il resoconto acceso | Niente: è una scelta loro (Impostazioni → Profilo) |
+| `studio-rossi: saltato (…)` su `stderr` | Quello spazio non è stato mandato; fra parentesi c'è il **tipo** dell'errore, mai il testo (che può contenere l'URL del database, password compresa) | Vedi qui sotto |
+| `registro degli spazi non raggiungibile (…)` su `stderr` | Il registro dei tenant non risponde: nessuno spazio è stato visitato | Controllare il database e i `PIGROCRM_*` del `.env`; poi rieseguire la riga a mano |
+
+Gli `saltato` che si incontrano davvero:
+
+- `titolare_mancante` / `titolare_disattivato`: la mail del titolare nel registro non
+  corrisponde a nessun utente di quello spazio, o quell'utente è stato disattivato.
+- `invio_rifiutato`: Resend ha rifiutato **tutti** gli indirizzi. Non viene registrato
+  niente, quindi la prossima esecuzione ci riprova: una settimana che non è arrivata a
+  nessuno non è una settimana inviata.
+- `invio_non_configurato`: manca `PIGROCRM_RESEND_API_KEY`, quindi non c'è nessun modo di
+  mandare la mail e non è stato tentato niente. Come sopra, non viene registrato niente:
+  la prima esecuzione dopo che la chiave è a posto manda la settimana invece di trovarla
+  già segnata come inviata. Rimedio: mettere la chiave nel `.env`, riavviare l'API e
+  rieseguire la riga a mano.
+- `ProgrammingError`, `UndefinedTable`: lo schema di quello spazio è indietro rispetto
+  all'immagine. **Questo comando non migra niente**, di proposito: l'unico che migra è
+  `pigrocrm ensure-space-defaults`, che gira nel CMD dell'immagine API a ogni deploy
+  (ORB-189). Un cron che alle otto di lunedì eseguisse Alembic su otto database senza
+  nessuno che guarda sarebbe la cosa più rischiosa che fa questo prodotto. Rimedio:
+  riavviare l'API (che lo migra) e rieseguire la riga a mano.
+- `OperationalError`: il database di quello spazio non risponde. Gli altri spazi sono
+  stati mandati lo stesso, ed è il motivo per cui il comando esce sempre con stato `0`:
+  uno spazio rotto non deve nascondere i sette che hanno funzionato.
+
+**Rotazione**: una riga per spazio a settimana; anche con cento spazi il file cresce di
+pochi kilobyte l'anno e non ha bisogno di `logrotate`.

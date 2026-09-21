@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { SITE_HOST } from './path-map-plugin'
 
-const PAGES = ['index.html', 'privacy.html', 'termini.html'] as const
+const PAGES = ['index.html', 'pigrocrm.html', 'privacy.html', 'termini.html'] as const
 const html = Object.fromEntries(
   PAGES.map((name) => [name, readFileSync(join(__dirname, name), 'utf-8')]),
 ) as Record<(typeof PAGES)[number], string>
@@ -22,14 +23,14 @@ describe.each(PAGES)('%s', (name) => {
     const title = page.match(/<title>([^<]+)<\/title>/)?.[1] ?? ''
     // Until 2026-09-10 every page here titled itself PigroCRM, including the two
     // legal pages. ORB-36: privacy.html and termini.html are served on
-    // joinorbiters.com, not on pigro.joinorbiters.com, and it is the Orbiters signup
+    // letsrebase.com, not on pigro.letsrebase.com, and it is the Orbiters signup
     // form that links to them, so they title themselves after the site they are on
     // rather than after the CRM. index.html is the landing (at / since ORB-145;
-    // orbiters.html is the community page at /orbiters) and still names the CRM in
-    // its title, the perk, regardless of Ivan's separate «freelance» exception
+    // community.html is the community page at /community) and still names the CRM in
+    // its title, the largest of the perks, regardless of Ivan's separate «freelance»
     // (ORB-24, positioning.md line 85); see the brand-link assertion below for the
     // same title/brand split.
-    expect(title).toContain(name === 'index.html' ? 'PigroCRM' : 'Orbiters')
+    expect(title).toContain(name === 'index.html' ? 'PigroCRM' : 'rebase')
     const description = meta(page, 'description') ?? ''
     expect(description.length).toBeGreaterThan(40)
     // The trap named in spec 9.2: the previous system's index.html still carries "Studio Rossi is
@@ -41,13 +42,20 @@ describe.each(PAGES)('%s', (name) => {
     // All three pages' og:title already begins "Orbiters" (index.html's own title
     // keeps the "Con PigroCRM gratis" suffix, but its og:title does not repeat it),
     // so this one assertion covers every page in PAGES with no ternary.
-    expect(meta(page, 'og:title')).toContain('Orbiters')
+    expect(meta(page, 'og:title')).toContain('rebase')
     expect(meta(page, 'og:description')).toBeTruthy()
     expect(meta(page, 'og:type')).toBe('website')
   })
 
   it('requests nothing from another origin, bar the one script it declares', () => {
-    for (const [, url] of page.matchAll(/(?:href|src)="(https?:\/\/[^"]+)"/g)) {
+    // REB-111: `<link rel="canonical">` carries this page's own absolute address, on
+    // this origin. It is metadata a crawler reads, never a request anywhere, and is
+    // checked on its own two lines below rather than against the allowlist here; only
+    // that exact value is exempt, not every same-origin absolute URL.
+    const canonical = page.match(/<link\b[^>]*\brel="canonical"[^>]*\bhref="([^"]*)"/)?.[1]
+    for (const match of page.matchAll(/(?:href|src)="(https?:\/\/[^"]+)"/g)) {
+      const url = match[1]!
+      if (url === canonical) continue
       // An href the reader clicks -- the repository, the hosted signup, or OpenAI's
       // own privacy policy, which the cookie section has to point at -- is fine; a
       // subresource is not. `humancraft.tech` is in the list because Italian law
@@ -58,12 +66,23 @@ describe.each(PAGES)('%s', (name) => {
       // identity left anywhere in this repository.
       // `www.linkedin.com` since ORB-151: the four voices' avatars link to their public
       // profiles. An href, never a src: the photos themselves are served from here.
+      // `posthog.com` since ORB-183: the cookie section links PostHog's policy the way
+      // it links OpenAI's. The SDK itself is on `i.posthog.com`, which is not here and
+      // never will be: `pixel.test.ts` keeps it out of every page.
       expect(url, 'external subresource').toMatch(
-        /^https:\/\/(?:github\.com|pigro\.joinorbiters\.com|openai\.com|humancraft\.tech|www\.linkedin\.com)\//,
+        /^https:\/\/(?:github\.com|pigro\.letsrebase\.com|openai\.com|posthog\.com|humancraft\.tech|www\.linkedin\.com)\//,
       )
     }
     expect(page).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/)
-    expect(page).not.toMatch(/<link[^>]+href="https?:/)
+    // REB-111: the one `<link>` allowed an absolute href is its own canonical, and only
+    // when it points back at this origin; a stylesheet or a preconnect fetched from
+    // anywhere else is still banned, which is what this assertion used to say outright.
+    for (const tag of page.match(/<link\b[^>]*>/g) ?? []) {
+      const href = tag.match(/\bhref="(https?:\/\/[^"]+)"/)?.[1]
+      if (href === undefined) continue
+      expect(tag, 'the only <link> allowed an absolute href').toMatch(/\brel="canonical"/)
+      expect(href.startsWith(`${SITE_HOST}/`), `canonical link ${href} is not on this origin`).toBe(true)
+    }
     // Still no third-party tag written into the markup. Since 2026-09-09 index.html
     // *does* fetch one script from another origin -- the ChatGPT Ads measurement SDK,
     // injected by the inline snippet in its head -- and that is the single exception,
@@ -85,14 +104,14 @@ describe.each(PAGES)('%s', (name) => {
     // Until 2026-09-10 the landing signed as Orbiters and the two legal pages kept
     // PigroCRM, on the reasoning that a legal page belongs to the product it
     // covers. ORB-36 reopened that: privacy.html and termini.html are served on
-    // joinorbiters.com, not on pigro.joinorbiters.com, the Orbiters signup form is
+    // letsrebase.com, not on pigro.letsrebase.com, the Orbiters signup form is
     // what links to them, and their own text already covers Orbiters' data (the
-    // signup) alongside PigroCRM's (orbiters.test.ts separately asserts
-    // privacy.html names Orbiters and links /orbiters). All three pages here sign
+    // signup) alongside PigroCRM's (community.test.ts separately asserts
+    // privacy.html names Orbiters and links /community). All three pages here sign
     // as Orbiters now; the titolare del trattamento the two legal pages name, and
     // the substance of what each policy says, did not move with the brand.
     expect(page).toMatch(
-      /<a class="brand" href="\/"><span class="glyph" aria-hidden="true"><\/span>Orbiters<\/a>/,
+      /<a class="brand" href="\/"><span class="glyph" aria-hidden="true"><\/span>rebase<\/a>/,
     )
   })
 
@@ -108,13 +127,21 @@ describe.each(PAGES)('%s', (name) => {
 describe('index.html', () => {
   const page = html['index.html']
 
-  it('opens with the community and its claim, then presents the CRM as the perk', () => {
+  it('opens with the community and its claim, then presents the perks as a set, the CRM the largest', () => {
     // Since 2026-09-08 PigroCRM is what a member of Orbiters gets: the page says what
-    // Orbiters is first, in its own words, and only then what the CRM does.
+    // Orbiters is first, in its own words, and only then what the perks are. Since
+    // REB-68 the CRM is named as one of a set, not the whole answer: its own kicker
+    // is just "PigroCRM", never "il perk", and the set names both members before the
+    // CRM's own expanded block follows.
     const claim = page.indexOf('ma non da soli.')
-    const perk = page.indexOf('PigroCRM, il perk')
+    const perks = page.indexOf('>I perk<')
+    const crmDetail = page.indexOf('>PigroCRM</p>')
     expect(claim).toBeGreaterThan(0)
-    expect(perk).toBeGreaterThan(claim)
+    expect(perks).toBeGreaterThan(claim)
+    expect(page).toContain('<h3>PigroCRM</h3>')
+    expect(page).toContain('<h3>La guida</h3>')
+    expect(crmDetail).toBeGreaterThan(perks)
+    expect(page).not.toContain('PigroCRM, il perk')
     // The hero lead is the one line the pitch deck's cover uses (Ivan, ORB-150); the
     // roles by name moved to the description and the steps, checked further down.
     expect(page.replace(/\s+/g, ' ')).toContain(
@@ -130,9 +157,11 @@ describe('index.html', () => {
     expect(page).toMatch(/<a class="cta" href="\/hub\/freelance">Entra come talento<\/a>/)
     expect(page).toMatch(/<a class="cta secondary" href="\/hub\/aziende">[^<]+<\/a>/)
     // The old door, the email form on `/`, is not what this page sells any more.
-    expect(page).not.toMatch(/<a class="cta" href="\/orbiters">/)
-    // Whoever is already in still finds their space.
-    expect(page).toContain('href="https://pigro.joinorbiters.com/app/registrati"')
+    expect(page).not.toMatch(/<a class="cta" href="\/community">/)
+    // Whoever is already in finds the CRM through its own page (ORB-165): the landing
+    // no longer links the registration form directly.
+    expect(page).toMatch(/<a class="cta" href="\/pigrocrm">Scopri PigroCRM<\/a>/)
+    expect(page).not.toContain('pigro.letsrebase.com/app/registrati')
     // No invented plan or trial: the one price is "be in the community".
     expect(page).not.toMatch(/Prova gratis|abbonamento|piano (Pro|Business)/i)
   })
@@ -184,7 +213,7 @@ describe('index.html', () => {
     // hub's route, which is code, and in the <title> and og:title, which Ivan kept on
     // 2026-09-09 for continuity. It is gone from the claim, the descriptions and the CTAs.
     expect(page.match(/<title>([^<]+)<\/title>/)?.[1]).toContain('freelance')
-    expect(meta(page, 'og:title')).toBe('Orbiters — freelance, ma non da soli')
+    expect(meta(page, 'og:title')).toBe('rebase — freelance, ma non da soli')
     const headlines = [
       meta(page, 'description'),
       meta(page, 'og:description'),
@@ -206,6 +235,38 @@ describe('index.html', () => {
   it('links the two pages Google reads during verification', () => {
     expect(page).toMatch(/href="\/privacy"/)
     expect(page).toMatch(/href="\/termini"/)
+  })
+
+  it('carries WebSite and Organization structured data, with nothing invented', () => {
+    // REB-113: one block, on this page only (links.test.ts checks the other five carry
+    // none). The legal entity, its VAT number and its contact address are the ones
+    // privacy.html and termini.html already state.
+    const scripts = [...page.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+    expect(scripts).toHaveLength(1)
+    const data = JSON.parse(scripts[0]![1]!)
+    expect(data['@context']).toBe('https://schema.org')
+    expect(data['@graph']).toHaveLength(2)
+    const website = data['@graph'].find((node: { '@type': string }) => node['@type'] === 'WebSite')
+    const organization = data['@graph'].find((node: { '@type': string }) => node['@type'] === 'Organization')
+    // toMatchObject alone would not fail on an extra, invented property (a postal
+    // address, say); the exact key set is checked too, so the "nothing invented" rule
+    // this test's name promises actually holds.
+    expect(Object.keys(website).sort()).toEqual(['@type', 'name', 'url'].sort())
+    expect(website).toMatchObject({ name: 'rebase', url: 'https://letsrebase.com/' })
+    expect(Object.keys(organization).sort()).toEqual(
+      ['@type', 'name', 'legalName', 'url', 'logo', 'vatID', 'email'].sort(),
+    )
+    expect(organization).toMatchObject({
+      name: 'rebase',
+      legalName: 'Humancraft di Ivan Sala',
+      url: 'https://letsrebase.com/',
+      vatID: '14518240966',
+      email: 'ivansala@humancraft.tech',
+    })
+    // The logo is checked against the page's own og:image rather than a second
+    // hardcoded literal, so a future redraw (the numbered file REB-205 already owns)
+    // cannot update one and silently leave the other stale.
+    expect(organization.logo).toBe(meta(page, 'og:image'))
   })
 
   it('signs its footer with the studio behind the site, never with a fixture', () => {

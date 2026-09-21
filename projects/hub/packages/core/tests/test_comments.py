@@ -8,11 +8,11 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from orbiters_core.comments import COMMENT_MAX_LENGTH, CommentService
-from orbiters_core.companies import CompanyService
-from orbiters_core.errors import NotFound, ValidationFailed
-from orbiters_core.freelancers import FreelancerService
-from orbiters_core.schemas import CompanyCreate, CompanyRead, FreelancerCreate, FreelancerRead
+from rebase_core.comments import COMMENT_MAX_LENGTH, CommentService
+from rebase_core.companies import CompanyService
+from rebase_core.errors import NotFound, ValidationFailed
+from rebase_core.freelancers import FreelancerService
+from rebase_core.schemas import CompanyCreate, CompanyRead, FreelancerCreate, FreelancerRead
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
 
@@ -21,13 +21,13 @@ PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
 def clean(hub_session: Session) -> Session:
     yield hub_session  # type: ignore[misc]
     hub_session.rollback()
-    for table in ("comments", "freelancers", "companies"):
+    for table in ("comments", "freelancers", "companies", "users"):
         hub_session.execute(text(f"DELETE FROM {table}"))
     hub_session.commit()
 
 
 def _freelancer(session: Session) -> FreelancerRead:
-    return FreelancerService(session).apply(
+    read, _ = FreelancerService(session).apply(
         FreelancerCreate(
             nome="Ada",
             cognome="Lovelace",
@@ -40,13 +40,15 @@ def _freelancer(session: Session) -> FreelancerRead:
         "cv.pdf",
         "application/pdf",
     )
+    return read
 
 
 def _company(session: Session) -> CompanyRead:
     return CompanyService(session).request(
         CompanyCreate(
             nome_azienda="ACME Srl",
-            referente="Wile E.",
+            referente_nome="Wile",
+            referente_cognome="E.",
             email="wile@acme.it",
             progetto="Un backend developer per tre mesi.",
             periodo_da=date(2026, 10, 1),

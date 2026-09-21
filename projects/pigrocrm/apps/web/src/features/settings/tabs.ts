@@ -13,8 +13,15 @@
  * The paths are *not* here: `<Link to>` typechecks against the generated route tree, so
  * the sidebar maps each `value` to a literal path of its own (`AppShell`'s
  * `SETTINGS_PATHS`), and adding a tab there is a compile error until the route exists.
+ *
+ * `profilo` first, and the one exception to "every tab here is admin-only": it is a
+ * person's own preferences (`ProfilePanel`), not something `require_admin` gates
+ * anywhere, and `SettingsLayout` exempts exactly this one value from the page's
+ * otherwise-blanket admin gate so the weekly digest's opt-out link works for whoever
+ * receives the mail (spec 2026-09-16 §3.6).
  */
 export const SETTINGS_TABS = [
+  { value: 'profilo', label: 'Profilo' },
   { value: 'spazio', label: 'Spazio' },
   { value: 'campi', label: 'Campi' },
   { value: 'pipeline', label: 'Pipeline' },

@@ -21,9 +21,9 @@ test.describe('the served stack', () => {
     await expect(page.locator('#root')).toHaveCount(1)
   })
 
-  for (const path of ['/privacy', '/termini', '/orbiters', '/pigrocrm']) {
+  for (const path of ['/privacy', '/termini', '/community', '/pigrocrm']) {
     test(`${path} is not this stack's to serve`, async ({ page }) => {
-      // On the server these four are redirected to joinorbiters.com by the host
+      // On the server these four are redirected to letsrebase.com by the host
       // vhost and never reach the container. Reached directly, what must not happen
       // is a 200 with a page in it: the space-name rule reads them as a slug and
       // redirects into the SPA, which is a miss, not a page.

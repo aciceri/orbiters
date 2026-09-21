@@ -1,13 +1,13 @@
 import { render } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { BRAND_TILES, BRAND_TILE_CLASSES } from '@orbiters/brand/mark'
+import { BRAND_TILES, BRAND_TILE_CLASSES } from '@rebase/brand/mark'
 
 import { BrandMark } from './BrandMark'
 
 /**
  * The mark is the brand's, not this application's: the landing and the community page
- * draw the same four tiles as box-shadows on one element, and Orbiters' favicon is the
+ * draw the same four tiles as box-shadows on one element, and the community page's favicon is the
  * same field at glyph scale. Three surfaces, three technologies, one order, so each
  * side asserts against `shared/brand` rather than against another surface's source.
  *

@@ -1,5 +1,11 @@
 /* The cookie notice, driven in a DOM.
  *
+ * @vitest-environment-options { "url": "https://letsrebase.com/" }
+ *
+ * On the site's own host, not jsdom's default `localhost`: PostHog is silent on
+ * localhost by design (see `measured` below), and these tests are about what a visitor's
+ * browser does.
+ *
  * The property that matters is not that a box appears: it is that **nothing is fetched
  * before somebody says yes**. So most of these tests assert the absence of a script
  * element, which is the only thing a visitor's browser would actually do differently.
@@ -8,15 +14,19 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const js = readFileSync(join(__dirname, 'consent.js'), 'utf-8')
 const SDK_URL = 'https://bzrcdn.openai.com/sdk/oaiq.min.js'
+const POSTHOG_URL = 'https://eu-assets.i.posthog.com/static/array.js'
 const KEY = 'orbiters.consent'
 
 type Consent = {
   start: () => void
   decide: (decision: string, box?: Element | null) => void
+  withdraw: () => void
+  measured: (hostname: string) => boolean
+  internal: (hostname: string) => boolean
   STORAGE_KEY: string
 }
 
@@ -31,6 +41,18 @@ function notice(): HTMLElement | null {
 
 function sdkScripts(): HTMLScriptElement[] {
   return [...document.querySelectorAll('script')].filter((script) => script.src === SDK_URL)
+}
+
+function posthogScripts(): HTMLScriptElement[] {
+  return [...document.querySelectorAll('script')].filter((script) => script.src === POSTHOG_URL)
+}
+
+type Stubs = { oaiq?: unknown; posthog?: unknown }
+const stubs = (): Stubs => window as unknown as Stubs
+
+function forget(): void {
+  delete stubs().oaiq
+  delete stubs().posthog
 }
 
 function press(label: string): void {
@@ -48,7 +70,7 @@ beforeEach(() => {
   // above do not touch.
   document.documentElement.removeAttribute('style')
   window.localStorage.clear()
-  delete (window as unknown as { oaiq?: unknown }).oaiq
+  forget()
 })
 
 afterEach(() => {
@@ -62,7 +84,9 @@ describe('before anyone has decided', () => {
     // The whole point. A snippet in the head with `consent(false)` after it would have
     // fetched this script anyway and handed OpenAI the visitor's IP.
     expect(sdkScripts()).toHaveLength(0)
-    expect((window as unknown as { oaiq?: unknown }).oaiq).toBeUndefined()
+    expect(posthogScripts()).toHaveLength(0)
+    expect(stubs().oaiq).toBeUndefined()
+    expect(stubs().posthog).toBeUndefined()
   })
 
   it('asks in one sentence, and links the page that explains it', () => {
@@ -107,6 +131,42 @@ describe('once somebody accepts', () => {
     ])
   })
 
+  it('loads PostHog with the same click, from the EU host, anonymous until a login', () => {
+    run()
+    press('Va bene')
+
+    const scripts = posthogScripts()
+    expect(scripts).toHaveLength(1)
+    expect(scripts[0]?.async).toBe(true)
+    // The stub `array.js` reads on arrival: `_i` holds the one init, `__SV` marks it as
+    // a stub, and anything called before the SDK lands is queued on the array itself.
+    const stub = stubs().posthog as unknown[] & {
+      __SV: number
+      _i: [string, Record<string, unknown>, undefined][]
+      capture: (name: string) => void
+    }
+    expect(stub.__SV).toBe(1)
+    expect(stub._i).toHaveLength(1)
+    const [key, config] = stub._i[0] ?? []
+    expect(key).toMatch(/^phc_/)
+    expect(config).toMatchObject({
+      api_host: 'https://eu.i.posthog.com',
+      person_profiles: 'identified_only',
+      session_recording: { maskAllInputs: true },
+    })
+    stub.capture('iscrizione_community')
+    // letsrebase.com is a visitor's host, so nothing was queued before this call.
+    expect(stub[0]).toEqual(['capture', 'iscrizione_community'])
+    // The preview stacks would have queued `setInternalOrTestUser` first: the rule is
+    // the same as `shared/analytics`'s, and it is applied where the init is.
+    const { internal } = (window as unknown as { __consent: Consent }).__consent
+    expect(internal('preview.letsrebase.com')).toBe(true)
+    expect(internal('preview.pigro.letsrebase.com')).toBe(true)
+    expect(internal('letsrebase.com')).toBe(false)
+    expect(internal('www.letsrebase.com')).toBe(false)
+    expect(js).toContain('if (internal(window.location.hostname)) stub.setInternalOrTestUser()')
+  })
+
   it('takes the notice away and does not ask again on the next page', () => {
     run()
     press('Va bene')
@@ -114,21 +174,104 @@ describe('once somebody accepts', () => {
 
     document.body.innerHTML = ''
     document.head.innerHTML = ''
-    delete (window as unknown as { oaiq?: unknown }).oaiq
+    forget()
     run()
     expect(notice()).toBeNull()
-    // And the pixel is there without being asked for a second time.
+    // And both trackers are there without being asked for a second time.
     expect(sdkScripts()).toHaveLength(1)
+    expect(posthogScripts()).toHaveLength(1)
+  })
+})
+
+describe('withdrawing consent', () => {
+  it('clears the stored decision, reloads, and the next run shows the notice again', () => {
+    // GDPR art. 7(3): withdrawing has to cost the same one click as consenting.
+    // `decide('granted')` already puts the visitor where a stored yes would; this is
+    // the transition back out of it.
+    const consent = run()
+    press('Va bene')
+    expect(window.localStorage.getItem(KEY)).toBe('granted')
+
+    const reload = vi.fn()
+    const original = window.location
+    Object.defineProperty(window, 'location', {
+      value: { ...original, reload },
+      writable: true,
+      configurable: true,
+    })
+
+    consent.withdraw()
+
+    expect(window.localStorage.getItem(KEY)).toBeNull()
+    expect(reload).toHaveBeenCalledTimes(1)
+    Object.defineProperty(window, 'location', { value: original, writable: true, configurable: true })
+
+    // The reload itself: a fresh run(), the same way `once somebody accepts` simulates
+    // the next page load above.
+    document.body.innerHTML = ''
+    document.head.innerHTML = ''
+    forget()
+    run()
+    expect(notice()).toBeTruthy()
+    expect(sdkScripts()).toHaveLength(0)
+    expect(posthogScripts()).toHaveLength(0)
+  })
+
+  it('leaves a stored refusal alone: a no stays final', () => {
+    // The property `start`'s DENIED branch and the `once somebody refuses` describe
+    // below both hold: a refusal is not asked again. Clearing it on a withdraw click
+    // would put the notice back in front of somebody who already said no.
+    const consent = run()
+    press('No')
+    expect(window.localStorage.getItem(KEY)).toBe('denied')
+
+    const reload = vi.fn()
+    const original = window.location
+    Object.defineProperty(window, 'location', {
+      value: { ...original, reload },
+      writable: true,
+      configurable: true,
+    })
+
+    consent.withdraw()
+
+    expect(window.localStorage.getItem(KEY)).toBe('denied')
+    expect(reload).toHaveBeenCalledTimes(1)
+    Object.defineProperty(window, 'location', { value: original, writable: true, configurable: true })
+  })
+})
+
+describe('where PostHog stays silent even after a yes', () => {
+  it('is a developer machine or a test runner, and nowhere real', () => {
+    // The e2e suite runs Playwright against `vite preview` on localhost and clicks
+    // «Va bene» on every measured page: without this rule every CI run would count as
+    // visitors in the one project production writes to. The same list as
+    // `shared/analytics/posthog.ts`.
+    const { measured } = run()
+    for (const host of ['localhost', '127.0.0.1', '[::1]', '0.0.0.0', '']) {
+      expect(measured(host), host).toBe(false)
+    }
+    for (const host of ['letsrebase.com', 'www.letsrebase.com', 'preview.letsrebase.com']) {
+      expect(measured(host), host).toBe(true)
+    }
+    // And the rule is applied where the script is created, before any request.
+    const load = js.slice(js.indexOf('function loadPostHog'), js.indexOf('function button'))
+    expect(load.indexOf('if (!measured(window.location.hostname)) return')).toBeGreaterThan(-1)
+    expect(load.indexOf('if (!measured(window.location.hostname)) return')).toBeLessThan(
+      load.indexOf('script.src'),
+    )
   })
 })
 
 describe('once somebody refuses', () => {
-  it('loads nothing, and there is no oaiq for a signup to call', () => {
+  it('loads nothing, and there is no oaiq and no posthog for a signup to call', () => {
     run()
     press('No')
 
     expect(sdkScripts()).toHaveLength(0)
-    expect((window as unknown as { oaiq?: unknown }).oaiq).toBeUndefined()
+    expect(posthogScripts()).toHaveLength(0)
+    expect(stubs().oaiq).toBeUndefined()
+    expect(stubs().posthog).toBeUndefined()
     expect(window.localStorage.getItem(KEY)).toBe('denied')
     expect(notice()).toBeNull()
   })
@@ -142,6 +285,7 @@ describe('once somebody refuses', () => {
     run()
     expect(notice()).toBeNull()
     expect(sdkScripts()).toHaveLength(0)
+    expect(posthogScripts()).toHaveLength(0)
   })
 })
 
@@ -192,7 +336,7 @@ describe('while the notice is up, the page has room under it (ORB-18)', () => {
     document.body.innerHTML = ''
     document.head.innerHTML = ''
     window.localStorage.clear()
-    delete (window as unknown as { oaiq?: unknown }).oaiq
+    forget()
     run()
     press('No')
     expect(room()).toBe('')
@@ -305,9 +449,9 @@ describe('the notice clears the 44px touch-target floor without shouting (ORB-87
   })
 
   it('keeps every consent control a real `a`/`button`, so the shared focus-visible rule already covers it', () => {
-    // landing.css and orbiters.css each carry one `::where(a, button…):focus-visible`
+    // landing.css and community.css each carry one `::where(a, button…):focus-visible`
     // rule with no scope narrower than the whole page (landing-style.test.ts and
-    // orbiters.test.ts hold those). This notice earns a visible focus ring for free
+    // community.test.ts hold those). This notice earns a visible focus ring for free
     // as long as consent.js keeps building real anchors and buttons rather than a
     // `div` with a click handler -- checked here on the DOM the same file already
     // builds, not by grepping the source for the word `createElement`.

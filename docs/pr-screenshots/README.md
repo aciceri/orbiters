@@ -1,12 +1,17 @@
-# Before and after screenshots on pull requests
+# Before and after screenshots, and a video, on pull requests
 
 Every pull request that changes something a person could see ends with a **before and
 after** image in its body. One "after" shot is not enough: only the pair shows what
 moved, and the point is that a reviewer sees the difference without checking out the
 branch and without reading the diff to reconstruct what the page used to look like.
 
+Every pull request that changes something a person could **do** also ends with a
+**video of the feature in use**: the pairs show what moved, the video shows it working,
+click by click, so a reviewer watches the flow instead of reconstructing it from two
+still frames and the diff.
+
 The `pr-creation` skill (`.claude/skills/pr-creation/SKILL.md`) asks for the section;
-this file is how the picture gets made in this monorepo.
+this file is how the picture and the video get made in this monorepo.
 
 ## What counts as a visible change
 
@@ -19,8 +24,26 @@ pair:
 - Anything that changes spacing, ordering, or what a menu or a wizard step offers.
 - A page of the public site or of the hub, at the viewport it was designed for.
 
-If a pair genuinely cannot be captured, the Screenshots section stays and says why.
-Deleting it reads as forgetting.
+If a pair genuinely cannot be captured, the section stays and says why. Deleting it
+reads as forgetting.
+
+## What needs a video
+
+Anything a person drives. If the change answers to a click, a keystroke or a scroll,
+the PR shows it happening:
+
+- A button, a menu item or a link that does something: the click and what follows.
+- A wizard, a dialog, a form: from the first field to the state after submit.
+- A state that follows an action: the timer that starts, the proforma that becomes an
+  invoice, the row that moves, the toast that appears and goes.
+- A page whose behaviour changed on scroll, hover, resize or keyboard.
+
+One video per PR, of the whole flow the PR adds or changes, ten to forty seconds; a
+second only when the PR carries two flows a reader would not follow in one take. A
+change nobody interacts with (one label, a colour, a reordered column) gets its pairs
+and a line saying why there is no video. The video is of the **after** only, your
+branch running; there is no "before" video, the pairs already say what moved, and a
+recording from the `origin/main` worktree is not asked for.
 
 ## Capturing the pair
 
@@ -94,32 +117,123 @@ wrong. Crop chrome that is identical in both frames (the sidebar above all) with
 
 **Open the composite and read it before uploading.**
 
+## Recording the video
+
+The Playwright MCP takes the screenshots but does not record here: video is a launch
+option of the MCP server (`--save-video`), the session's instance is not started with
+it, and its output would land in the server's own directory anyway. `record.mjs` beside
+this file drives its own Chromium, the one `@playwright/test` already installed for the
+e2e tests, with Playwright's `recordVideo` on, draws a cursor so each click is visible
+where it lands, and hands the `.webm` to `ffmpeg` (`brew install ffmpeg`) for an H.264
+`.mp4`, the container a PR body plays inline in every browser. No GIF: an `.mp4` is
+smaller and sharper, and `gh` uploads it.
+
+The recording is the **after**: from **your worktree**, the app running as for the
+after frame, on the same data and the same viewport, and with the browser's default
+locale, as the MCP's screenshots are. Write the steps as a small module that does what
+a person would do, and keep it out of the repository (the scratchpad, `/tmp`):
+
+```js
+// steps.mjs: issue the proforma and land on the invoice
+export default async function (page, { pause }) {
+  await page.getByRole('link', { name: 'PF 2026/3' }).click()
+  await pause()
+  await page.getByRole('button', { name: 'Emetti' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Conferma' }).click()
+  await page.waitForURL(/\/app\/fatture\/\d+/)
+  await pause(1500)
+}
+```
+
+```bash
+node docs/pr-screenshots/record.mjs steps.mjs demo-1-issue-proforma.mp4 \
+  --url http://localhost:5173/app/fatture --viewport 1440x900
+```
+
+`--url` is the page the flow starts from and the script waits for it to be idle before
+the first step. `pause()` waits the default `--pause` (800 ms), `pause(ms)` what you say:
+a reader needs a beat after each action to see what changed, and Playwright on its own
+clicks faster than an eye follows. The recording runs headless at 25 frames per second
+in the viewport you give (1440×900 for the CRM and the hub, 390×844 for the website
+on a phone, the same as the after frame), and the file name says which flow it is. A
+page behind the CRM's login takes `--storage-state state.json`, a file saved from a
+logged-in Playwright context (`context.storageState({ path })`), or the flow starts at
+the login page and logs in as its first step, which is the honest video of a feature a
+new user meets after logging in. `--keep-webm` keeps the raw recording beside the
+`.mp4` when ffmpeg's result needs checking.
+
+**The run is confined.** On macOS the script re-executes itself under Seatbelt
+(`sandbox-exec`, the mechanism Claude Code's own command sandbox uses on a Mac) with a
+profile written for the run: Chromium, the steps module and ffmpeg may write only to the
+output file's directory, the temp directories (`$TMPDIR` and the user's own under
+`/var/folders`), the user's cache directory and `/dev`, and may open network connections
+only to `localhost`, where the app under test runs. So a steps
+module cannot write a file elsewhere, and a page under test cannot call home while it is
+recorded (measured: a write to `$HOME` fails with `EPERM`, a `fetch` to example.com
+fails from the page and from node, `localhost:4173` answers). Reads are not confined:
+the browser and the module still read whatever the user can read. The first line of the
+run says what the profile allows; `--no-sandbox` opts out and says so, which is what to
+try when a recording fails for a reason that smells of permission (a store the browser
+wants to write outside its temp directory, a proxy on another host). Linux has no
+`sandbox-exec`, the run says so and records unconfined; a bubblewrap profile is not
+written yet, and Chromium inside `bwrap` needs its own sandbox off, so it is not a
+one-liner.
+
+The script prints the length and the size at the end. A step that fails (a selector
+that never resolves, a page that never goes idle) stops the run with the error and the
+path of the partial `.webm`, which is where you see how far the flow got. **Open the
+file and watch it before uploading** (`open demo-1-issue-proforma.mp4`): a flow that
+stalled on a selector records as a still page, and a still page is not a video of the
+feature.
+
 ## Uploading with `gh --attach`
 
 `gh` 2.99.0 or newer (`gh --version`), which is what makes the CLI able to upload a
-`user-attachments` image: the only kind a PR body on a private repository renders.
-Images committed to the repository, raw links and signed URLs all render broken.
+`user-attachments` image or video: the only kind a PR body on a private repository
+renders. Files committed to the repository, raw links and signed URLs all render broken.
 
 Write the reference in the body first, then attach; `gh` rewrites the reference to the
-uploaded URL and keeps your alt text. Without a reference the image is appended at the
-end, which is not where a numbered pair belongs.
+uploaded URL and keeps your alt text. Without a reference the file is appended at the
+end, which is not where a numbered pair belongs. A video has no alt text (GitHub renders
+it as a player), so its reference is written with an empty one, **in a paragraph of its
+own**: a blank line above and below.
 
 ```bash
-# body.md holds, in the Screenshots section:
+# body.md holds, in the Screenshots and video section:
 #   **1. Invoice detail, the PDF pane on the right**
 #   ![Invoice detail, before and after](./pair-1-invoice-detail.png)
-gh pr edit <n> --body-file body.md --attach ./pair-1-invoice-detail.png
+#
+#   **Video: issuing the proforma, from the list to the invoice**
+#
+#   ![](./demo-1-issue-proforma.mp4)
+gh pr edit <n> --body-file body.md \
+  --attach ./pair-1-invoice-detail.png --attach ./demo-1-issue-proforma.mp4
 ```
 
-`--attach` repeats for several pairs and works on `gh pr create`, `gh pr edit` and
+`--attach` repeats for several files and works on `gh pr create`, `gh pr edit` and
 `gh pr comment`. On a partial failure the files that uploaded stay attached, the URL is
 still printed and the exit code is non-zero: read the exit code, not the URL.
+
+**The video needs a second edit.** `gh` 2.99.0 rewrites an image reference into an
+image, but a video reference into a plain link, `[demo-1.mp4](https://github.com/...)`,
+which renders as a link and not as a player (PR #127, measured). GitHub shows the player
+only for the bare asset URL standing alone in its own paragraph. So, after the attach,
+read the body back, strip the link around every video URL, and write it again:
+
+```bash
+gh pr view <n> --json body --jq .body > body-live.md
+sed -E -i '' 's#^\[[^]]*\.(mp4|mov|webm)\]\((https://github\.com/user-attachments/assets/[^)]+)\)$#\2#' body-live.md
+gh pr edit <n> --body-file body-live.md
+```
+
+(`sed -i ''` is macOS's; on Linux it is `sed -i`.) A second `--attach` is not needed:
+the asset is already uploaded, only the line around its URL changes.
 
 ## Verify before calling it done
 
 ```bash
 body=$(gh pr view <n> --json body --jq .body)
-grep -o user-attachments <<<"$body" | wc -l     # pairs attached, plus any mention in prose
+grep -o user-attachments <<<"$body" | wc -l     # pairs + videos, + any mention in prose
 if grep -o '](\./[^)]*)' <<<"$body"; then
   echo "ERROR: the paths above never got rewritten." >&2; false
 else
@@ -127,6 +241,8 @@ else
 fi
 ```
 
-Then open the PR in a browser and look: a broken attachment still passes a text check.
-The images live **in the PR body**. A Linear comment may carry them too, and a list of
-local paths handed to the reviewer is never the substitute.
+Then open the PR in a browser and look: a broken attachment still passes a text check,
+and the video is a player with a first frame, not a link (a link means the second edit
+above was skipped). The images and the video live **in the PR body**. A Linear comment
+may carry them too, and a list of local paths handed to the reviewer is never the
+substitute.

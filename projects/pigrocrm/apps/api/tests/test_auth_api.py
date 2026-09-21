@@ -9,8 +9,10 @@ from pigrocrm.core.actor import Actor
 from pigrocrm.core.auth.schemas import UserCreate, UserUpdate
 from pigrocrm.core.auth.service import UserService
 from pigrocrm.core.config import Settings, get_settings
+from pigrocrm.core.errors import NotFound
 from pigrocrm_api.deps import ACCESS_COOKIE, REFRESH_COOKIE, get_session
 from pigrocrm_api.main import create_app
+from pigrocrm_api.ratelimit import LOGIN_REQUESTS_PER_MINUTE, REQUESTS_PER_MINUTE
 
 CREDENTIALS = {"email": "admin@pigro.it", "password": "supersegreta1"}
 
@@ -114,6 +116,47 @@ def test_login_by_a_deactivated_user_is_401(client: TestClient, api_session: Ses
     assert response.status_code == 401
 
 
+def test_login_is_throttled_per_client_before_the_password_is_checked(
+    client: TestClient, admin_user, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`spend_one` runs before `UserService.authenticate`, so the request past the
+    budget never pays for the argon2 verify at all -- the whole point of REB-270,
+    which exists because that verify is a 64 MiB, time-cost-3 hash anyone could
+    trigger at line rate. Wrapping `authenticate` with a counter, rather than trusting
+    the 401/429 split alone, is what actually proves that: a limiter placed after the
+    verify but before the 401 raise would produce the exact same responses while
+    paying for the hash on every one of the eleven attempts. On its own budget, not
+    `REQUESTS_PER_MINUTE`'s five: this loop runs `LOGIN_REQUESTS_PER_MINUTE` (ten)
+    attempts, which would already be a 429 on a shared bucket with the signup
+    routes."""
+    calls = 0
+    real_authenticate = UserService.authenticate
+
+    def counting_authenticate(self: UserService, email: str, password: str) -> object:
+        nonlocal calls
+        calls += 1
+        return real_authenticate(self, email, password)
+
+    monkeypatch.setattr(UserService, "authenticate", counting_authenticate)
+
+    for _ in range(LOGIN_REQUESTS_PER_MINUTE):
+        response = client.post("/api/auth/login", json={**CREDENTIALS, "password": "sbagliata"})
+        assert response.status_code == 401, response.text
+    refused = client.post("/api/auth/login", json={**CREDENTIALS, "password": "sbagliata"})
+    assert refused.status_code == 429, refused.text
+    assert refused.headers["Retry-After"] == "60"
+    assert calls == LOGIN_REQUESTS_PER_MINUTE
+    # Another client has its own bucket, still under budget -- 401 like the rest, not
+    # the 429 this client's own bucket would now give it.
+    other = client.post(
+        "/api/auth/login",
+        json={**CREDENTIALS, "password": "sbagliata"},
+        headers={"X-Real-IP": "10.0.0.7"},
+    )
+    assert other.status_code == 401, other.text
+    assert calls == LOGIN_REQUESTS_PER_MINUTE + 1
+
+
 def test_login_failures_are_byte_identical_regardless_of_cause(
     client: TestClient, api_session: Session, admin_user
 ) -> None:
@@ -148,6 +191,46 @@ def test_me_returns_the_current_user(logged_in: TestClient) -> None:
     body = logged_in.get("/api/auth/me").json()
     assert body["email"] == "admin@pigro.it"
     assert body["ruolo"] == "admin"
+
+
+def test_update_me_requires_authentication(client: TestClient) -> None:
+    response = client.patch("/api/auth/me", json={"digest_settimanale": False})
+    assert response.status_code == 401
+
+
+def test_a_non_admin_can_switch_off_their_own_weekly_report(
+    collaborator_client: TestClient,
+) -> None:
+    """Spec 2026-09-16 §3.6: the mail's own opt-out link must work for whoever
+    received it -- `PATCH /api/auth/me` (`UserService.update_own_digest`) takes no
+    `actor.require_admin`, unlike `PATCH /api/users/{id}`, which a `collaboratore`
+    cannot call at all."""
+    response = collaborator_client.patch("/api/auth/me", json={"digest_settimanale": False})
+    assert response.status_code == 200
+    assert response.json()["digest_settimanale"] is False
+
+    assert collaborator_client.get("/api/auth/me").json()["digest_settimanale"] is False
+
+
+def test_update_me_is_401_when_the_session_outlives_the_row(
+    logged_in: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The service owns the row, the router owns the answer.
+
+    `update_own_digest` loads the caller itself and raises `NotFound` when there is no
+    row behind the token -- which every other endpoint of this API renders as a 404. On
+    *this* router it means «not authenticated», exactly as `GET /me` answers it, and
+    that translation is what this endpoint is left holding.
+    """
+
+    def sparito(self: UserService, actor: Actor, value: bool) -> None:
+        raise NotFound("user", "sparito")
+
+    monkeypatch.setattr(UserService, "update_own_digest", sparito)
+
+    response = logged_in.patch("/api/auth/me", json={"digest_settimanale": False})
+
+    assert response.status_code == 401
 
 
 def test_logout_clears_the_cookies(logged_in: TestClient) -> None:
@@ -393,3 +476,134 @@ def test_login_with_a_nul_byte_does_not_reveal_whether_the_email_exists(
     assert existing_error["type"] == unknown_error["type"]
     assert existing_error["msg"] == unknown_error["msg"]
     assert existing_error["loc"] == unknown_error["loc"]
+
+
+# --- a link by mail (spec 2026-09-12 §6.2) --------------------------------------------
+
+from pigrocrm.core.mail import RecordingSender  # noqa: E402
+from pigrocrm_api.routers.auth import get_sender  # noqa: E402
+
+ADMIN_EMAIL = CREDENTIALS["email"]
+
+
+PUBLIC_URL = "https://pigro.test"
+
+
+@pytest.fixture
+def sender(client: TestClient) -> RecordingSender:
+    """A recording sender, and the public origin a link needs: without either the
+    endpoint answers 503 by design."""
+    recording = RecordingSender()
+    client.app.dependency_overrides[get_sender] = lambda: recording  # type: ignore[attr-defined]
+    client.app.dependency_overrides[get_settings] = lambda: Settings(  # type: ignore[attr-defined]
+        public_url=PUBLIC_URL,
+        _env_file=None,  # type: ignore[call-arg]
+    )
+    return recording
+
+
+def _token_from(mail_text: str) -> str:
+    return mail_text.split("?t=", 1)[1].split()[0]
+
+
+def test_link_answers_202_and_mails_a_known_address(
+    client: TestClient, admin_user, sender: RecordingSender
+) -> None:
+    response = client.post("/api/auth/link", json={"email": ADMIN_EMAIL.upper()})
+    assert response.status_code == 202
+    assert len(sender.sent) == 1
+    mail = sender.sent[0]
+    assert mail.to == ADMIN_EMAIL and "15 minuti" in mail.text
+    # The link wears the configured public origin, never the request's Host.
+    assert f"{PUBLIC_URL}/app/entra?t=" in mail.text and "testserver" not in mail.text
+
+
+def test_link_answers_202_and_mails_nothing_for_an_unknown_address(
+    client: TestClient, sender: RecordingSender
+) -> None:
+    response = client.post("/api/auth/link", json={"email": "nessuno@pigro.it"})
+    assert response.status_code == 202
+    assert sender.sent == []
+
+
+def test_link_is_503_without_a_sender(client: TestClient, admin_user) -> None:
+    response = client.post("/api/auth/link", json={"email": ADMIN_EMAIL})
+    assert response.status_code == 503
+    assert "non è ancora attivo" in response.json()["detail"]
+
+
+def test_the_link_request_is_throttled_per_client(client: TestClient, admin_user) -> None:
+    """Unauthenticated by design, so the bucket is what stops a script mail-bombing a
+    known address (REB-228): the request past the budget is a 429 with a
+    `Retry-After`. No `sender` fixture on purpose, unlike the mail-flow tests around
+    this one: every request under budget is `test_link_is_503_without_a_sender`'s own
+    503, so only the request that trips the limiter is a 429 rather than a 503 -- proof
+    that `spend_one` runs before the sender check, not merely consistent with it (the
+    prior version of this test ran every request with a sender configured, which is
+    equally consistent with the limiter running after that check, or not at all)."""
+    for _ in range(REQUESTS_PER_MINUTE):
+        response = client.post("/api/auth/link", json={"email": ADMIN_EMAIL})
+        assert response.status_code == 503, response.text
+    refused = client.post("/api/auth/link", json={"email": ADMIN_EMAIL})
+    assert refused.status_code == 429, refused.text
+    assert refused.headers["Retry-After"] == "60"
+    # Another client has its own bucket, still under budget -- 503 like the rest, not
+    # the 429 this client's own bucket would now give it.
+    other = client.post(
+        "/api/auth/link", json={"email": ADMIN_EMAIL}, headers={"X-Real-IP": "10.0.0.7"}
+    )
+    assert other.status_code == 503, other.text
+
+
+def test_entra_sets_the_cookies_and_me_answers(
+    client: TestClient, admin_user, sender: RecordingSender
+) -> None:
+    client.post("/api/auth/link", json={"email": ADMIN_EMAIL})
+    token = _token_from(sender.sent[0].text)
+    response = client.post("/api/auth/entra", json={"t": token})
+    assert response.status_code == 200, response.text
+    assert response.json()["email"] == ADMIN_EMAIL
+    set_cookie = response.headers.get_list("set-cookie")
+    assert any("pigrocrm_access=" in c and "Path=/" in c for c in set_cookie)
+    assert client.get("/api/auth/me").status_code == 200
+    # Spent: the same link a second time is a 401 with the sentence the page shows.
+    again = client.post("/api/auth/entra", json={"t": token})
+    assert again.status_code == 401 and "link" in again.json()["detail"]
+
+
+def test_entra_with_garbage_is_401(client: TestClient) -> None:
+    assert client.post("/api/auth/entra", json={"t": "x"}).status_code == 401
+
+
+def test_link_is_503_without_a_public_url(client: TestClient, admin_user) -> None:
+    """A link built from the request's Host would hand a live token to whatever host the
+    caller named: no public origin, no link."""
+    client.app.dependency_overrides[get_sender] = lambda: RecordingSender()  # type: ignore[attr-defined]
+    response = client.post("/api/auth/link", json={"email": ADMIN_EMAIL})
+    assert response.status_code == 503
+    assert "PIGROCRM_PUBLIC_URL" in response.json()["detail"]
+
+
+def test_the_first_entry_kills_the_earlier_session_and_keeps_its_own(
+    client: TestClient, admin_user, sender: RecordingSender
+) -> None:
+    """The guarantee the signup will rely on: a session opened before the address was
+    proven dies at the first link entry; the session the entry opens refreshes fine."""
+    earlier = client.post(
+        "/api/auth/login", json={"email": ADMIN_EMAIL, "password": CREDENTIALS["password"]}
+    )
+    assert earlier.status_code == 200
+    earlier_refresh = client.cookies.get(REFRESH_COOKIE)
+    assert earlier_refresh
+    client.cookies.clear()
+
+    client.post("/api/auth/link", json={"email": ADMIN_EMAIL})
+    token = _token_from(sender.sent[0].text)
+    entered = client.post("/api/auth/entra", json={"t": token})
+    assert entered.status_code == 200, entered.text
+    # The new session refreshes.
+    assert client.post("/api/auth/refresh").status_code == 200
+    # The earlier one does not.
+    client.cookies.clear()
+    client.cookies.set(REFRESH_COOKIE, earlier_refresh)
+    assert client.post("/api/auth/refresh").status_code == 401

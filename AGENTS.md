@@ -1,4 +1,4 @@
-# AGENTS.md — working in the Orbiters monorepo
+# AGENTS.md — working in the rebase monorepo
 
 Orientation for agents and for humans. Read this before touching anything at the
 root. Facts that are true of one project only live in that project's own
@@ -7,7 +7,7 @@ there — both Claude Code and omp load the nearest one.
 
 ## What this repository is
 
-One repository for every Orbiters project. PigroCRM is the first of them and, today,
+One repository for every rebase project. PigroCRM is the first of them and, today,
 the only one; it is a project in here, not the point of the place. Projects are
 allowed to use different stacks, and are expected to share as much of their
 dependency graph and their tooling as they honestly can.
@@ -21,9 +21,17 @@ docs/                documentation about the monorepo itself, never about a proj
 ```
 
 `shared/brand` is the first of those and shows what belongs there: the palette, the
-typeface and the brand mark, which the CRM and the website must agree on and neither
-can own. A project small enough to be a single artifact may be one package at its own
-root rather than growing an `apps/` directory with one entry in it, which is what
+typeface, the brand mark and the contrast maths every surface measures its colour pairs
+with, which the CRM and the website must agree on and neither can own.
+`shared/analytics` is the second: the one PostHog project every surface reports to, and
+the policy the SPAs initialise it with. `shared/ui` is the third and the largest: the
+token layer both SPAs render on and the eighteen primitives they share, with a gallery
+that renders every one of them and the contract tests that hold them to the record. **A
+primitive is generated there and nowhere else**: the repository has exactly one
+`components.json`, in that package, so `shadcn add` cannot quietly grow another local
+copy inside an application (REB-304). A project small enough to be a
+single artifact may be one package at its own root rather than growing an `apps/`
+directory with one entry in it, which is what
 `projects/website` is. `tooling/` is still empty, and a directory is not created
 before something real goes in it.
 
@@ -187,8 +195,8 @@ tested on a branch and is proven on the trunk instead.
   Anything written from now on, there included, is English.
 - A design decision that is a rule rather than a picture goes in
   `docs/design/DECISIONS.md`, as a row, with the date.
-- **The tracker is Linear, and using it is not optional.** Team `Orbiters`, issue
-  prefix `ORB-`. Work that is not on the board did not happen, for either of us or
+- **The tracker is Linear, and using it is not optional.** Team `rebase`, issue
+  prefix `REB-`. Work that is not on the board did not happen, for either of us or
   for any agent either of us runs, and there is no second tracker: the GitHub
   issues and any GitHub Project on other repositories are not part of this repo's
   flow.
@@ -220,24 +228,28 @@ tested on a branch and is proven on the trunk instead.
   twice and a neighbour in `Backlog` or `Todo` is linked rather than rediscovered. What
   the scan found, or that it found nothing, goes on the card first, in the same call
   that moves it. While working: the card never lags the work; a comment at every turn a
-  reader could not infer (a finding, a change of scope, a wait), `In Review` the moment
-  the PR opens, one line for the review and for a red run, and `Done` only with the
-  evidence. A card that has read `In Progress` all day with nothing under it is the
-  other agent's only view of your work (`docs/tracker.md` § The loop).
-- `In Review` is a status on the team, and it is where an issue sits while its PR
-  is open on GitHub.
+  reader could not infer (a finding, a change of scope, a wait), the PR URL the moment
+  the PR opens, one line for the review and for a red run, and the closing evidence in a
+  comment before or right after the merge. A card that has read `In Progress` all day
+  with nothing under it is the other agent's only view of your work (`docs/tracker.md`
+  § The loop).
+- `In Review` is a status on the team, and nothing sets it by hand since 2026-09-16: a
+  card whose PR is open reads `In Progress`, because the automation below puts it there.
 - **A project update is written whenever something changed that the issue list
   alone does not show**: a milestone slipped, a health change, a decision, a
   release. An update that only restates the board is noise.
 - Linear's GitHub app is **installed** on this org since 2026-09-09 (`linear-code`,
   every repository, granted by the org owner `slavni96`), and a branch or a PR carrying
-  the issue id **does** link itself: PR #33 attached to ORB-80 within 25 seconds.
+  the issue id **does** link itself: PR #33 attached to REB-80 within 25 seconds.
   Moving a state is a separate mechanism, the team's own pull request automation in
-  Linear's workflow settings, and it is not configured here: that same linked PR left
-  ORB-80 in `In Progress`. So keep moving states by hand, with the evidence in a
-  comment, and treat an issue reference in a commit body as a pointer rather than a
-  link. Drop the manual step only once a merge is seen closing its own issue, and
-  update this line with the date when it is.
+  Linear's workflow settings, and since 2026-09-16 it is **on**: a PR opening on a
+  branch that carries the id moves the card to `In Progress` (an `In Review` set before
+  that fires is overwritten), and the merge moves it to `Done` (REB-247: `In Review` at
+  17:30:40, `In Progress` at 17:30:43, `Done` at 17:46:42 as PR #161 merged). What stays
+  by hand: the `In Progress` move before the branch exists, with the neighbour scan on
+  the card; every comment, the closing evidence included, written before or right after
+  the merge; `Canceled`; and the `In production` comment when a tag ships. An issue
+  reference in a commit body is a pointer, not a link.
 
 Find the issue before you start, check it is yours, move it as you go, and close it
 only against evidence on the surface it is about. A defect you found and did not fix

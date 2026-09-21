@@ -16,8 +16,9 @@ export default defineConfig({
   // application's bundle behind it.
   //
   // `pathMapPlugin` is the dev and preview servers' copy of deploy/nginx.conf: `/` is
-  // the landing, `/orbiters` the community page, `/pigrocrm` a 301 to `/`, and anything
-  // else a 404. Its unit test reads nginx.conf, so the two cannot drift quietly.
+  // the landing, `/pigrocrm` the CRM's page, `/community` the community page, `/orbiters`
+  // its old name as a 301 (REB-212), and anything else a 404. Its unit test reads
+  // nginx.conf, so the two cannot drift quietly.
   plugins: [palettePlugin(), pathMapPlugin()],
   // 'mpa' turns off Vite's fallback to index.html for a path that resolves to no file.
   // With it on, an unknown path answered 200 with PigroCRM's page here and 404 in
@@ -27,20 +28,21 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, 'dist'),
     emptyOutDir: true,
-    // field.js is shared by the landing page and Orbiters; inlining it would put a copy
+    // field.js is shared by the landing page and the community page; inlining it would put a copy
     // inside two HTML files instead of one cacheable asset.
     assetsInlineLimit: 0,
     rollupOptions: {
       input: {
         index: path.resolve(__dirname, 'src/index.html'),
+        pigrocrm: path.resolve(__dirname, 'src/pigrocrm.html'),
         privacy: path.resolve(__dirname, 'src/privacy.html'),
         termini: path.resolve(__dirname, 'src/termini.html'),
-        orbiters: path.resolve(__dirname, 'src/orbiters.html'),
+        community: path.resolve(__dirname, 'src/community.html'),
         pitch: path.resolve(__dirname, 'src/pitch.html'),
       },
     },
   },
-  // The Orbiters form posts to /api/orbiters/signups on the same origin, exactly as
+  // The community form posts to /api/community/signups on the same origin, exactly as
   // nginx serves it in production. Dev and preview proxy that one prefix to a running
   // API so the form can be exercised locally; WEBSITE_API_URL points it elsewhere.
   server: { proxy: { '/api': { target: apiUrl, changeOrigin: true } } },

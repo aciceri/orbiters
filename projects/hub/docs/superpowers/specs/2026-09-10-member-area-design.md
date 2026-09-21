@@ -17,8 +17,8 @@ these are the answers, 2026-09-10:
   production would have none; PigroCRM as identity provider is two products and a
   token exchange, not this step.
 - **The provider is Resend**, called over plain `urllib` like the conversions endpoint,
-  with the key in the host `.env` only. The SPF and DKIM records on joinorbiters.com are
-  Ivan's part. The sender is «Orbiters <ciao@joinorbiters.com>»: warm, and somebody
+  with the key in the host `.env` only. The SPF and DKIM records on letsrebase.com are
+  Ivan's part. The sender is «Rebase <ciao@letsrebase.com>»: warm, and somebody
   reads the replies.
 - **Routes**: `/hub/accedi` (ask for the address), `/hub/entra` (where the link lands),
   `/hub/io` (the area), `/hub/io/modifica` (the form). The hub header gains «La tua
@@ -86,8 +86,8 @@ A small seam, so tests never send and production never guesses.
 | Name | Default | Purpose |
 |---|---|---|
 | `resend_api_key` | `""` | Empty means no sender: the link request answers 503 |
-| `mail_from` | `Orbiters <ciao@joinorbiters.com>` | The `from` header |
-| `hub_url` | `https://joinorbiters.com/hub` | The link is `{hub_url}/entra?t={token}` |
+| `mail_from` | `Rebase <ciao@letsrebase.com>` | The `from` header |
+| `hub_url` | `https://letsrebase.com/hub` | The link is `{hub_url}/entra?t={token}` |
 | `magic_link_minutes` | `15` | Token lifetime |
 | `member_session_days` | `30` | Sliding session lifetime, as the admin's |
 
@@ -169,7 +169,7 @@ Four screens in the public `Shell`, and two touches on what exists.
   `/accedi` without a session). Then the answers under the wizard's own questions as
   labels («Come ti chiami?», «Quanto costa una tua giornata?» …), the CV as name, size
   and a download link, «Modifica» and «Esci». Below, two boxes: «PigroCRM è tuo, gratis»
-  in evidence, one sentence and the link to `https://pigro.joinorbiters.com/app/registrati`;
+  in evidence, one sentence and the link to `https://pigro.letsrebase.com/app/registrati`;
   and «Altro in arrivo», static, muted. The email is shown and marked as the address we
   write to, not editable, with the sentence about a new application.
 - `/io/modifica`: one page, every question at once, not a wizard: the person is
@@ -228,7 +228,7 @@ the hooks (`useMember`, `useRequestLink`, `useEnter`, `useUpdateProfile`,
 The stack deploys as every stack here (`docs/adding-a-project.md` §7): preview on the
 green trunk, production on `hub-v<semver>` when Ivan asks. Before the tag, on the host,
 by hand and not a release: `ORBITERS_RESEND_API_KEY` and `ORBITERS_MAIL_FROM` in
-`/opt/hub/.env`, and the SPF and DKIM records Resend gives for joinorbiters.com. Until
+`/opt/hub/.env`, and the SPF and DKIM records Resend gives for letsrebase.com. Until
 the key is there `/hub/accedi` answers with the 503 sentence, which is the honest state.
 
 ## Deliberately not in this step

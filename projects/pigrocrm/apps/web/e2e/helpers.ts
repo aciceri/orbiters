@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
@@ -14,6 +14,9 @@ export const ADMIN_PASSWORD = 'supersegreta1'
 
 export async function login(page: Page, email: string, password: string): Promise<void> {
   await page.goto('/app/login')
+  // Since ORB-172 the login is email-first: the password form is the second way and
+  // opens on this button. The e2e admin has a password, so this is its door.
+  await page.getByRole('button', { name: /Accedi con la password/ }).click()
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password)
   await page.getByRole('button', { name: 'Accedi' }).click()
@@ -203,10 +206,36 @@ async function waitUntil(condition: () => Promise<boolean>, timeoutMs: number, l
 
 /** Reads apps/web/scripts/e2e-setup.sh's own pidfile and sends SIGTERM, then
  *  waits until the API genuinely stops answering -- not a fixed sleep, since
- *  how long a graceful uvicorn shutdown takes is not this suite's to guess. */
+ *  how long a graceful uvicorn shutdown takes is not this suite's to guess.
+ *
+ *  `PIGROCRM_E2E_API_PIDFILE` is one fixed path, not a per-checkout handle
+ *  (projects/pigrocrm/AGENTS.md), so a second `pigrocrm-e2e` run alive on the
+ *  same box can replace or reap this pid before this call gets to it. Two
+ *  ways that shows up, both tolerated: the pidfile can already be gone --
+ *  `e2e-teardown.sh`'s own API step ends in `rm -f "$PIGROCRM_E2E_API_PIDFILE"`
+ *  -- so a missing file reads as `pid = 0`, same as an empty one; and `kill`
+ *  on a pid the other run already reaped answers `ESRCH`, "no such process".
+ *  Neither is a reason to fail the test that called us -- the API this pid
+ *  named is dead as far as this process can tell, and the wait below is what
+ *  actually proves it, not the swallowed error. `pid > 0` guards the empty/
+ *  missing case specifically: `kill(0, …)` is not an error, it broadcasts the
+ *  signal to every process in the *caller's* own process group, which here is
+ *  this Playwright worker and the shell running it. Every other kill error
+ *  still throws. Falling through to the same wait in every case is what makes
+ *  the API's absence, not merely the signal's delivery, what the test that
+ *  follows can rely on (REB-91). */
 export async function killApi(): Promise<void> {
-  const pid = Number(readFileSync(API_PIDFILE, 'utf-8').trim())
-  process.kill(pid, 'SIGTERM')
+  let pid = 0
+  try {
+    pid = Number(readFileSync(API_PIDFILE, 'utf-8').trim())
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+  try {
+    if (pid > 0) process.kill(pid, 'SIGTERM')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
+  }
   await waitUntil(async () => !(await pingApi()), 10_000, 'API to stop answering')
 }
 
@@ -215,7 +244,15 @@ export async function killApi(): Promise<void> {
  *  and overwrites the pidfile so apps/web/scripts/e2e-teardown.sh -- which runs
  *  after the whole suite, from a completely different process tree -- kills the
  *  right one at the end. Waits until the API genuinely answers again before
- *  returning, for the identical reason `killApi` waits on the way down. */
+ *  returning, for the identical reason `killApi` waits on the way down.
+ *
+ *  The pidfile is written to a process-unique temporary path first and moved
+ *  into place with `renameSync`, which POSIX guarantees is atomic within one
+ *  filesystem: a concurrent `killApi`, in this suite or another `pigrocrm-e2e`
+ *  run sharing the same fixed path, always reads either the previous pid whole
+ *  or this one whole, never a half-written file (REB-91). The temporary file
+ *  is removed in a `finally` so a `renameSync` failure (a read-only or full
+ *  `/tmp`) does not leave it behind for nothing to ever reap. */
 export async function relaunchApi(): Promise<void> {
   const child = spawn('uv', ['run', 'uvicorn', 'pigrocrm_api.main:app', '--port', API_PORT], {
     cwd: REPO_ROOT,
@@ -224,7 +261,15 @@ export async function relaunchApi(): Promise<void> {
     env: process.env,
   })
   child.unref()
-  if (child.pid) writeFileSync(API_PIDFILE, String(child.pid))
+  if (child.pid) {
+    const tmpPath = `${API_PIDFILE}.${process.pid}.tmp`
+    try {
+      writeFileSync(tmpPath, String(child.pid))
+      renameSync(tmpPath, API_PIDFILE)
+    } finally {
+      rmSync(tmpPath, { force: true })
+    }
+  }
   await waitUntil(pingApi, 30_000, 'API to answer again')
 }
 

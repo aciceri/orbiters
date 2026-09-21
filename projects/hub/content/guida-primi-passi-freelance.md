@@ -219,15 +219,15 @@ in più. Non serve solo per sentirsi meno soli, anche se aiuta anche quello: ser
 perché la domanda che ti costerebbe un errore, fatta alla persona giusta prima di
 agire invece che dopo, te lo fa evitare del tutto.
 
-## Cos'è Orbiters
+## Cos'è rebase
 
-Orbiters è la community di chi fa software in proprio: developer, AI engineer, CTO e
+rebase è la community di chi fa software in proprio: developer, AI engineer, CTO e
 fractional CTO, costruita da chi fa lo stesso lavoro. Dentro trovi progetti portati
 da persone che conoscono l'azienda che li propone, non presi da una bacheca, persone
 che hanno già avuto la stessa telefonata difficile che stai per avere tu, e
 PigroCRM, lo strumento per fatturare e farti pagare, gratis per chi è dentro.
 
 Se stai per fare il salto o l'hai appena fatto, entri da qui:
-[orbiters.com/hub/freelance](/hub/freelance). Se hai un progetto e cerchi la persona
+[letsrebase.com/hub/freelance](/hub/freelance). Se hai un progetto e cerchi la persona
 giusta per farlo, si comincia da qui:
-[orbiters.com/hub/aziende](/hub/aziende).
+[letsrebase.com/hub/aziende](/hub/aziende).

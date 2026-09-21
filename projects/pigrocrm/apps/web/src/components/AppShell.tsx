@@ -12,9 +12,12 @@ import {
   LayoutDashboard,
   LogOut,
   PanelLeftIcon,
+  Plug,
   Receipt,
+  Rocket,
   Search,
   Settings,
+  UserRound,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -23,9 +26,10 @@ import { BrandMark } from '@/components/BrandMark'
 import { readSidebarGroups, writeSidebarGroups } from '@/components/sidebarGroups'
 import { CommandPalette } from '@/features/search/CommandPalette'
 import { SETTINGS_TABS, type SettingsTabValue } from '@/features/settings/tabs'
+import { ConnectAgentDialog } from '@/features/tokens/ConnectAgentDialog'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Button } from '@/components/ui/button'
+import { Button } from '@rebase/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,10 +37,10 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from '@rebase/ui/dropdown-menu'
 import { useAuth, useIsAdmin } from '@/lib/auth'
 import { roleLabel } from '@/lib/roles'
-import { cn } from '@/lib/utils'
+import { cn } from '@rebase/ui/cn'
 
 /**
  * The shell of the app: a dark sidebar on the left, everything else in a white panel
@@ -67,6 +71,9 @@ import { cn } from '@/lib/utils'
 // would mean a collaborator could never connect an agent to their own account.
 const TOP_LEVEL = [
   { to: '/app', label: 'Home', icon: LayoutDashboard, exact: true },
+  // Where the first login lands, and where the assistant and the first steps live
+  // (ORB-180): its own entry, right under Home, for every role.
+  { to: '/app/get-started', label: 'Get started', icon: Rocket, exact: false },
   // Under Home, at Ivan's request (2026-09-09), and top-level rather than inside a
   // group for the same reason Home is: a month of one's own days and deadlines is a
   // cross-cutting view, not a step of «Vendite» or of «Amministrazione».
@@ -111,9 +118,15 @@ const GROUPS = [
  * `SETTINGS_TABS`, so the sidebar cannot drift from the page that renders them.
  *
  * Its own constant, separate from `GROUPS`, because it behaves differently in two ways:
- * it is admin-only (every service behind these tabs calls `actor.require_admin` on every
- * write), and in the collapsed rail it becomes a single icon link -- thirteen icons for
+ * this whole group is shown in the sidebar to an admin only (below, `groups = isAdmin ?
+ * ...`), and in the collapsed rail it becomes a single icon link -- fourteen icons for
  * the tabs of one page would be a rail of settings and nothing else.
+ *
+ * Every service behind these tabs calls `actor.require_admin` on every write except
+ * one: `profilo` (`ProfilePanel`) is a person's own preferences, and `SettingsLayout`
+ * exempts that one tab from the page's own admin gate so a non-admin who opens it
+ * directly -- from the weekly digest's opt-out link, spec 2026-09-16 §3.6 -- can reach
+ * it even though this sidebar link stays admin-only, same as the rest of the group.
  */
 /**
  * One literal path per settings tab. `satisfies Record<SettingsTabValue, ...>` is what
@@ -122,6 +135,7 @@ const GROUPS = [
  * paths in the place that can typecheck them.
  */
 const SETTINGS_PATHS = {
+  profilo: '/app/impostazioni/profilo',
   spazio: '/app/impostazioni/spazio',
   campi: '/app/impostazioni/campi',
   pipeline: '/app/impostazioni/pipeline',
@@ -172,7 +186,7 @@ const IS_APPLE =
 const FOCUS =
   'outline-none focus-visible:ring-[3px] focus-visible:ring-sidebar-ring focus-visible:ring-offset-0'
 
-const ITEM = 'flex items-center gap-3 rounded-[10px] px-3 py-2 text-sm transition-colors'
+const ITEM = 'flex items-center gap-3 px-3 py-2 text-sm transition-colors'
 // The active pill: a lighter, translucent fill on the dark sidebar rather than the solid
 // Watermelon the flat list used -- with grouped navigation there are two things to mark at
 // once (the group and the item inside it), and two solid fills would fight.
@@ -211,6 +225,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Cmd/Ctrl+K listener, so it has to be alive even while the field has never been
   // clicked.
   const [searchOpen, setSearchOpen] = useState(false)
+  // The connect-agent dialog, same idea as the search palette: mounted here once so its
+  // trigger can sit in the sidebar as a plain button rather than a route.
+  const [agentOpen, setAgentOpen] = useState(false)
 
   const groups = isAdmin ? [...GROUPS, SETTINGS] : GROUPS
   const activeGroup = groups.find((group) =>
@@ -353,7 +370,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             onClick={() => setSearchOpen(true)}
             aria-label="Cerca in tutto il CRM"
             className={cn(
-              'flex w-full items-center gap-2 rounded-[10px] border border-sidebar-border bg-sidebar-accent/50 px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground',
+              'flex w-full items-center gap-2 border border-sidebar-border bg-sidebar-accent/50 px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground',
               FOCUS,
               rail && 'justify-center px-0',
             )}
@@ -378,14 +395,17 @@ export function AppShell({ children }: { children: ReactNode }) {
           aria-label="Navigazione principale"
           className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-3"
         >
+          {/* Home, then «Get started» right under it (ORB-180); the other top-level
+              entries follow the groups. */}
           {leaf(TOP_LEVEL[0])}
+          {leaf(TOP_LEVEL[1])}
 
           {rail
             ? // The rail: no headers, no indentation, every section one click away. The
               // settings tabs are the exception -- one link to the page that owns them.
               [
                 ...GROUPS.flatMap((group) => group.items.map((item) => leaf(item))),
-                ...TOP_LEVEL.slice(1).map((item) => leaf(item)),
+                ...TOP_LEVEL.slice(2).map((item) => leaf(item)),
                 // The first tab, under the group's own name: in the rail the label is the
                 // accessible name, and «Spazio» would say nothing about where it goes.
                 isAdmin
@@ -404,7 +424,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     {group.items.map((item) => subItem(item))}
                   </NavGroup>
                 )),
-                ...TOP_LEVEL.slice(1).map((item) => leaf(item)),
+                ...TOP_LEVEL.slice(2).map((item) => leaf(item)),
                 isAdmin ? (
                   <NavGroup
                     key={SETTINGS.id}
@@ -419,6 +439,21 @@ export function AppShell({ children }: { children: ReactNode }) {
               ]}
         </nav>
 
+        {/* «Collega un agente» (ORB-170): for every role, like Token, because a token
+            belongs to whoever creates it. A button and not a route: the dialog is the
+            whole surface. In the rail the label is for screen readers only. */}
+        <div className="px-3 pb-1">
+          <button
+            type="button"
+            onClick={() => setAgentOpen(true)}
+            className={cn(ITEM, QUIET, FOCUS, 'w-full', rail && 'justify-center px-0')}
+          >
+            <Plug className="size-4 shrink-0" aria-hidden="true" />
+            <span className={cn('truncate', rail && 'sr-only')}>Collega un agente</span>
+          </button>
+        </div>
+        <ConnectAgentDialog open={agentOpen} onOpenChange={setAgentOpen} />
+
         {/* The profile, anchored at the bottom, opens a menu: the account's own things --
             who is signed in, the space's settings for an admin, the way out. */}
         <div className="mt-auto border-t border-sidebar-border p-3">
@@ -427,7 +462,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <button
                 type="button"
                 className={cn(
-                  'flex w-full items-center gap-3 rounded-[10px] px-2 py-2 text-left transition-colors hover:bg-sidebar-accent',
+                  'flex w-full items-center gap-3 px-2 py-2 text-left transition-colors hover:bg-sidebar-accent',
                   FOCUS,
                   rail && 'justify-center px-0',
                 )}
@@ -458,6 +493,19 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              {/* «Profilo», for every role and with no gate on it: the sidebar's whole
+                  «Impostazioni» group is admin-only, so without this entry a
+                  collaborator had no way of reaching their own profile tab from inside
+                  the app at all -- the weekly report's opt-out link (spec 2026-09-16
+                  §3.6) was the only door to it. One menu item, above the admin's own
+                  entry, because it is the one thing here that belongs to the person
+                  rather than to the space. */}
+              <DropdownMenuItem asChild>
+                <Link to="/app/impostazioni/profilo">
+                  <UserRound className="size-4" />
+                  Profilo
+                </Link>
+              </DropdownMenuItem>
               {isAdmin && (
                 <DropdownMenuItem asChild>
                   <Link to="/app/impostazioni/spazio">
@@ -479,9 +527,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           inset and the radius drop to nothing and the panel simply is the page -- a 12px
           frame around a phone screen is 12px of nothing. */}
       <div className="flex min-w-0 flex-1 flex-col p-0 lg:p-3">
-        {/* 16, the radius spec §4 draws the panel with -- not `rounded-2xl`, whose 18px
-            is the derived *card* radius (--radius × 1.8). */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-0 border-border bg-card lg:rounded-[16px] lg:border">
+        {/* No radius: the panel is square like everything else since the
+            application-variant record (2026-09-18). It used to carry a literal 16px,
+            the one corner the spec drew larger than the derived card radius. */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-0 border-border bg-card lg:border">
           <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
         </div>
       </div>
@@ -546,7 +595,7 @@ function subItem({ to, label }: { to: LinkTo; label: string }) {
         activeOptions={{ includeSearch: false }}
         activeProps={{ 'aria-current': 'page' }}
         className={cn(
-          'block truncate rounded-[10px] px-3 py-1.5 text-sm transition-colors',
+          'block truncate px-3 py-1.5 text-sm transition-colors',
           QUIET,
           ACTIVE,
           FOCUS,

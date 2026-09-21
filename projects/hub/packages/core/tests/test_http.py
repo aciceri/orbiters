@@ -1,11 +1,14 @@
 """The one urllib call every outbound request goes through."""
 
-import urllib.request
+import threading
+from collections.abc import Iterator
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
 import pytest
 
-from orbiters_core.http import USER_AGENT, urllib_call
+import rebase_core.http as http_module
+from rebase_core.http import MAX_BODY_BYTES, USER_AGENT, urllib_call
 
 
 class _Response:
@@ -17,7 +20,7 @@ class _Response:
     def __exit__(self, *args: object) -> None:
         return None
 
-    def read(self) -> bytes:
+    def read(self, amt: int = -1) -> bytes:
         return b"{}"
 
 
@@ -27,17 +30,17 @@ def test_every_call_names_itself_unless_the_caller_already_did(
     """Cloudflare in front of Resend and of OpenAI's conversions endpoint answers
     `403 error code: 1010` to urllib's default signature: without a name of our own
     every login mail and every conversion is refused before reaching the API."""
-    seen: list[urllib.request.Request] = []
+    seen: list[Any] = []
 
-    def fake_urlopen(request: urllib.request.Request, timeout: float) -> _Response:
+    def fake_open(request: Any, timeout: float) -> _Response:
         seen.append(request)
         return _Response()
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(http_module._OPENER, "open", fake_open)
     urllib_call("POST", "https://api.example.test/x", {"Content-Type": "application/json"}, b"{}")
     urllib_call("GET", "https://api.example.test/y", {"User-Agent": "altro/1"}, b"")
     assert seen[0].get_header("User-agent") == USER_AGENT
-    assert USER_AGENT.startswith("orbiters-hub/")
+    assert USER_AGENT.startswith("rebase-hub/")
     assert seen[1].get_header("User-agent") == "altro/1"
     assert seen[0].get_header("Content-type") == "application/json"
     # A GET with nothing to send carries no body at all: `data=b""` would make urllib
@@ -53,6 +56,101 @@ def test_an_http_error_is_a_status_not_an_exception(monkeypatch: pytest.MonkeyPa
     def refuse(request: Any, timeout: float) -> Any:
         raise urllib.error.HTTPError(request.full_url, 403, "Forbidden", {}, None)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    monkeypatch.setattr(http_module._OPENER, "open", refuse)
     status, _ = urllib_call("GET", "https://api.example.test/z", {}, b"")
     assert status == 403
+
+
+class _Redirecting(BaseHTTPRequestHandler):
+    """Answers `/lookup` with `code` (default 302) to `/altrove` on itself, and
+    anything else with a plain 200. A client that followed the redirect would re-send
+    whatever headers it carried, including a bearer, to wherever `Location` points."""
+
+    seen: list[tuple[str, str, str | None]] = []
+    code = 302
+
+    def do_GET(self) -> None:  # noqa: N802 - the name http.server dispatches on
+        _Redirecting.seen.append((self.command, self.path, self.headers.get("Authorization")))
+        if self.path == "/lookup":
+            self.send_response(_Redirecting.code)
+            self.send_header("Location", "/altrove")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        answer = b'{"ok": true}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(answer)))
+        self.end_headers()
+        self.wfile.write(answer)
+
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+        return
+
+
+@pytest.fixture
+def redirecting_server() -> Iterator[str]:
+    _Redirecting.seen = []
+    _Redirecting.code = 302
+    server = HTTPServer(("127.0.0.1", 0), _Redirecting)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize("code", [301, 302, 303, 307, 308])
+def test_a_redirect_is_not_followed_and_the_bearer_stays_where_it_was_sent(
+    redirecting_server: str, code: int
+) -> None:
+    """The registry read and the mail both carry a bearer no third party may see. Every
+    redirect status `HTTPRedirectHandler` knows must come back as that status, not send
+    the bearer on to whatever host `Location` names (REB-242): a fix that only covered
+    302 would still leak it on a 301 or a 308."""
+    _Redirecting.code = code
+    status, _ = urllib_call(
+        "GET", f"{redirecting_server}/lookup", {"Authorization": "Bearer secret"}, b""
+    )
+    assert status == code
+    # Exactly one request reached the server; nothing went to `/altrove`.
+    assert _Redirecting.seen == [("GET", "/lookup", "Bearer secret")]
+
+
+class _TooBig(BaseHTTPRequestHandler):
+    """Answers every request with a body well past the seam's cap."""
+
+    def do_GET(self) -> None:  # noqa: N802
+        payload = b"x" * (MAX_BODY_BYTES + 1000)
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+        return
+
+
+@pytest.fixture
+def oversized_server() -> Iterator[str]:
+    server = HTTPServer(("127.0.0.1", 0), _TooBig)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_the_body_is_capped_so_a_wrong_endpoint_cannot_choose_the_allocation(
+    oversized_server: str,
+) -> None:
+    """A wrong `REBASE_PIGRO_API_URL` or a compromised Resend must not decide how many
+    bytes this process reads into memory (REB-242). The cap is one byte past
+    `MAX_BODY_BYTES`, so the caller can tell "too long" from "exactly the cap"."""
+    status, body = urllib_call("GET", oversized_server, {}, b"")
+    assert status == 200
+    assert len(body) == MAX_BODY_BYTES + 1

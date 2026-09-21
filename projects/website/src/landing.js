@@ -14,6 +14,11 @@
  * script does not reach: landing.css hides a block only under `html.js`, which the
  * inline gate in the page's head sets, and shows everything again after three seconds
  * whatever happened here. Under reduced motion every block is marked at once.
+ *
+ * Carrying the campaign into the hub (ORB-166, ORB-167) moved to the shared `utm.js`
+ * in REB-247, so `/community` gets it too without loading this whole file: `start`
+ * below calls `window.__utm.carryUtm()`, guarded, the same way it guards the shared
+ * field and the shared typewriter.
  */
 ;(function () {
   function reveal() {
@@ -40,6 +45,7 @@
   }
 
   function start() {
+    if (window.__utm) window.__utm.carryUtm()
     reveal()
     var role = document.querySelector('h1 .role')
     if (role && window.__typewriter) window.__typewriter.mount(role)

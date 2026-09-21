@@ -1,8 +1,8 @@
 import { Upload } from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
+import { Input } from '@rebase/ui/input'
+import { Textarea } from '@rebase/ui/textarea'
+import { cn } from '@rebase/ui/cn'
 
 /** The controls a step renders: each one large, alone on its screen, focused on arrival. */
 
@@ -19,6 +19,8 @@ export function TextField({
   type?: string
   inputMode?: 'text' | 'email' | 'decimal' | 'url'
   'aria-label': string
+  'aria-describedby'?: string
+  'aria-invalid'?: boolean
 }) {
   const ref = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -46,6 +48,8 @@ export function LongTextField({
   autoFocus?: boolean
   placeholder?: string
   'aria-label': string
+  'aria-describedby'?: string
+  'aria-invalid'?: boolean
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
@@ -68,13 +72,22 @@ export function ChoiceField<V extends string>({
   value,
   onChange,
   options,
+  invalid,
+  describedBy,
 }: {
   value: V | ''
   onChange: (value: V) => void
   options: { value: V; label: string; hint?: string }[]
+  invalid?: boolean
+  describedBy?: string
 }) {
   return (
-    <div role="radiogroup" className="grid gap-3 sm:grid-cols-3">
+    <div
+      role="radiogroup"
+      aria-invalid={invalid}
+      aria-describedby={describedBy}
+      className="grid gap-3 sm:grid-cols-3"
+    >
       {options.map((option, index) => {
         const selected = value === option.value
         return (
@@ -110,10 +123,14 @@ export function LinksField({
   value,
   onChange,
   autoFocus,
+  invalid,
+  describedBy,
 }: {
   value: string[]
   onChange: (value: string[]) => void
   autoFocus?: boolean
+  invalid?: boolean
+  describedBy?: string
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
@@ -123,6 +140,8 @@ export function LinksField({
     <Textarea
       ref={ref}
       aria-label="Link aggiuntivi"
+      aria-invalid={invalid}
+      aria-describedby={describedBy}
       value={value.join('\n')}
       onChange={(event) => onChange(event.target.value.split('\n'))}
       rows={4}
@@ -139,11 +158,15 @@ export function FileField({
   onChange,
   accept,
   hint,
+  invalid,
+  describedBy,
 }: {
   value: File | null
   onChange: (file: File | null) => void
   accept: string
   hint: ReactNode
+  invalid?: boolean
+  describedBy?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   return (
@@ -172,6 +195,8 @@ export function FileField({
           accept={accept}
           className="sr-only"
           aria-label="CV"
+          aria-invalid={invalid}
+          aria-describedby={describedBy}
           onChange={(event) => onChange(event.target.files?.[0] ?? null)}
         />
       </label>
@@ -179,3 +204,4 @@ export function FileField({
     </div>
   )
 }
+

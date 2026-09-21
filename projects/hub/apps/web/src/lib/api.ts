@@ -8,6 +8,7 @@
  * right question rather than blame the whole form.
  */
 
+import { linkedinProfile } from './linkedin'
 import type { Utm } from './utm'
 
 export class ApiError extends Error {
@@ -78,15 +79,23 @@ export interface FreelancerApplication {
 
 /** Multipart, because the CV is a file. Empty optional fields are left out rather than
  *  sent as `""`, which the API would try to validate as a value. */
-export function applyAsFreelancer(data: FreelancerApplication, utm: Utm): Promise<{ ok: true }> {
+export function applyAsFreelancer(
+  data: FreelancerApplication,
+  utm: Utm,
+  distinctId: string | null = null,
+): Promise<{ ok: true }> {
   const form = new FormData()
+  // The browser's PostHog id, when the page is measured: the API sends the completion
+  // event itself (REB-215), and this is what puts it on the same person as the steps.
+  if (distinctId) form.set('distinct_id', distinctId)
   form.set('nome', data.nome)
   form.set('cognome', data.cognome)
   form.set('email', data.email)
   form.set('tariffa_giornaliera', data.tariffa_giornaliera)
   form.set('posizione', data.posizione)
   form.set('remoto', data.remoto)
-  if (data.linkedin_url.trim()) form.set('linkedin_url', data.linkedin_url.trim())
+  const linkedin = linkedinProfile(data.linkedin_url)
+  if (linkedin) form.set('linkedin_url', linkedin)
   for (const link of data.links) if (link.trim()) form.append('links', link.trim())
   for (const [key, value] of Object.entries(utm)) if (value) form.set(key, value)
   if (data.cv) form.set('cv', data.cv, data.cv.name)
@@ -95,7 +104,8 @@ export function applyAsFreelancer(data: FreelancerApplication, utm: Utm): Promis
 
 export interface CompanyRequest {
   nome_azienda: string
-  referente: string
+  referente_nome: string
+  referente_cognome: string
   email: string
   progetto: string
   periodo_da: string
@@ -103,11 +113,24 @@ export interface CompanyRequest {
   budget_giornaliero: string
 }
 
-export function requestPeople(data: CompanyRequest, utm: Utm): Promise<{ ok: true }> {
-  return request('/api/hub/companies', json({ ...data, utm: Object.keys(utm).length ? utm : null }))
+export function requestPeople(
+  data: CompanyRequest,
+  utm: Utm,
+  distinctId: string | null = null,
+): Promise<{ ok: true }> {
+  return request(
+    '/api/hub/companies',
+    json({
+      ...data,
+      utm: Object.keys(utm).length ? utm : null,
+      ...(distinctId ? { distinct_id: distinctId } : {}),
+    }),
+  )
 }
 
 // ---- the admin area -------------------------------------------------------------------
+
+export type Role = 'member' | 'admin'
 
 export interface Admin {
   id: string
@@ -117,15 +140,13 @@ export interface Admin {
   created_at: string
 }
 
-/** What the «Amministratori» form sends. The password travels here and nowhere else. */
-export interface AdminCreate {
+/** What `POST /admins/promote` sends: an email, and `nome`/`cognome` for an address
+ *  with no `users` row yet -- ignored, harmlessly, when one already exists. */
+export interface PromoteRequest {
   email: string
-  nome: string
-  password: string
+  nome?: string
+  cognome?: string
 }
-
-/** The same three fields when the pencil edits a row; an empty password means «keep it». */
-export type AdminUpdate = AdminCreate
 
 export interface Freelancer {
   id: string
@@ -133,19 +154,34 @@ export interface Freelancer {
   cognome: string
   email: string
   linkedin_url: string | null
-  cv_filename: string
-  cv_size: number
-  tariffa_giornaliera: string
-  posizione: string
-  remoto: Remoto
+  /** Null on a card an admin wrote from a signup, until the person adds them (ORB-155). */
+  cv_filename: string | null
+  cv_size: number | null
+  tariffa_giornaliera: string | null
+  posizione: string | null
+  remoto: Remoto | null
   links: string[]
   stato: 'nuovo' | 'contattato' | 'attivo' | 'scartato'
   note: string | null
+  /** The page of the site the person started from, `home` or `pigrocrm` (ORB-167). */
+  origine: string | null
   utm_source: string | null
   utm_campaign: string | null
   created_at: string
+  /** Who wrote the answers last: the person, through the wizard or the member area, or
+   *  an admin from research. */
+  compilata_da: 'persona' | 'admin'
+  /** CV, rate, position and remote preference all present. */
+  completa: boolean
   /** The thread, newest first. The detail carries it; the list leaves it empty. */
   commenti: Comment[]
+  /** How many times the person came in through the magic link (ORB-158). */
+  accessi: number
+  /** Where the lead came from (ORB-161): «form» when the address is also among the
+   *  signups («Iscrizioni»), «landing» otherwise. */
+  provenienza: 'form' | 'landing'
+  /** When they last did, null if never. */
+  ultimo_accesso: string | null
 }
 
 export interface Company {
@@ -159,6 +195,8 @@ export interface Company {
   budget_giornaliero: string
   stato: 'nuovo' | 'contattato' | 'in_corso' | 'chiuso'
   note: string | null
+  /** The page of the site the person started from, `home` or `pigrocrm` (ORB-167). */
+  origine: string | null
   utm_source: string | null
   created_at: string
   commenti: Comment[]
@@ -187,6 +225,42 @@ export interface PigroSpace {
   membro: { id: string; nome: string; cognome: string } | null
 }
 
+/** The guide's numbers for the admin area (ORB-156), as `GET /api/hub/perks/guida` answers. */
+export interface GuideStats {
+  totale: number
+  membri: number
+  membri_totali: number
+  ultimi_7_giorni: number
+  recenti: GuideDownload[]
+}
+
+export interface GuideDownload {
+  id: string
+  freelancer_id: string
+  nome: string
+  cognome: string
+  email: string
+  downloaded_at: string
+}
+
+/** The logins for the admin area (ORB-158), as `GET /api/hub/logins` answers. */
+export interface LoginStats {
+  totale: number
+  membri: number
+  membri_totali: number
+  ultimi_7_giorni: number
+  recenti: LoginRead[]
+}
+
+export interface LoginRead {
+  id: string
+  freelancer_id: string
+  nome: string
+  cognome: string
+  email: string
+  logged_at: string
+}
+
 export interface Signup {
   id: string
   email: string
@@ -195,15 +269,30 @@ export interface Signup {
   linkedin_url: string | null
   utm_source: string | null
   created_at: string
+  /** The card with the same address, if one exists (ORB-155). */
+  freelancer_id: string | null
+}
+
+/** A personal token of the admin, as `GET /api/hub/tokens` lists it (REB-213): never the value. */
+export interface AdminToken {
+  id: string
+  nome: string
+  prefix: string
+  created_at: string
+  last_used_at: string | null
+  revoked_at: string | null
+}
+
+/** The `POST` answer: the one place the value appears, shown once. */
+export interface CreatedToken extends AdminToken {
+  token: string
 }
 
 export const admin = {
-  login: (email: string, password: string) =>
-    request<Admin>('/api/hub/auth/login', json({ email, password })),
-  logout: () => request<void>('/api/hub/auth/logout', { method: 'POST' }),
-  me: () => request<Admin>('/api/hub/auth/me'),
+  /** Cards and, beside them, the leads: signups whose address has no card yet (ORB-163).
+   *  `stato: 'lead'` answers leads alone; another state answers cards alone. */
   freelancers: (stato?: string) =>
-    request<{ totale: number; items: Freelancer[] }>(
+    request<{ totale: number; items: Freelancer[]; totale_lead: number; lead: Signup[] }>(
       `/api/hub/freelancers?limit=500${stato ? `&stato=${encodeURIComponent(stato)}` : ''}`,
     ),
   freelancer: (id: string) => request<Freelancer>(`/api/hub/freelancers/${id}`),
@@ -229,15 +318,21 @@ export const admin = {
   /** PigroCRM's spaces, read by the hub's API with the token it holds: the browser
    *  never talks to the CRM (ORB-142). A 503 carries the sentence the page shows. */
   pigroSpaces: () => request<{ totale: number; items: PigroSpace[] }>('/api/hub/pigro/istanze'),
+  /** How the guide is doing: downloads, the members behind them, the latest (ORB-156). */
+  guideStats: () => request<GuideStats>('/api/hub/perks/guida'),
+  /** Who comes back in: logins, the members behind them, the latest (ORB-158). */
+  loginStats: () => request<LoginStats>('/api/hub/logins'),
   /** Who reads this area, oldest first, and one more of them (ORB-123). */
   admins: () => request<Admin[]>('/api/hub/admins'),
-  createAdmin: (data: AdminCreate) => request<Admin>('/api/hub/admins', json(data)),
-  /** PATCH with what the form holds; an empty password is left out, so the old one stays. */
-  updateAdmin: ({ password, ...rest }: AdminUpdate & { id: string }) =>
-    request<Admin>(`/api/hub/admins/${rest.id}`, {
-      ...json({ nome: rest.nome, email: rest.email, ...(password ? { password } : {}) }),
-      method: 'PATCH',
-    }),
+  /** Promotes whatever `users` row already answers to this address, or creates a bare
+   *  one from `nome`/`cognome` when none exists yet (REB-279, no password anywhere). */
+  promote: (data: PromoteRequest) => request<Admin>('/api/hub/admins/promote', json(data)),
+  /** Sets `role = 'member'`, fully reversible since nothing is deleted. */
+  demote: (id: string) => request<Admin>(`/api/hub/admins/${id}/demote`, { method: 'POST' }),
+  /** The admin's own tokens for agents, newest first, revoked ones included (REB-213). */
+  tokens: () => request<AdminToken[]>('/api/hub/tokens'),
+  createToken: (nome: string) => request<CreatedToken>('/api/hub/tokens', json({ nome })),
+  revokeToken: (id: string) => request<void>(`/api/hub/tokens/${id}`, { method: 'DELETE' }),
   comments: (kind: CommentKind, id: string) =>
     request<Comment[]>(`/api/hub/${kind}/${id}/comments`),
   /** The author is the session's, so the body is the text alone. */
@@ -245,23 +340,32 @@ export const admin = {
     request<Comment>(`/api/hub/${kind}/${id}/comments`, json({ testo })),
 }
 
-// ---- the member area ------------------------------------------------------------------
+// ---- whoever is signed in --------------------------------------------------------------
 
-/** The row as its owner reads it: what they gave, never the admin's fields. */
-export interface MemberProfile {
+/** Whoever `orbiters_user` resolves to, member or admin (REB-278/279, replacing
+ *  `MemberProfile`): a `users` row is not necessarily an applicant with a card any
+ *  more, so `ha_scheda` says whether one exists, and the seven card fields answer
+ *  blank -- `null`, `false`, `[]` -- when it does not, the shape a signed-in admin
+ *  with no card gets. */
+export interface Me {
   id: string
   nome: string
   cognome: string
   email: string
   linkedin_url: string | null
-  cv_filename: string
-  cv_size: number
-  tariffa_giornaliera: string
-  posizione: string
-  remoto: Remoto
-  links: string[]
+  role: Role
   created_at: string
   updated_at: string
+  ha_scheda: boolean
+  cv_filename: string | null
+  cv_size: number | null
+  tariffa_giornaliera: string | null
+  posizione: string | null
+  remoto: Remoto | null
+  links: string[]
+  /** CV, rate, position and remote preference all present. Always `false` without a
+   *  card (`ha_scheda`). */
+  completa: boolean
 }
 
 /** The seven answers a member may change. The email is not among them. */
@@ -278,10 +382,10 @@ export interface MemberUpdate {
 export const member = {
   /** 202 whether the address is known or not; the page says one thing in both cases. */
   requestLink: (email: string) => request<{ ok: true }>('/api/hub/auth/link', json({ email })),
-  enter: (token: string) => request<MemberProfile>('/api/hub/auth/enter', json({ token })),
-  me: () => request<MemberProfile>('/api/hub/me'),
+  enter: (token: string) => request<Me>('/api/hub/auth/enter', json({ token })),
+  me: () => request<Me>('/api/hub/me'),
   update: (data: MemberUpdate) =>
-    request<MemberProfile>('/api/hub/me', {
+    request<Me>('/api/hub/me', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -289,7 +393,7 @@ export const member = {
   replaceCv: (file: File) => {
     const form = new FormData()
     form.set('cv', file, file.name)
-    return request<MemberProfile>('/api/hub/me/cv', { method: 'PUT', body: form })
+    return request<Me>('/api/hub/me/cv', { method: 'PUT', body: form })
   },
   cvUrl: '/api/hub/me/cv',
   /** The guide, the community's second perk. A plain href rather than a fetch: the

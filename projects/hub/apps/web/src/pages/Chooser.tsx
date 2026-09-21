@@ -6,7 +6,7 @@ export function Chooser() {
   return (
     <div className="mx-auto max-w-2xl space-y-10">
       <div>
-        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Orbiters</p>
+        <p className="text-xs font-medium tracking-wide text-muted-foreground">rebase</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Chi sei?</h1>
         <p className="mt-2 text-muted-foreground">
           Due minuti, poche domande, una alla volta. Ti scriviamo noi.

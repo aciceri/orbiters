@@ -323,6 +323,114 @@ class InvoiceRepository:
             ).scalar_one()
         )
 
+    def list_emesse_in_periodo(self, da: date, a: date) -> list[Invoice]:
+        """Issued invoices whose own date falls in the window, oldest first: the rows the
+        weekly report lists under «Emesse questa settimana» (spec 2026-09-16 §3.1, §3.2).
+
+        Shares `_issued_filter()` with `count_emesse_in_periodo`, whose count this list's
+        length must always equal -- a report whose number and rows describe different
+        sets is exactly the defect `test_count_emesse_in_periodo_counts_the_same_set_revenue_sums`
+        already guards against for the count, and this list must not reopen it.
+        """
+        stmt = (
+            select(Invoice)
+            .where(*_issued_filter(), Invoice.data_emissione >= da, Invoice.data_emissione <= a)
+            .order_by(Invoice.data_emissione, Invoice.numero)
+        )
+        return list(self.session.execute(stmt).scalars())
+
+    def list_incassate_in_periodo(self, da: date, a: date) -> list[Invoice]:
+        """Issued, collected invoices whose `data_incasso` falls in the window, in payment
+        order: the rows behind «Incassate questa settimana» (spec 2026-09-16 §3.1, §3.2).
+
+        Attributed to `data_incasso`, not `data_emissione` -- an invoice issued weeks ago
+        and paid this week belongs here and not in `list_emesse_in_periodo`, which is the
+        whole reason the report carries the two sections separately.
+        """
+        stmt = (
+            select(Invoice)
+            .where(
+                *_issued_filter(),
+                Invoice.stato_pagamento == "incassato",
+                Invoice.data_incasso.is_not(None),
+                Invoice.data_incasso >= da,
+                Invoice.data_incasso <= a,
+            )
+            .order_by(Invoice.data_incasso)
+        )
+        return list(self.session.execute(stmt).scalars())
+
+    def list_scadute(self, oggi: date) -> list[Invoice]:
+        """Receivables due on or before `oggi`, worst first: the «scadute» half of §3.1's
+        «Da incassare» (spec 2026-09-16).
+
+        Not `SollecitiService.candidates`, which the weekly report used to read: that list
+        answers «which invoices may I legitimately chase», so it drops anything inside the
+        grace period, anything chased in the last few days and anything already at the
+        reminder ceiling. Those are properties of a reminder, not of a debt, and a report
+        that took them for the debt left out money that is owed today.
+
+        `oggi` is a parameter rather than a `today_local()` read here, unlike
+        `_overdue_predicate()` above: the report resolves the space's own settings and
+        therefore its own timezone, and a repository reading the platform's default would
+        answer a different day for exactly the installation whose zone differs.
+
+        `<=` and not `_overdue_predicate()`'s `<`, which is the second reason this is its
+        own predicate: an invoice due today is money the report names -- it prints «scade
+        oggi» -- while «scaduto» on the dashboard means strictly past its date, so on a
+        Monday with a debt due that day the list holds one row more than the «scaduto e
+        non incassato» signal counts, and a shared helper would have to pick one of the
+        two meanings for both.
+
+        Ascending `data_scadenza`: the oldest debt first, which is the order somebody works
+        the list in and the order `list_in_scadenza` beside it already answers in.
+        """
+        stmt = (
+            select(Invoice)
+            .where(
+                *_receivable_filter(),
+                Invoice.data_scadenza.is_not(None),
+                Invoice.data_scadenza <= oggi,
+            )
+            .order_by(Invoice.data_scadenza, Invoice.numero)
+        )
+        return list(self.session.execute(stmt).scalars())
+
+    def list_in_scadenza(self, da: date, a: date) -> list[Invoice]:
+        """Receivables due within the window, soonest first: the «in scadenza nei prossimi
+        sette giorni» half of §3.1's «Da incassare» section, once the caller passes that
+        window instead of the register's whole horizon.
+
+        `_receivable_filter()`, not `_overdue_predicate()`: a due date inside the window can
+        be in the future, which `_overdue_predicate()`'s `< today_local()` clause would
+        exclude. The already-overdue half of the same section comes from `sum_scaduto` and
+        `count_scadute_non_incassate` instead, which this method leaves untouched.
+        """
+        stmt = (
+            select(Invoice)
+            .where(
+                *_receivable_filter(),
+                Invoice.data_scadenza.is_not(None),
+                Invoice.data_scadenza >= da,
+                Invoice.data_scadenza <= a,
+            )
+            .order_by(Invoice.data_scadenza)
+        )
+        return list(self.session.execute(stmt).scalars())
+
+    def sum_emesse_in_periodo(self, da: date, a: date) -> Decimal:
+        """`Σ totale` over `list_emesse_in_periodo`'s own predicate: the total the weekly
+        report prints beside «Emesse questa settimana», and the same call `DigestService`
+        reuses unchanged for the running month and the one before it (spec 2026-09-16
+        §3.2), only with a different window.
+        """
+        total = self.session.execute(
+            select(func.coalesce(func.sum(Invoice.totale), 0)).where(
+                *_issued_filter(), Invoice.data_emissione >= da, Invoice.data_emissione <= a
+            )
+        ).scalar_one()
+        return round_money(Decimal(total))
+
     def count_deals_invoiced_not_won(self) -> int:
         """§6.2's second signal: how many deals have an issued invoice and an open stage.
 
@@ -431,6 +539,8 @@ class InvoiceRepository:
             stmt = stmt.where(Invoice.stato_pagamento == query.stato_pagamento)
         if query.origine_proforma_id:
             stmt = stmt.where(Invoice.origine_proforma_id == query.origine_proforma_id)
+        if query.escludi_consumate:
+            stmt = stmt.where(Invoice.stato != "consumata")
         if query.scadute:
             # The drill-through of §6.2's "scaduto e non incassato" card, sharing its
             # predicate literally rather than restating it -- see `_overdue_predicate`,

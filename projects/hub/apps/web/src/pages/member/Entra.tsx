@@ -1,8 +1,9 @@
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@rebase/ui/button'
 import { ApiError } from '@/lib/api'
-import { useEnter } from '@/lib/member'
+import { takeEntraToken } from '@/lib/entra-token'
+import { useEnter } from '@/lib/me'
 
 /** Where the mail's link lands. The token is posted from here, once, and never fetched
  *  by the link itself: a scanner that opens every link in a message does not run this
@@ -14,7 +15,14 @@ import { useEnter } from '@/lib/member'
  *  `onUnsubscribe` already dropped from the running mutation, so those callbacks never
  *  fire again. The promise `mutateAsync` returns does not depend on the observer. */
 export function Entra() {
-  const { t } = useSearch({ strict: false }) as { t?: string }
+  const { t: fromSearch } = useSearch({ strict: false }) as { t?: string }
+  // Lazy initialiser: computed once per mount, whatever else re-renders this
+  // component, so `takeEntraToken`'s one-shot read is not repeated. (React's Strict
+  // Mode calls a `useState` initialiser twice in development to check it is pure; the
+  // second call's result is discarded, so this stays a single effective read.) Falls
+  // back to the search param for whatever reaches this page without `main.tsx` having
+  // stripped the token first (REB-273), the story this file's own tests render.
+  const [t] = useState<string | undefined>(() => takeEntraToken() ?? fromSearch)
   const navigate = useNavigate()
   const { mutateAsync } = useEnter()
   const started = useRef(false)

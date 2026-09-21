@@ -1,6 +1,6 @@
 # website: what to know before changing it
 
-joinorbiters.com. Read `README.md` here first for what the pages are and how to run
+letsrebase.com. Read `README.md` here first for what the pages are and how to run
 them; this file is the part that is easy to get wrong.
 
 Tracker: the **Website** project in Linear, conventions in `docs/tracker.md` at the
@@ -10,16 +10,24 @@ doing.
 
 ## No framework, and that is the requirement
 
-No React, no Tailwind, no router, no CSS framework. Five HTML pages, five scripts,
-four stylesheets, and a build that takes about 300 milliseconds. This is the first
+No React, no Tailwind, no router, no CSS framework. Six HTML pages, six scripts,
+five stylesheets, and a build that takes about 300 milliseconds. This is the first
 thing a visitor loads and it must not drag an application bundle behind it. A dependency
 added here has to justify itself against that, and "the CRM already uses it" is not a
 justification: the CRM is behind a login and this is not.
 
+## A tracker enters through `consent.js` or not at all
+
+The ChatGPT Ads pixel and PostHog are both injected by `src/consent.js` after the
+visitor's yes; neither sits in a `<head>`, and `pixel.test.ts` fails the page that tries.
+PostHog's key and hosts are literals there because the file runs without a bundler, and
+the same test compares them with `shared/analytics`, the source every other surface
+imports. Change the key there first, then here.
+
 ## Colour, typeface and the mark come from `shared/brand`
 
 Never restate them. `src/palette-plugin.ts` reads the shared tokens out of
-`@orbiters/brand/palette.css` at build time and prepends them to the stylesheets; the
+`@rebase/brand/palette.css` at build time and prepends them to the stylesheets; the
 CRM consumes the same file through its Tailwind theme. A hex typed into a stylesheet
 here is the fork both mechanisms exist to prevent, and the plugin fails the build when
 the palette stops being extractable rather than shipping pages with no colour.
@@ -34,13 +42,15 @@ silently thinner site.
 after the landing page, `index.html`, which is PigroCRM's own page and shares its
 stylesheet with `/privacy` and `/termini`. The **project** was renamed from `landing` to
 `website` on 2026-09-09 because it is the whole site; the page inside it did not go
-anywhere. `src/orbiters.*` is the community page and stands apart.
+anywhere. `src/community.*` is the community page and stands apart; `/orbiters` is its
+name before REB-212 (2026-09-15), kept as a 301.
 
 ## What this project does not own
 
-`POST /api/orbiters/signups` is PigroCRM's, implemented in `projects/pigrocrm/apps/api`
-and reached on the same origin. The dev and preview servers proxy `/api` for that reason
-alone; `WEBSITE_API_URL` repoints it.
+`POST /api/community/signups` (`/api/orbiters/signups` before REB-212, still proxied) is
+the rebase hub's, implemented in `projects/hub/apps/api`, and reached on the same
+origin. The dev and preview servers proxy `/api` for that reason alone;
+`WEBSITE_API_URL` repoints it.
 
 Serving is owned here since 2026-09-09: this project builds its own image and runs its
 own container. What that means in practice is that the path map exists twice, in

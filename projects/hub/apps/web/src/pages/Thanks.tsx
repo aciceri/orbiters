@@ -4,6 +4,9 @@ import { Check } from 'lucide-react'
 export function Thanks() {
   const { chi } = useSearch({ strict: false }) as { chi?: 'freelance' | 'azienda' }
   const azienda = chi === 'azienda'
+  // The CV is optional in the wizard, so this page cannot promise we have one: it says
+  // what is true of everybody who gets here, and the line below sends them to the area
+  // where the CV can be added, which is where they would go for it anyway.
   return (
     <div className="mx-auto max-w-xl space-y-6 text-center">
       <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-foreground text-background">
@@ -15,13 +18,13 @@ export function Thanks() {
       <p className="text-muted-foreground">
         {azienda
           ? 'Abbiamo la tua richiesta. Ti scriviamo noi entro qualche giorno con le persone che possono fare al caso tuo.'
-          : 'Abbiamo il tuo profilo e il tuo CV. Ti scriviamo noi: appena c’è un progetto che ti somiglia, o anche solo per conoscerci.'}
+          : 'Abbiamo il tuo profilo. Ti scriviamo noi: appena c’è un progetto che ti somiglia, o anche solo per conoscerci.'}
       </p>
       <p className="text-sm text-muted-foreground">
         Nel frattempo, se lavori in proprio,{' '}
         <a
           className="underline underline-offset-2"
-          href="https://pigro.joinorbiters.com/app/registrati"
+          href="https://pigro.letsrebase.com/app/registrati"
         >
           PigroCRM è tuo, gratis
         </a>
@@ -29,7 +32,7 @@ export function Thanks() {
       </p>
       {!azienda && (
         <p className="text-sm text-muted-foreground">
-          Vuoi rileggere o cambiare quello che ci hai mandato?{' '}
+          Vuoi rileggere, cambiare o completare quello che ci hai mandato, CV compreso?{' '}
           <Link to="/accedi" className="underline underline-offset-2">
             Entra nella tua area
           </Link>

@@ -1,8 +1,8 @@
 /* The landing page's own stylesheet. It has no Tailwind, no framework and no
-   palette of its own: palette-plugin.ts prepends the fifteen shared tokens out of
-   src/styles/tokens.css, then landing/system.css, so the five colours and the font
+   palette of its own: palette-plugin.ts prepends the eight shared tokens out of
+   src/styles/tokens.css, then landing/system.css, so the seven colours and the font
    stack are literally the values the app renders, and the grid line, the tile and
-   the glyph are written once for this sheet and orbiters.css.
+   the glyph are written once for this sheet and community.css.
 
    Since Orbiters (2026-09-07) the whole product shares one visual system: a faint
    grid the page sits on, tiles painted on it, opaque boxes with hard edges and a
@@ -62,7 +62,11 @@ body {
     linear-gradient(to bottom, var(--landing-grid) 1px, transparent 1px);
   background-size: var(--landing-cell) var(--landing-cell);
   color: var(--landing-ink);
-  font-family: var(--font-sans);
+  /* 'Outfit Fallback' (system.css) sits between the real font and the stack
+     `--font-sans` ends in: metric-matched to Outfit, so the swap once it loads
+     reflows nothing under it (REB-267). Repeats 'Outfit' rather than forking
+     `--font-sans`'s own tail: harmless, the browser skips an already-tried name. */
+  font-family: 'Outfit', 'Outfit Fallback', var(--font-sans);
   font-weight: 300;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -110,7 +114,7 @@ code {
 
 /* The header and the footer sit on the field, so each control carries a sliver of
    the page's own ground behind it and stays readable over a dark tile: the same
-   move orbiters.css makes for its footer. A border is what turns that sliver into
+   move community.css makes for its footer. A border is what turns that sliver into
    a control instead of a hole punched through the tiles, and this tier carries no
    shadow, the same as the two hero doors below: a shadow reads as `.box`/`.card`,
    not as a link. `min-height` clears the 44px touch-target floor even at the
@@ -148,11 +152,11 @@ footer .quiet-link {
   text-decoration: none;
 }
 
-/* Plain inline flow otherwise (privacy.html and termini.html's two-link footers
-   carry no gap of their own), so consecutive links need their own breathing room;
-   the first stays flush with the content edge. On index.html's flex footer,
-   which already carries a flex `gap`, the DOM adjacency still matches and this
-   only adds a negligible amount on top. */
+/* Plain inline flow otherwise (termini.html's two-link footer and privacy.html's
+   own, three since REB-251, carry no gap of their own), so consecutive links need
+   their own breathing room; the first stays flush with the content edge. On
+   index.html's flex footer, which already carries a flex `gap`, the DOM adjacency
+   still matches and this only adds a negligible amount on top. */
 footer .quiet-link + .quiet-link {
   margin-inline-start: 0.4rem;
 }
@@ -547,6 +551,13 @@ a.avatar:hover {
   text-transform: uppercase;
   color: var(--landing-cta);
   margin-bottom: 1rem;
+}
+
+/* The wordmark is «rebase», lowercase even where the deck uppercases its kickers
+   (ORB-194, Ivan 2026-09-14). */
+.deck .kicker-brand {
+  text-transform: none;
+  letter-spacing: 0.02em;
 }
 
 .deck .kicker::before {

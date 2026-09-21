@@ -1,10 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Button } from '@rebase/ui/button'
+import { Input } from '@rebase/ui/input'
+import { Label } from '@rebase/ui/label'
 import { ApiError } from '@/lib/api'
-import { useRequestLink } from '@/lib/member'
+import { useRequestLink } from '@/lib/me'
 
 /** The way in: an address, a link by mail, no password. The page says the same thing
  *  whether the address is known or not, as the API does. */

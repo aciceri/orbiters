@@ -47,7 +47,14 @@ vi.mock('@tanstack/react-router', () => ({
   useRouterState: () => ({ location: { pathname: mockRoute.pathname } }),
   // The command palette the shell mounts navigates; nothing here asserts on where.
   useNavigate: () => vi.fn(),
+  // The connect-agent dialog the shell now mounts guards against navigating away with an
+  // unsaved token; nothing here exercises the guard itself.
+  useBlocker: vi.fn(),
 }))
+
+// The connect-agent dialog copies text via `sonner`'s toast; nothing here asserts on the
+// toast copy, only that clicking a copy button does not throw for want of a mock.
+vi.mock('@rebase/ui/sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
 const mockAuth = vi.hoisted(() => ({ ruolo: 'admin' as string }))
 vi.mock('@/lib/auth', () => ({
@@ -115,9 +122,11 @@ describe('AppShell', () => {
   it('shows the top-level entries and the group headers in Italian', () => {
     renderShell()
     const nav = sidebar()
-    for (const label of ['Home', 'Token']) {
+    for (const label of ['Home', 'Get started', 'Token']) {
       expect(nav.getByRole('link', { name: label })).toBeInTheDocument()
     }
+    // «Get started» right under Home (ORB-180), before the groups.
+    expect(nav.getAllByRole('link').slice(0, 2).map((l) => l.textContent)).toEqual(['Home', 'Get started'])
     for (const label of ['Vendite', 'Amministrazione', 'Impostazioni']) {
       expect(nav.getByRole('button', { name: label })).toBeInTheDocument()
     }
@@ -297,9 +306,10 @@ describe('AppShell', () => {
     const nav = sidebar()
     expect(nav.queryByRole('button', { name: 'Vendite' })).not.toBeInTheDocument()
     // The sub-items of the collapsible groups become icon links in the rail...
-    for (const label of ['Home', 'Clienti', 'Deal', 'Fatture', 'Ore', 'Token']) {
+    for (const label of ['Home', 'Get started', 'Clienti', 'Deal', 'Fatture', 'Ore', 'Token']) {
       expect(nav.getByRole('link', { name: label })).toBeInTheDocument()
     }
+    expect(nav.getAllByRole('link', { name: 'Get started' })).toHaveLength(1)
     // ...except the settings tabs, which are tabs of one page and collapse to one link.
     expect(nav.getByRole('link', { name: 'Impostazioni' })).toBeInTheDocument()
     expect(nav.queryByRole('link', { name: 'Campi' })).not.toBeInTheDocument()
@@ -357,11 +367,14 @@ describe('AppShell', () => {
     expect(within(screen.getByRole('main')).getByText('contenuto')).toBeInTheDocument()
   })
 
-  it('rounds the content panel to the 16 the spec draws, not to the 18 of --radius-2xl', () => {
-    // `lg:rounded-2xl` computed to 18px in the browser (10 × 1.8): the derived card
-    // radius, not the panel's own. Spec §4 says 16.
+  it('draws the content panel square, with its line and no radius', () => {
+    // It carried a literal 16px corner at the lg breakpoint until 2026-09-18, the one
+    // corner the old spec drew larger than the derived card radius. The application is
+    // squared now and the panel reads the shared tokens like everything else.
     renderShell(<p>contenuto</p>)
-    expect(screen.getByRole('main').parentElement!.className).toContain('lg:rounded-[16px]')
+    const panel = screen.getByRole('main').parentElement!.className
+    expect(panel).toContain('lg:border')
+    expect(panel).not.toMatch(/rounded/)
   })
 
   it('says the role in Italian under the name, not the stored enum', () => {
@@ -378,5 +391,70 @@ describe('AppShell', () => {
     renderShell()
     await userEvent.click(screen.getByRole('button', { name: 'Menu del profilo' }))
     expect(await screen.findByRole('menuitem', { name: /esci/i })).toBeInTheDocument()
+  })
+
+  /**
+   * The whole «Impostazioni» group is admin-only in the sidebar, and the profile tab is
+   * inside it -- so for a non-admin this menu entry is the only way to their own profile
+   * from inside the app, and the weekly report's opt-out link (spec 2026-09-16 §3.6) was
+   * the only way to it from outside. Checked for both non-admin roles, as «Token» is:
+   * "collaboratore" and "readonly" are two different guards.
+   *
+   * Queried as a link inside the open menu, not as a `menuitem`: the `Link` stand-in at
+   * the top of this file renders a plain anchor and drops the props Radix clones onto
+   * its child, the role among them. Scoping to the menu is what keeps this from finding
+   * the settings sub-item of the same name that an admin also has in the sidebar.
+   */
+  it.each(['admin', 'collaboratore', 'readonly'])(
+    'offers «Profilo» to a %s, linking to the profile tab',
+    async (ruolo) => {
+      mockAuth.ruolo = ruolo
+      renderShell()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Menu del profilo' }))
+
+      const menu = within(await screen.findByRole('menu'))
+      expect(menu.getByRole('link', { name: 'Profilo' })).toHaveAttribute(
+        'href',
+        '/app/impostazioni/profilo',
+      )
+    },
+  )
+
+  it('leaves «Impostazioni dello spazio» to an admin', async () => {
+    mockAuth.ruolo = 'collaboratore'
+    renderShell()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Menu del profilo' }))
+
+    const menu = within(await screen.findByRole('menu'))
+    expect(menu.getByRole('link', { name: 'Profilo' })).toBeInTheDocument()
+    expect(menu.queryByRole('link', { name: 'Impostazioni dello spazio' })).not.toBeInTheDocument()
+  })
+
+  /**
+   * «Collega un agente» is not gated by role, for the same reason Token is not: the token
+   * it mints belongs to whoever creates it, not to the space.
+   */
+  it.each(['admin', 'collaboratore', 'readonly'])('offers «Collega un agente» to a %s, above the profile', (ruolo) => {
+    mockAuth.ruolo = ruolo
+    renderShell()
+    const button = screen.getByRole('button', { name: 'Collega un agente' })
+    expect(button).toBeInTheDocument()
+    // Above the profile block: the button comes before the profile trigger in the DOM.
+    const profile = screen.getByRole('button', { name: 'Menu del profilo' })
+    expect(button.compareDocumentPosition(profile) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('opens the connect dialog from the sidebar', async () => {
+    renderShell()
+    await userEvent.click(screen.getByRole('button', { name: 'Collega un agente' }))
+    expect(screen.getByRole('dialog', { name: 'Collega un agente' })).toBeInTheDocument()
+  })
+
+  it('keeps the entry in the rail as an icon with its name', async () => {
+    renderShell()
+    await userEvent.click(screen.getByRole('button', { name: 'Comprimi il menu' }))
+    expect(screen.getByRole('button', { name: 'Collega un agente' })).toBeInTheDocument()
   })
 })

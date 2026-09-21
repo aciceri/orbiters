@@ -1,11 +1,12 @@
 import functools
 import inspect
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from typing import Any, cast
 from uuid import UUID
 
 from mcp.server import MCPServer
+from mcp.server.context import ServerMiddleware
 from mcp.server.mcpserver import Context
 from mcp.server.mcpserver.exceptions import ResourceError, ResourceNotFoundError
 
@@ -13,6 +14,7 @@ from pigrocrm.core.config import Settings, get_settings, gmail_configured
 from pigrocrm.core.errors import DomainError
 from pigrocrm.core.fields.schemas import EntityType
 from pigrocrm.core.storage import DocumentStorage, storage_from_settings
+from pigrocrm_mcp import analytics
 from pigrocrm_mcp.context import ActorProvider, McpContext, SessionProvider
 from pigrocrm_mcp.errors import to_agent_message, to_domain_error
 from pigrocrm_mcp.resources import entities
@@ -56,6 +58,9 @@ def build_server(
     actor_provider: ActorProvider,
     storage: DocumentStorage | None = None,
     settings: Settings | None = None,
+    *,
+    middleware: Sequence[ServerMiddleware[Any]] | None = None,
+    space: str | None = None,
 ) -> MCPServer:
     # One session per logical call (Task 4A-1, residual R1). `_guard` opens the
     # scope via `session_provider.scope()` when the provider exposes one --
@@ -100,6 +105,9 @@ def build_server(
     # (see `ScopedSessionProvider.new_session`); a plain callable provider does not have
     # it, and `storage_from_settings` then refuses that configuration by name rather
     # than closing the session a tool call is running in.
+    #
+    # `middleware` is the SDK's context-tier hook, used by the HTTP transport to bind
+    # the request's actor (`actor_scope.py`); stdio passes none.
     context = McpContext(
         session_provider,
         actor_provider,
@@ -108,7 +116,7 @@ def build_server(
             resolved_settings, session_factory=getattr(session_provider, "new_session", None)
         ),
     )
-    mcp = MCPServer("PigroCRM", instructions=INSTRUCTIONS)
+    mcp = MCPServer("PigroCRM", instructions=INSTRUCTIONS, middleware=middleware)
 
     # Resolved once, here, rather than per call (Task 4A-1). `ScopedSessionProvider`
     # (production, via `__main__.py`) exposes `.scope()`; a plain callable provider
@@ -310,13 +318,13 @@ def build_server(
         # The other half of the switch. `Actor.full_access` (stamped in
         # `PatService.resolve`) decides whether the *service* says yes; this decides
         # whether there is a door at all. Both read the same setting, and
-        # `test_mcp_invoice_ban.py` fails if they disagree -- sixteen registered tools
-        # that all refuse, or sixteen capabilities with no way to reach them, are both
-        # worse than either honest state.
+        # `test_mcp_invoice_ban.py` fails if they disagree -- registered tools that all
+        # refuse, or capabilities with no way to reach them, are both worse than either
+        # honest state.
         #
         # Conditional for the same reason Gmail is: not registered means not listed and
-        # not callable. An installation that has not opted in does not get sixteen tools
-        # answering «vietato», it gets a surface on which they do not exist. The module
+        # not callable. An installation that has not opted in does not get tools answering
+        # «vietato», it gets a surface on which they do not exist. The module
         # reads the settings once more for the one tool that also needs a mailbox
         # (`discover_gmail_correspondents`), which is absent without Google exactly as
         # `tools/gmail.py` is.
@@ -340,4 +348,10 @@ def build_server(
             from pigrocrm_mcp.tools import drive_privileged as drive_privileged_tools
 
             drive_privileged_tools.register(mcp, context, _guard, resolved_settings)
+    # Last, once every tool and resource is registered, so the wrapper sees them all.
+    # A no-op without `PIGROCRM_POSTHOG_KEY` (see `analytics.py`), which is what every
+    # test and every self-hosted installation without a key gets. `space` is the slug
+    # the HTTP transport builds this server for; the stdio process leaves it `None` and
+    # the group is the installation's own.
+    analytics.install(mcp, resolved_settings, actor_provider, space=space)
     return mcp

@@ -1,17 +1,20 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 
-const PAGES = ['/', '/pigrocrm', '/privacy', '/termini', '/orbiters', '/pitch'] as const
+const PAGES = ['/', '/pigrocrm', '/privacy', '/termini', '/community', '/pitch'] as const
 const BUDGET_BYTES = 40 * 1024
-// The one host these pages may ever talk to besides their own: the ChatGPT Ads
-// measurement SDK. "May ever" is the whole subtlety -- `consent.js` injects it only
-// after a visitor has said yes, so with no decision stored no page requests it at all,
-// which is what the first test below checks and the last one checks the other half of.
+// The hosts these pages may ever talk to besides their own: the ChatGPT Ads measurement
+// SDK and PostHog. "May ever" is the whole subtlety -- `consent.js` injects both only
+// after a visitor has said yes, so with no decision stored no page requests them at all,
+// which is what the first test below checks and the later ones check the other half of.
 const PIXEL_HOST = 'bzrcdn.openai.com'
+const POSTHOG_HOSTS = ['eu.i.posthog.com', 'eu-assets.i.posthog.com']
+const TRACKER_HOSTS = [PIXEL_HOST, ...POSTHOG_HOSTS]
 const CONSENT_KEY = 'orbiters.consent'
-// The two pages that carry the notice, and therefore the two that can end up with the
-// pixel. `src/pixel.test.ts` owns which pages declare it.
-const MEASURED_PATHS = ['/', '/pigrocrm', '/orbiters'] as const
+// The three pages that carry the notice, and therefore the three that can end up with
+// a tracker. `src/pixel.test.ts` owns which pages declare it.
+const MEASURED_PATHS = ['/', '/pigrocrm', '/community'] as const
+const towards = (hosts: readonly string[]) => (url: string) => hosts.includes(new URL(url).host)
 
 test.describe('every page of the site', () => {
   for (const path of PAGES) {
@@ -41,7 +44,7 @@ test.describe('every page of the site', () => {
     })
   }
 
-  test('loads cold under 40 KB, excluding the shared woff2 and the pixel SDK', async ({
+  test('loads cold under 40 KB, excluding the shared woff2 and the tracker SDKs', async ({
     page,
   }) => {
     let bytes = 0
@@ -51,8 +54,8 @@ test.describe('every page of the site', () => {
       // not been answered), so this branch only matters if somebody runs this test with
       // consent already stored. Either way the weight of a third party's file is not
       // ours to control, and counting it would make this budget a report on OpenAI's
-      // build rather than on our page.
-      if (new URL(request.url()).host === PIXEL_HOST) return
+      // or PostHog's build rather than on our page.
+      if (towards(TRACKER_HOSTS)(request.url())) return
       const sizes = await request.sizes()
       bytes += sizes.responseBodySize + sizes.responseHeadersSize
     })
@@ -61,7 +64,7 @@ test.describe('every page of the site', () => {
   })
 
   for (const path of MEASURED_PATHS) {
-    test(`${path} shows the notice, and loads the pixel only once it is accepted`, async ({
+    test(`${path} shows the notice, and loads the trackers only once it is accepted`, async ({
       page,
     }) => {
       const requested: string[] = []
@@ -71,21 +74,30 @@ test.describe('every page of the site', () => {
 
       const notice = page.locator('.consent')
       await expect(notice).toBeVisible()
-      // Nothing has been fetched from OpenAI while the question is still open.
-      expect(requested.filter((url) => new URL(url).host === PIXEL_HOST)).toEqual([])
+      // Nothing has been fetched from OpenAI or PostHog while the question is still open.
+      expect(requested.filter(towards(TRACKER_HOSTS))).toEqual([])
       // And both answers are one click away, which is what makes it a consent notice.
       await expect(notice.getByRole('button', { name: 'No' })).toBeVisible()
 
       await notice.getByRole('button', { name: 'Va bene' }).click()
       await expect(notice).toBeHidden()
-      // The request really does leave now -- the SDK's host is unreachable from CI, so
-      // what is asserted is the attempt, not a 200.
+      // The pixel's request really does leave now -- its host is unreachable from CI,
+      // so what is asserted is the attempt, not a 200. PostHog's does not, and must
+      // not: `consent.js` keeps it silent on localhost precisely so this suite never
+      // writes a visitor into the project production reports to. That the loader runs
+      // on a real host is `consent.test.ts`'s job, on the site's own URL.
       await expect
-        .poll(() => requested.filter((url) => new URL(url).host === PIXEL_HOST).length)
+        .poll(() => requested.filter(towards([PIXEL_HOST])).length)
         .toBeGreaterThan(0)
+      // A short fixed wait, not `networkidle`: the pixel's request is towards a host CI
+      // cannot reach, and a firewall that drops rather than refuses would keep the
+      // network busy until the test's own timeout.
+      await page.waitForTimeout(1000)
+      expect(requested.filter(towards(POSTHOG_HOSTS))).toEqual([])
+      expect(await page.evaluate(() => 'posthog' in window)).toBe(false)
     })
 
-    test(`${path} asks nothing of OpenAI after a refusal, and does not ask again`, async ({
+    test(`${path} asks nothing of OpenAI or PostHog after a refusal, and does not ask again`, async ({
       page,
     }) => {
       const requested: string[] = []
@@ -98,10 +110,32 @@ test.describe('every page of the site', () => {
       // A notice that comes back until it gets the answer it wants is a dark pattern
       // with a delay.
       await expect(page.locator('.consent')).toHaveCount(0)
-      expect(requested.filter((url) => new URL(url).host === PIXEL_HOST)).toEqual([])
+      expect(requested.filter(towards(TRACKER_HOSTS))).toEqual([])
       expect(await page.evaluate((key) => localStorage.getItem(key), CONSENT_KEY)).toBe('denied')
     })
   }
+
+  test('/privacy withdraws consent, so a page that showed the notice shows it again', async ({
+    page,
+  }) => {
+    // Refusing costs one click already (the test above); withdrawing a stored yes has
+    // to as well (GDPR art. 7(3)). /privacy carries no tracker of its own and does not
+    // load consent.js, so this drives the link privacy.html wires by hand against the
+    // same storage key.
+    await page.goto('/')
+    await page.locator('.consent').getByRole('button', { name: 'Va bene' }).click()
+    await expect
+      .poll(() => page.evaluate((key) => localStorage.getItem(key), CONSENT_KEY))
+      .toBe('granted')
+
+    await page.goto('/privacy')
+    await page.getByRole('link', { name: 'Ritira il consenso' }).first().click()
+    await page.waitForLoadState('networkidle')
+    expect(await page.evaluate((key) => localStorage.getItem(key), CONSENT_KEY)).toBeNull()
+
+    await page.goto('/')
+    await expect(page.locator('.consent')).toBeVisible()
+  })
 
   test('shares exactly one font file with the app, from its own origin', async ({ page }) => {
     const fonts: string[] = []
@@ -122,7 +156,7 @@ test.describe('every page of the site', () => {
       test.use({ viewport: { width, height: 844 }, deviceScaleFactor: 1 })
 
       test('sits on its grid', async ({ page }) => {
-        await page.goto('/orbiters', { waitUntil: 'networkidle' })
+        await page.goto('/community', { waitUntil: 'networkidle' })
         const m = await page.evaluate(() => {
           const cell = parseFloat(
             getComputedStyle(document.documentElement).getPropertyValue('--orb-cell'),
@@ -249,7 +283,7 @@ test.describe('every page of the site', () => {
       test('sits under the box on the community page, and the box stays centred above it', async ({
         page,
       }) => {
-        await page.goto('/orbiters', { waitUntil: 'networkidle' })
+        await page.goto('/community', { waitUntil: 'networkidle' })
         const shown = await page.evaluate(geometry)
         expect(shown.noticeTop).not.toBeNull()
         // The room is what the notice covers, its height plus its distance from the edge,
@@ -303,7 +337,7 @@ test.describe('every page of the site', () => {
   // while it does. The layout half is checked for every word at every width without
   // waiting for the cycle to reach it; the motion half once per page.
   const ROLES = ['Developer', 'AI engineer', 'CTO', 'Fractional CTO', 'Tech lead', 'Freelance']
-  const TITLED = ['/', '/orbiters'] as const
+  const TITLED = ['/', '/community'] as const
 
   /** The tops that must not move, and the title's height, with `word` in the role. */
   function titledLayout(word: string | null) {
@@ -424,29 +458,129 @@ test.describe('every page of the site', () => {
 // page at `/` and a 200 for any path at all, so a test written against `/` checked a
 // page production never serves there. These pin the served map to deploy/nginx.conf's:
 // the same file under each name, the same redirect, and a 404 where nginx has one.
+// The campaign follows the visitor into the hub (ORB-166): every door on the landing
+// carries the six UTM keys the page was opened with, and nothing else does.
+test.describe('a visitor from a campaign', () => {
+  for (const path of ['/', '/pigrocrm']) {
+    test(`${path} carries the UTM keys onto every link into the hub`, async ({ page }) => {
+      await page.goto(`${path}?utm_source=linkedin&utm_campaign=orbita&utm_id=42&gclid=nope`, { waitUntil: 'networkidle' })
+      const doors = await page.locator('a[href^="/hub/"]').evaluateAll((links) => links.map((a) => a.getAttribute('href')))
+      expect(doors.length).toBeGreaterThan(0)
+      for (const href of doors) {
+        const url = new URL(href!, 'https://letsrebase.com')
+        expect(url.searchParams.get('utm_source'), href!).toBe('linkedin')
+        expect(url.searchParams.get('utm_campaign'), href!).toBe('orbita')
+        expect(url.searchParams.get('utm_id'), href!).toBe('42')
+        expect(url.searchParams.has('gclid'), href!).toBe(false)
+      }
+      // The guide's door keeps its own key beside the campaign's, and every door says
+      // which page it is on (ORB-167).
+      expect(doors.some((href) => href!.startsWith('/hub/freelance?perk=guida&utm_source=linkedin'))).toBe(true)
+      for (const href of doors) expect(new URL(href!, 'https://letsrebase.com').searchParams.get('da'), href!).toBe(path === '/' ? 'home' : 'pigrocrm')
+      expect(await page.evaluate(() => sessionStorage.getItem('orbiters.da'))).toBe(path === '/' ? 'home' : 'pigrocrm')
+      // The rest of the page's links are what the markup says.
+      expect(await page.locator('a[href="/privacy"]').count()).toBeGreaterThan(0)
+      expect(await page.evaluate(() => sessionStorage.getItem('orbiters.utm'))).toBe('utm_source=linkedin&utm_campaign=orbita&utm_id=42')
+    })
+  }
+
+  // REB-247: community.html has a door into the hub too (`/hub/aziende`, "Raccontacelo"),
+  // but community.js never called carryUtm, so a campaign landing on `/community`
+  // reached that click with nothing. One door rather than the several the loop above
+  // checks, and no guide door to look for, so its own test rather than a third path in
+  // that loop.
+  test('/community carries the UTM keys onto its one door into the hub too', async ({ page }) => {
+    await page.goto('/community?utm_source=linkedin&utm_campaign=orbita&utm_id=42&gclid=nope', { waitUntil: 'networkidle' })
+    const doors = await page.locator('a[href^="/hub/"]').evaluateAll((links) => links.map((a) => a.getAttribute('href')))
+    expect(doors.length).toBeGreaterThan(0)
+    for (const href of doors) {
+      const url = new URL(href!, 'https://letsrebase.com')
+      expect(url.searchParams.get('utm_source'), href!).toBe('linkedin')
+      expect(url.searchParams.get('utm_campaign'), href!).toBe('orbita')
+      expect(url.searchParams.get('utm_id'), href!).toBe('42')
+      expect(url.searchParams.has('gclid'), href!).toBe(false)
+      expect(url.searchParams.get('da'), href!).toBe('community')
+    }
+    expect(await page.evaluate(() => sessionStorage.getItem('orbiters.da'))).toBe('community')
+    expect(await page.evaluate(() => sessionStorage.getItem('orbiters.utm'))).toBe('utm_source=linkedin&utm_campaign=orbita&utm_id=42')
+  })
+
+  test('/ without a campaign carries no UTM, only the page', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' })
+    const doors = await page.locator('a[href^="/hub/"]').evaluateAll((links) => links.map((a) => a.getAttribute('href')))
+    expect(doors.filter((href) => href!.includes('utm_'))).toEqual([])
+    for (const href of doors) expect(new URL(href!, 'https://letsrebase.com').searchParams.get('da'), href!).toBe('home')
+    expect(await page.evaluate(() => sessionStorage.getItem('orbiters.utm'))).toBeNull()
+    expect(await page.evaluate(() => sessionStorage.getItem('orbiters.da'))).toBe('home')
+  })
+})
+
 test.describe('the path map, as production serves it', () => {
   const source = (name: string) =>
     readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf-8').match(/<title>([^<]+)<\/title>/)?.[1]
 
-  test('/ is the landing and /orbiters is the community page (ORB-145)', async ({ page }) => {
+  test('/ is the landing and /community is the community page (ORB-145)', async ({ page }) => {
     await page.goto('/')
     await expect(page).toHaveTitle(source('index.html')!)
-    await page.goto('/orbiters')
-    await expect(page).toHaveTitle(source('orbiters.html')!)
+    await page.goto('/community')
+    await expect(page).toHaveTitle(source('community.html')!)
   })
 
-  test('/pigrocrm, where the landing lived until 2026-09-11, is a 301 to /', async ({ page }) => {
-    const response = await page.request.get('/pigrocrm', { maxRedirects: 0 })
+  test('/orbiters redirects to /community, its name before REB-212', async ({ request }) => {
+    const response = await request.get('/orbiters', { maxRedirects: 0 })
     expect(response.status()).toBe(301)
-    expect(response.headers()['location']).toBe('/')
+    expect(response.headers()['location']).toBe('/community')
   })
 
-  for (const path of ['/nonexistent', '/pigrocrm/', '/index.html', '/orbiters.html']) {
+  test('/pigrocrm is the CRM\'s own page again (ORB-159)', async ({ page }) => {
+    await page.goto('/pigrocrm')
+    await expect(page).toHaveTitle(source('pigrocrm.html')!)
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Il CRM che lavora')
+  })
+
+  for (const path of ['/nonexistent', '/pigrocrm/', '/index.html', '/community.html']) {
     test(`${path} is a 404, not the landing by fallback`, async ({ page }) => {
       const response = await page.goto(path)
       expect(response?.status()).toBe(404)
     })
   }
+
+  // The image every head points at (ORB-112). A unit test can read the file off disk
+  // and the nginx block out of its config; only a server answers whether the two meet,
+  // and the same `location /assets/` block serves this card and the hashed bundles.
+  test('the share card is served from /assets, as a PNG', async ({ request }) => {
+    const response = await request.get('/assets/share-card-2.png')
+    expect(response.status()).toBe(200)
+    expect(response.headers()['content-type']).toBe('image/png')
+  })
+
+  // path-map-plugin.ts's writeBundle hook only runs at the end of a real `vite
+  // build`, but the preview server's own middleware answers /robots.txt with the same
+  // generated content from memory regardless of what landed on disk (REB-109), so an
+  // HTTP request here proves nothing about the build. Reading the file this
+  // webServer's own `pnpm build` produced is the only way to prove the hook ran.
+  test('robots.txt is served, and the build actually wrote it', async ({ request }) => {
+    const response = await request.get('/robots.txt')
+    expect(response.status()).toBe(200)
+    expect(response.headers()['content-type']).toBe('text/plain; charset=utf-8')
+    const built = readFileSync(new URL('../dist/robots.txt', import.meta.url), 'utf-8')
+    expect(built).toContain('Sitemap: https://letsrebase.com/sitemap.xml')
+  })
+
+  // Same reasoning as robots.txt above: the preview middleware would answer this from
+  // memory even if the build never wrote it, so the file this webServer's own build
+  // produced is what actually proves the writeBundle hook ran (REB-110).
+  test('sitemap.xml is served, lists the indexable pages, and the build actually wrote it', async ({ request }) => {
+    const response = await request.get('/sitemap.xml')
+    expect(response.status()).toBe(200)
+    expect(response.headers()['content-type']).toBe('text/xml; charset=utf-8')
+    const built = readFileSync(new URL('../dist/sitemap.xml', import.meta.url), 'utf-8')
+    for (const path of ['/', '/pigrocrm', '/community', '/privacy', '/termini']) {
+      expect(built).toContain(`<loc>https://letsrebase.com${path}</loc>`)
+    }
+    // /pitch is noindex and stays out of the sitemap, the point of REB-110.
+    expect(built).not.toContain('<loc>https://letsrebase.com/pitch</loc>')
+  })
 })
 
 // The two policy pages are the two whose text column carries long unbreakable strings:

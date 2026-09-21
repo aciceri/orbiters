@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { Button } from '@rebase/ui/button'
+import { cn } from '@rebase/ui/cn'
 
 /**
  * The «riga filtri» of the design spec (§4): the chips on the left, the search box and
@@ -42,8 +42,10 @@ export function FilterRow({ children, className }: { children: ReactNode; classN
  * break them. The pressed look is driven from the same attribute (`aria-pressed:`) for
  * the same reason: one source of truth for "this filter is applied".
  *
- * Ink-filled when on, a 12% line on white when off. No new colour: `--foreground` is
- * Prussian Blue and `--background` is Paper (styles/tokens.css).
+ * Ink-filled when on, the outline button's own 1px ink line when off. No new colour:
+ * `--foreground` is Prussian Blue and `--background` is Paper, both from
+ * `@rebase/ui/tokens.css`. The 12% tint this comment described was deleted with the old
+ * token layer (REB-299): a line is the ink itself now.
  */
 export function FilterChip({
   pressed,

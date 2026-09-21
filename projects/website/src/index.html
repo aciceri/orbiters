@@ -3,19 +3,39 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Orbiters — freelance, ma non da soli. Con PigroCRM gratis</title>
+    <title>rebase — freelance, ma non da soli. Con PigroCRM gratis</title>
     <meta
       name="description"
-      content="Orbiters mette insieme developer, AI engineer, CTO e fractional CTO con aziende che hanno un progetto vero da fare. Entri con il tuo CV e la tua tariffa, ti proponiamo progetti che ti somigliano, e PigroCRM è gratis per chi è dentro."
+      content="rebase mette insieme developer, AI engineer, CTO e fractional CTO con aziende che hanno un progetto vero da fare. Entri con il tuo CV e la tua tariffa, ti proponiamo progetti che ti somigliano, e PigroCRM è gratis per chi è dentro."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Orbiters — freelance, ma non da soli" />
+    <meta property="og:title" content="rebase — freelance, ma non da soli" />
     <meta
       property="og:description"
       content="La community di chi fa software in proprio, costruita da chi lo fa: progetti da aziende vere, persone che ci sono passate, strumenti per fatturare e farsi pagare. PigroCRM gratis per chi entra."
     />
     <meta property="og:locale" content="it_IT" />
-    <link rel="icon" type="image/svg+xml" href="./orbiters-logo.svg" />
+    <link rel="canonical" href="https://letsrebase.com/" />
+    <meta property="og:url" content="https://letsrebase.com/" />
+    <!-- What a link to this page shares with: one card for the whole site, drawn by
+      scripts/share-card.js and served from /assets, the only path besides the six pages
+      that nginx answers. Absolute, because a crawler resolves it against nothing, and
+      numbered, because the platforms cache a card per URL (ORB-112). -->
+    <meta property="og:site_name" content="rebase" />
+    <meta property="og:image" content="https://letsrebase.com/assets/share-card-2.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Il marchio rebase, quattro tessere su fondo blu, con il claim «freelance, ma non da soli»"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:image:alt"
+      content="Il marchio rebase, quattro tessere su fondo blu, con il claim «freelance, ma non da soli»"
+    />
+    <link rel="icon" type="image/svg+xml" href="./rebase-logo.svg" />
     <link rel="stylesheet" href="./landing.css" />
     <!-- The reveal gate (ORB-145): landing.css hides `[data-reveal]` only under
       `html.js`, so a page whose script never runs shows everything, and the timer is
@@ -25,14 +45,42 @@
       document.documentElement.classList.add('js')
       setTimeout(function () { document.documentElement.classList.add('reveal-all') }, 3000)
     </script>
-    <!-- The cookie notice, and with it the ChatGPT Ads measurement pixel: consent.js
-      shows the notice and injects the SDK only once somebody has said yes, so before a
-      decision this page asks nothing of anyone. Here and on orbiters.html, the two
-      pages an ad can land on; privacy.html and termini.html have no pixel and so
-      nothing to ask about. The pixel id and the SDK URL live in that one file rather
-      than in two heads, and the Conversions API key appears in no page at all: it is in
-      the server's .env, used only by the API. -->
+    <!-- The cookie notice, and with it the two trackers, the ChatGPT Ads measurement
+      pixel and PostHog: consent.js shows the notice and injects both SDKs only once
+      somebody has said yes, so before a decision this page asks nothing of anyone. Here,
+      on pigrocrm.html and on community.html, the three pages an ad can land on;
+      privacy.html and termini.html have no tracker and so nothing to ask about. The
+      pixel id, the PostHog key and the SDK URLs live in that one file rather than in
+      three heads, and the Conversions API key appears in no page at all: it is in the
+      server's .env, used only by the API. -->
     <script type="module" src="./consent.js"></script>
+    <!-- REB-113: WebSite and Organization structured data, on this page only, the one
+      a search result attaches to. Every value already appears elsewhere on the site:
+      privacy.html and termini.html name the legal entity, its VAT number and its
+      contact address; og:image above already names the share card this points at as
+      a logo. No FAQPage, no Product, no Review: nothing here that is not true anywhere
+      else on the site. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "name": "rebase",
+            "url": "https://letsrebase.com/"
+          },
+          {
+            "@type": "Organization",
+            "name": "rebase",
+            "legalName": "Humancraft di Ivan Sala",
+            "url": "https://letsrebase.com/",
+            "logo": "https://letsrebase.com/assets/share-card-2.png",
+            "vatID": "14518240966",
+            "email": "ivansala@humancraft.tech"
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <!-- The same field as the community page on `/`: fixed behind the whole page, drifting
@@ -40,7 +88,7 @@
     <canvas id="field" aria-hidden="true"></canvas>
 
     <header class="wrap top">
-      <a class="brand" href="/"><span class="glyph" aria-hidden="true"></span>Orbiters</a>
+      <a class="brand" href="/"><span class="glyph" aria-hidden="true"></span>rebase</a>
       <a class="quiet-link" href="/app/">Accedi</a>
     </header>
 
@@ -48,7 +96,7 @@
       <section class="hero">
         <div class="wrap">
           <div class="box">
-            <p class="kicker">Orbiters</p>
+            <p class="kicker kicker-brand">rebase</p>
             <h1 class="measure-tight"><span class="sr-only">Developer, AI engineer, CTO,</span><span aria-hidden="true"><span class="role" data-roles="Developer|AI engineer|CTO|Fractional CTO|Tech lead|Freelance">Developer</span>,</span><br />ma non da soli.</h1>
             <p class="lead measure">La community di chi fa software in proprio in Italia.</p>
             <p class="actions">
@@ -87,7 +135,7 @@
               <span class="step-number" aria-hidden="true">02</span>
               <h3>Ti proponiamo un progetto</h3>
               <p>
-                Quando un'azienda ci racconta cosa le serve, guardiamo chi in Orbiters ha già fatto
+                Quando un'azienda ci racconta cosa le serve, guardiamo chi in rebase ha già fatto
                 cose simili e glielo diciamo. Tu decidi se ti interessa.
               </p>
             </li>
@@ -131,8 +179,7 @@
               <h3>Strumenti</h3>
               <p>
                 Le cose che ci siamo costruiti perché ci servivano: fatturare senza sbagliare, tenere
-                in ordine clienti e progetti, farsi pagare in tempo. Le trovi già dentro, a partire
-                da PigroCRM.
+                in ordine clienti e progetti, farsi pagare in tempo. Sono i perk che trovi più sotto.
               </p>
             </article>
           </div>
@@ -150,7 +197,7 @@
         <div class="wrap section">
           <p class="kicker" id="worked-with" data-reveal>Hanno lavorato con noi</p>
           <h2 class="statement" data-reveal style="--d: 0.1s">
-            Chi è già <span class="accent">in orbita.</span>
+            Chi c<span class="accent">'è già.</span>
           </h2>
           <div class="grid-2 voices">
             <figure class="testimonial" data-reveal style="--d: 0.25s">
@@ -193,65 +240,57 @@
         </div>
       </section>
 
-      <section class="band" aria-labelledby="perk">
+      <!-- The perks read as a set (REB-68): each entry gets a name, PigroCRM and the
+        guide today, in a `.grid-3` of `.card`s that takes a third without a restructure.
+        The CRM's own expanded block follows, right below, since it is the largest of
+        them; its kicker no longer claims it is the only perk. The guide's own band is
+        absorbed here (it used to compete with the CRM's section for the same "second
+        perk" framing) and its entry points at the real download, `/hub/freelance?perk=guida`,
+        since the PDF sits behind the member session (REB-70). -->
+      <section class="band" aria-labelledby="perks">
         <div class="wrap section">
-          <p class="kicker" id="perk" data-reveal>PigroCRM, il perk</p>
-          <div class="box" data-reveal style="--d: 0.15s">
-            <h2 class="measure-tight">Il CRM che lavora <span class="accent">al posto tuo.</span></h2>
-            <p class="lead measure">
-              L'abbiamo fatto per noi: developer e CTO freelance in Italia, spesso in forfettario,
-              con pochi clienti da tenere stretti e troppe cose da ricordare. Poi ci è sembrato
-              giusto darlo a chi entra.
-            </p>
-            <ul class="tiles measure">
-              <li>Clienti, contatti e trattative in un posto solo, con i campi che servono a te.</li>
-              <li>Offerte e contratti in PDF dai tuoi template, già con i tuoi dati fiscali.</li>
-              <li>Fatture e ore lavorate, con lo stato di ognuna sempre sotto gli occhi.</li>
-              <li>Le email con un cliente sulla sua scheda, senza aprire Gmail.</li>
-              <li>
-                Un assistente AI che fa il lavoro noioso: registra le ore, prepara le offerte, ti
-                riassume la settimana.
-              </li>
-              <li>Uno spazio tutto tuo, con un database separato, su pigro.joinorbiters.com/il-tuo-nome.</li>
-            </ul>
-            <p class="lead measure">
-              <strong>Gratis per chi è in community.</strong> Nessun piano, nessuna carta, nessuna
-              sorpresa dopo.
-            </p>
-            <p class="fine measure">
-              Sei già dei nostri?
-              <a class="quiet-link" href="https://pigro.joinorbiters.com/app/registrati"
-                >Crea il tuo spazio PigroCRM</a
-              >. Preferisci averlo sul tuo server? È open source e self-hosted quando vuoi:
-              <a class="quiet-link" href="https://github.com/joinorbiters/orbiters/blob/main/projects/pigrocrm/README.md#deploy"
-                >le istruzioni sono su GitHub</a
-              >.
-            </p>
+          <p class="kicker" id="perks" data-reveal>I perk</p>
+          <h2 class="statement" data-reveal style="--d: 0.1s">
+            Il CRM, <span class="accent">e non solo.</span>
+          </h2>
+          <div class="grid-3">
+            <article class="card" data-reveal style="--d: 0.25s">
+              <span class="swatch" style="background-color: var(--landing-gold)" aria-hidden="true"></span>
+              <h3>PigroCRM</h3>
+              <p>
+                Il CRM che ci siamo costruiti per fatturare, seguire i clienti e farci pagare senza
+                perdere pezzi. Il più grande dei perk, e lo trovi qui sotto.
+              </p>
+            </article>
+            <article class="card" data-reveal style="--d: 0.4s">
+              <span class="swatch" style="background-color: var(--landing-cta)" aria-hidden="true"></span>
+              <h3>La guida</h3>
+              <p>
+                «I primi passi da freelance»: come dirti in una frase, come arrivare a un
+                numero e difenderlo, cosa scrivere prima di iniziare, e le richieste che
+                arrivano a tutti. Si legge in venti minuti, è gratis come PigroCRM e la
+                scarichi dalla tua area appena sei dentro.
+                <a class="quiet-link" href="/hub/freelance?perk=guida">Entra e scaricala</a>.
+              </p>
+            </article>
           </div>
         </div>
       </section>
 
-      <!-- The second perk. It is announced here and downloaded in the hub: the file is
-        behind the member session (`GET /api/hub/me/guida`), so this section links to the
-        wizard and never to a PDF. Deliberately a section of its own rather than a fourth
-        line inside the CRM's: ORB-68 is the card that makes the perks read as a set with
-        the CRM as the largest of them, and it should absorb this block when it lands.
-        No size or page count in this copy on purpose, since the file lives in another
-        project and a number here would have nothing holding it true. -->
-      <section class="band dark centred" aria-labelledby="guida">
+      <section class="band dark centred" aria-labelledby="pigrocrm-perk">
         <div class="wrap section">
-          <p class="kicker" id="guida" data-reveal>La guida, il secondo perk</p>
-          <h2 class="statement" data-reveal style="--d: 0.1s">I primi passi <span class="accent">da freelance.</span></h2>
+          <p class="kicker" id="pigrocrm-perk" data-reveal>PigroCRM</p>
+          <h2 class="statement" data-reveal style="--d: 0.1s">Il CRM che lavora <span class="accent">al posto tuo.</span></h2>
           <p class="lead measure" data-reveal style="--d: 0.25s">
-            La parte che nessuno ti spiega prima della prima fattura: come dirti in una frase,
-            come arrivare a un numero e difenderlo, cosa scrivere prima di iniziare, e le
-            richieste che arrivano a tutti. Si legge in venti minuti.
+            L'abbiamo fatto per noi, developer e CTO freelance in Italia, spesso in forfettario:
+            clienti, offerte, fatture e pagamenti in un posto solo, con un assistente AI che fa il
+            lavoro noioso per te.
           </p>
           <p class="actions" data-reveal style="--d: 0.4s">
-            <a class="cta" href="/hub/freelance">Entra e scaricala</a>
+            <a class="cta" href="/pigrocrm">Scopri PigroCRM</a>
           </p>
           <p class="fine measure" data-reveal style="--d: 0.5s">
-            PDF, la scarichi dalla tua area appena sei dentro. Gratis, come PigroCRM.
+            Gratis per chi è in community. Open source, self-hosted quando vuoi.
           </p>
         </div>
       </section>
@@ -259,7 +298,7 @@
       <section class="band" aria-labelledby="orbita">
         <div class="wrap section">
           <div class="box" data-reveal>
-            <h2 class="measure-tight" id="orbita">Pronto a entrare <span class="accent">in orbita?</span></h2>
+            <h2 class="measure-tight" id="orbita">Pronto a fare <span class="accent">rebase?</span></h2>
             <p class="actions">
               <a class="cta" href="/hub/freelance">Entra come talento</a>
               <a class="cta secondary" href="/hub/aziende">Ho un progetto</a>
@@ -275,7 +314,7 @@
 
       <footer class="wrap rule" style="padding-block: 2rem">
         <p class="fine" style="display: flex; gap: 1.5rem; flex-wrap: wrap">
-          <a class="quiet-link" href="/">Orbiters</a>
+          <a class="quiet-link" href="/">rebase</a>
           <a class="quiet-link" href="/privacy">Privacy</a>
           <a class="quiet-link" href="/termini">Termini</a>
           <a class="quiet-link" href="https://humancraft.tech/">Humancraft</a>
@@ -284,6 +323,7 @@
       </footer>
     </main>
 
+    <script type="module" src="./utm.js"></script>
     <script type="module" src="./typewriter.js"></script>
     <script type="module" src="./field.js"></script>
     <script type="module" src="./landing.js"></script>

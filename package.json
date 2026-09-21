@@ -1,5 +1,5 @@
 {
-  "name": "orbiters",
+  "name": "rebase",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.6.0",

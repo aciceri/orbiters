@@ -36,6 +36,27 @@ def _snapshot(user: User) -> dict[str, object]:
     return {name: getattr(user, name) for name in _AUDITED_FIELDS}
 
 
+UNVERIFIED_IDENTITY = (
+    "prima conferma il tuo indirizzo: entra dal link che ti abbiamo mandato per email"
+)
+
+
+def require_verified_identity(session: Session, actor: Actor, action: str) -> None:
+    """An account that never had a password and never used a link by mail is an address
+    somebody typed (spec 2026-09-12 §6.4): it may work in its space for the length of an
+    access token, and nothing more durable than that. Minting a personal token or
+    creating a user would outlive the revocation the first link performs, so both wait
+    for the address to be proven. The system and every account with a password or a
+    verified address pass."""
+    if actor.id is None:
+        return
+    user = UserRepository(session).get(actor.id)
+    if user is None:
+        return
+    if user.password_hash is None and user.email_verificata_il is None:
+        raise ValidationFailed("user", "email", UNVERIFIED_IDENTITY, expected=action)
+
+
 class UserService:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -44,7 +65,19 @@ class UserService:
 
     def create(self, data: UserCreate, actor: Actor) -> UserRead:
         actor.require_admin("create_user")
-        if len(data.password) < MIN_PASSWORD_LENGTH:
+        require_verified_identity(self.session, actor, "create_user")
+        if data.password is None:
+            # A user with no password enters with a link by mail (spec 2026-09-12 §6.2).
+            # Only the provisioning of a space may create one: an admin adding a
+            # colleague still hands them a password, as before.
+            if actor.type != "system":
+                raise ValidationFailed(
+                    "user",
+                    "password",
+                    "obbligatoria",
+                    expected=f">= {MIN_PASSWORD_LENGTH} caratteri",
+                )
+        elif len(data.password) < MIN_PASSWORD_LENGTH:
             raise ValidationFailed(
                 "user",
                 "password",
@@ -56,7 +89,7 @@ class UserService:
 
         user = User(
             email=data.email,
-            password_hash=hash_password(data.password),
+            password_hash=hash_password(data.password) if data.password is not None else None,
             nome=data.nome,
             ruolo=data.ruolo,
             attivo=True,
@@ -117,6 +150,39 @@ class UserService:
         self.session.commit()
         return UserRead.model_validate(user)
 
+    def update_own_digest(self, actor: Actor, value: bool) -> UserRead:
+        """No `actor.require_admin` here, deliberately -- `update` above gates every
+        write on it, but whether the weekly digest reaches a person is not an
+        administrator's decision about them, it is theirs. Spec 2026-09-16 §3.6: the
+        mail's own opt-out link must work for whoever received the mail, not only for
+        an admin of the space, which is also why this takes `actor` rather than a
+        `user_id` -- there is no parameter through which it could touch anyone else's
+        row.
+
+        Recorded on the same timeline `update` writes to, with the same "updated"
+        kind, but a payload of the flag alone -- unlike `update`'s own entry, this
+        carries no email: nothing else about whose row this is needs repeating on a
+        timeline the owner already knows is theirs.
+
+        A value that is already the one stored writes nothing at all. The switch is a
+        control a person clicks twice to see what it does, and every browser that
+        re-sends the form it just sent would otherwise fill a timeline with entries
+        recording that nothing changed -- `update` above draws the same line with its
+        `delta`, and this is that line for a single field. The commit stays outside the
+        guard: it costs nothing when there is nothing to write and it releases the read
+        transaction `repo.get` opened.
+        """
+        if actor.id is None:
+            raise NotFound("user", "anonimo")
+        user = self.repo.get(actor.id)
+        if user is None:
+            raise NotFound("user", actor.id)
+        if user.digest_settimanale != value:
+            user.digest_settimanale = value
+            self.activities.record(ENTITY, user.id, "updated", actor, {"digest_settimanale": value})
+        self.session.commit()
+        return UserRead.model_validate(user)
+
     def reset_password(self, email: str, password: str, actor: Actor) -> UserRead:
         """A new password for an existing account, set by an admin -- in practice by the
         operator at the server's terminal (`pigrocrm resetpassword`), since the product has
@@ -147,10 +213,12 @@ class UserService:
 
     def authenticate(self, email: str, password: str) -> UserRead:
         user = self.repo.get_by_email(email)
-        # Compare against a precomputed constant hash when the user is missing, so both
-        # paths cost exactly one verify and timing does not reveal which emails exist.
-        reference = user.password_hash if user else dummy_hash()
+        # Compare against a precomputed constant hash when the user is missing or has
+        # never had a password (a link-by-mail account, spec 2026-09-12 §6.2), so every
+        # path costs exactly one verify and timing does not reveal which case it was.
+        stored = user.password_hash if user is not None else None
+        reference = stored if stored is not None else dummy_hash()
         ok = verify_password(password, reference)
-        if user is None or not ok or not user.attivo:
+        if user is None or stored is None or not ok or not user.attivo:
             raise ValidationFailed("user", "credentials", INVALID_CREDENTIALS)
         return UserRead.model_validate(user)

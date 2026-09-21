@@ -1,9 +1,13 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SettingsLayout } from './SettingsLayout'
 
 const mockAuth = vi.hoisted(() => ({ isAdmin: true }))
 vi.mock('@/lib/auth', () => ({ useIsAdmin: () => mockAuth.isAdmin }))
+
+// Defaults to the admin suite's usual page; the two REB-221 tests below point this at
+// `/app/impostazioni/profilo` instead, the one path a non-admin may also reach.
+const mockLocation = vi.hoisted(() => ({ pathname: '/app/impostazioni/campi' }))
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
@@ -15,11 +19,15 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
       </a>
     ),
     Outlet: () => <div data-testid="outlet-content" />,
-    useRouterState: () => ({ location: { pathname: '/app/impostazioni/campi' } }),
+    useRouterState: () => ({ location: { pathname: mockLocation.pathname } }),
   }
 })
 
 describe('SettingsLayout (the /app/impostazioni route guard)', () => {
+  beforeEach(() => {
+    mockLocation.pathname = '/app/impostazioni/campi'
+  })
+
   it('opens with its title as the page heading, from PageHeader', () => {
     // The shell has had no top bar since the 2026-09-08 revision, so the page's own
     // `<h1>` is the only thing naming the screen.
@@ -34,6 +42,7 @@ describe('SettingsLayout (the /app/impostazioni route guard)', () => {
     expect(screen.getByRole('tab', { name: 'Campi' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Pipeline' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Utenti' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Profilo' })).toBeInTheDocument()
     expect(screen.getByTestId('outlet-content')).toBeInTheDocument()
   })
 
@@ -109,5 +118,31 @@ describe('SettingsLayout (the /app/impostazioni route guard)', () => {
     mockAuth.isAdmin = false
     render(<SettingsLayout />)
     expect(screen.queryByText(/token/i)).not.toBeInTheDocument()
+  })
+
+  /**
+   * REB-221's second round: the weekly digest's own opt-out link (spec 2026-09-16
+   * §3.6) sends a non-admin recipient to `/app/impostazioni/profilo`, so this one
+   * path must not hit the wall above. `queryByText('Accesso riservato')` absent is
+   * as load-bearing as `outlet-content` present: a fix that rendered both would
+   * still look broken to whoever followed the link.
+   */
+  it('lets a non-admin reach the profilo tab, and no other', () => {
+    mockAuth.isAdmin = false
+    mockLocation.pathname = '/app/impostazioni/profilo'
+    render(<SettingsLayout />)
+    expect(screen.queryByText('Accesso riservato')).not.toBeInTheDocument()
+    expect(screen.getByTestId('outlet-content')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Profilo' })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Utenti' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Campi' })).not.toBeInTheDocument()
+  })
+
+  it('still refuses a non-admin who tries any other settings path', () => {
+    mockAuth.isAdmin = false
+    mockLocation.pathname = '/app/impostazioni/utenti'
+    render(<SettingsLayout />)
+    expect(screen.getByText('Accesso riservato')).toBeInTheDocument()
+    expect(screen.queryByTestId('outlet-content')).not.toBeInTheDocument()
   })
 })

@@ -1,11 +1,11 @@
-# AGENTS.md — working on the Orbiters hub
+# AGENTS.md — working on the rebase hub
 
 The root [`AGENTS.md`](../../AGENTS.md) covers the monorepo. This file is only about
 this project.
 
 ## What it is
 
-Orbiters, the freelance community, as a product of its own: the signup list the
+rebase, the freelance community, as a product of its own: the signup list the
 community site collects, the freelancer profiles and the company requests the hub's
 wizards will collect, and the admin area that reads them. Its design record is
 `docs/superpowers/specs/`, English, one document per step; read the 2026-09-09 spec
@@ -15,19 +15,19 @@ with a magic link by mail (`/hub/accedi`, `/hub/io`): spec
 
 ## The one rule
 
-**Nothing here imports PigroCRM, and PigroCRM imports nothing from here.** Orbiters was
+**Nothing here imports PigroCRM, and PigroCRM imports nothing from here.** The hub was
 split out of the CRM on 2026-09-09 precisely so the two can change independently: its
-own settings (`ORBITERS_*`), its own Postgres, its own Alembic history, its own API and
+own settings (`REBASE_*`), its own Postgres, its own Alembic history, its own API and
 MCP server. `ruff.toml` bans the three `pigrocrm*` module roots in every package. Two
 products that need to agree on something agree through `shared/`.
 
 ## Layout
 
 ```
-packages/core/   orbiters_core: models, migrations, services, the ad conversion, the perk files
-apps/api/        orbiters_api: FastAPI, one process, its own database
-apps/mcp/        orbiters_mcp: stdio, the same services in process
-apps/web/        pnpm package `hub`: the SPA at joinorbiters.com/hub/ (wizards, the member area, admin)
+packages/core/   rebase_core: models, migrations, services, the ad conversion, the perk files
+apps/api/        rebase_api: FastAPI, one process, its own database
+apps/mcp/        rebase_mcp: the same services over stdio or Streamable HTTP, for an admin with a token
+apps/web/        pnpm package `hub`: the SPA at letsrebase.com/hub/ (wizards, the member area, admin)
 content/         the prose a perk is made of, reviewed as prose
 tools/           the one script that turns that prose into a file a member downloads
 ```
@@ -35,17 +35,39 @@ tools/           the one script that turns that prose into a file a member downl
 `packages/core` may import neither adapter, and neither adapter may import the other:
 each directory's `ruff.toml` says so.
 
+**The UI comes from `@rebase/ui`, and this application writes no primitive at all.**
+The seven hand-written ones it used to carry were deleted when the package took over
+(REB-300), so `apps/web/src/components/` holds only what is genuinely the hub's
+(`BrandMark`, `Shell`) and everything else is imported from the package.
+`src/styles/tokens.css` is the entry file that fixes the import order, plus the one
+thing that is really local: the `.site` scope, where the chooser, the two wizards and
+the thanks page keep the landing's own 2px line, 8px step and 7% grid, the step by
+repointing `--shadow-app-*` and the line and the grid in that same block. There is no `components.json` here: a new primitive is generated in
+`shared/ui` (`pnpm --filter @rebase/ui exec shadcn add <name>`).
+
+## The MCP server is an admin's, by token
+
+Since REB-213 every transport resolves a personal token (`rebase_core.admin_tokens`,
+minted from «Agenti» or with `rebase createtoken`) to the admin behind it before a tool
+runs, and `build_server` takes a callable answering who that is: the admin signs what the
+tools write. Over HTTP the `mcp` compose service serves `rebase_mcp.http:app` on 8088
+(preview 8089, `REBASE_MCP_PORT`), and the host vhost proxies `/api/hub/mcp` there; it
+is a process of its own because `apps/api` may not import `apps/mcp`. Over stdio the token
+is `REBASE_MCP_TOKEN`. Design record:
+`docs/superpowers/specs/2026-09-15-mcp-for-admins-design.md`.
+
 ## The guide is a generated file, committed, and easy to leave stale
 
 `content/guida-primi-passi-freelance.md` is typeset by `tools/build_guide_pdf.py`, with
-pandoc and Typst, into `packages/core/src/orbiters_core/perks/`, and the result is
+pandoc and Typst, into `packages/core/src/rebase_core/perks/`, and the result is
 **committed**. It is the one build output in git here, and the script's docstring says
 why: the alternative puts those two binaries plus fontTools inside `Dockerfile.api` for
 one document.
 
-It is served by `GET /api/hub/me/guida`, which depends on `MemberDep` and nothing else,
-so the perk of being in the community is that the route answers at all. There is no
-public URL for the file, and the website links to the wizard instead (ORB-70).
+It is served by `GET /api/hub/me/guida`, which depends on `MeDep` and nothing else, so
+the perk of being signed in is that the route answers at all (`MemberDep` until
+REB-278 unified member and admin sign-in). There is no public URL for the file, and
+the website links to the wizard instead (ORB-70).
 
 What that costs is a file that can fall behind its sources, so after editing the
 Markdown, the template, the palette or the typeface run
@@ -64,12 +86,20 @@ From the repository root:
 ```
 uv sync --frozen
 uv run pytest -q projects/hub/packages/core/tests projects/hub/apps/api/tests projects/hub/apps/mcp/tests
-uv run --env-file projects/hub/.env uvicorn orbiters_api.main:app --port 8010
+uv run --env-file projects/hub/.env uvicorn rebase_api.main:app --port 8010
 ```
 
 The tests bring a `testcontainers` Postgres to `head` with this package's migrations,
 never with `create_all`: a table the model declares and the migration forgets fails
 here rather than on the server.
+
+**A migration that renames or drops a table is also a change outside this repository.**
+Six of these tables are read by PostHog's warehouse as `posthog_ro`, and a `GRANT`
+follows a rename while a sync does not: `member_logins` became `logins` in migration
+0012 and PostHog paused that sync nine days later, in an email.
+`packages/core/tests/test_warehouse_contract.py` now fails on the pull request instead,
+and names what to do in PostHog; the runbook is `docs/adding-a-project.md` § 7 and the
+order of operations is the `posthog-analytics` skill.
 
 **Its `vite preview` serves under `/hub/`, not `/`.** The web app is built with
 `base: '/hub/'`, so the preview's root path 404s and the wizard pages are at `/hub/`,
@@ -92,30 +122,32 @@ that database conditional in the same way until the copy is confirmed.
 Through CI only, as every project here (`docs/adding-a-project.md` §7): preview on a
 push to `main` that touched the hub, production on a tag `hub-v<semver>`, both by
 `.github/workflows/deploy-hub.yml` calling `_deploy-compose.yml`. The production compose
-project is `orbiters`, the name the stack first went up under; the preview's is
-`orbiters-preview`. Pass `-p` to every `docker compose` you ever run against either by
-hand, or compose names a second stack after the directory.
+project is `rebase`; the preview's is `rebase-preview`. Both were `orbiters` and
+`orbiters-preview` until 2026-09-15, and each moves the day its environment is
+migrated: the stack stopped, `/srv/<project>-data` moved, the database and role
+renamed with `ALTER`. Pass `-p` to every `docker compose` you ever run against either
+by hand, or compose names a second stack after the directory.
 
 Each environment's `.env` is `${DEPLOY_PATH}/.env`, the root of that environment's
 checkout and two levels above the compose file: the deploy passes
 `--env-file "${DEPLOY_PATH}/.env"`, never rsyncs a `.env`, and reads nothing beside
-the compose file. It holds the `ORBITERS_*` and `POSTGRES_*` values and is never in the
-repository. `ORBITERS_DATA_DIR` has no default in the compose file, so a `.env` that
+the compose file. It holds the `REBASE_*` and `POSTGRES_*` values and is never in the
+repository. `REBASE_DATA_DIR` has no default in the compose file, so a `.env` that
 forgets it fails the stack instead of mounting an empty directory.
 
 Ports, loopback only, from the table in `docs/adding-a-project.md` §7: production api
 8084, web 8085, Postgres 55435; preview 8086, 8087, 55436. The public paths are `/hub/`
 (web) and `/api/hub/` + `/api/orbiters/signups` (api), proxied to production by the host
-vhost that lives in `projects/website/deploy/joinorbiters.conf`; nothing proxies the
+vhost that lives in `projects/website/deploy/letsrebase.conf`; nothing proxies the
 preview, which is reached on the host only. The member area's mail needs
-`ORBITERS_RESEND_API_KEY` and `ORBITERS_MAIL_FROM` in the host `.env`; without the key
+`REBASE_RESEND_API_KEY` and `REBASE_MAIL_FROM` in the host `.env`; without the key
 `/hub/accedi` answers 503 with a sentence. A preview stack that gets a key must also set
-`ORBITERS_HUB_URL` to its own address, or every link it mints points at production.
+`REBASE_HUB_URL` to its own address, or every link it mints points at production.
 
 «Istanze Pigro» in the admin area (ORB-142) reads PigroCRM's registry of spaces through
-the CRM's API, never its database: `ORBITERS_PIGRO_API_URL` (the CRM's public origin,
-also where each space is linked) and `ORBITERS_PIGRO_REGISTRY_TOKEN`, which must equal
+the CRM's API, never its database: `REBASE_PIGRO_API_URL` (the CRM's public origin,
+also where each space is linked) and `REBASE_PIGRO_REGISTRY_TOKEN`, which must equal
 the `PIGROCRM_REGISTRY_TOKEN` in the CRM's own host `.env`. One value, set by hand in
 both files, generated once; without it the page answers 503 with a sentence and the CRM
-side does not even have the route. The call goes through `orbiters_core.http`, the seam
+side does not even have the route. The call goes through `rebase_core.http`, the seam
 the mail uses, so the tests hand a fake and never reach a CRM.

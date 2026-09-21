@@ -6,12 +6,12 @@
 // document into a comment and left an unclosed raw span behind it.)
 //
 // Nothing here spells a colour. The five values arrive as variables, read out of
-// `@orbiters/brand/palette.css` at build time by the same rule `palette-plugin.ts`
+// `@rebase/brand/palette.css` at build time by the same rule `palette-plugin.ts`
 // follows for the stylesheets: one source for the palette, and a hex typed into a
 // template is the fork both mechanisms exist to prevent.
 //
 // What the page borrows from `landing.css`, so a reader who has just left
-// joinorbiters.com recognises where the file came from: the paper ground with the
+// letsrebase.com recognises where the file came from: the paper ground with the
 // grid drawn on it (`body`, 16px cell, the line at 7% ink), the opaque white panel
 // with a 2px edge and a stepped shadow the colour of the ink and no blur (`.box`), the
 // saturated square before a section title (`.kicker::before`), body text at weight 300
@@ -62,7 +62,7 @@
     grid(
       columns: (1fr, auto),
       align: (left + horizon, right + horizon),
-      [Orbiters · $shorttitle$],
+      [rebase · $shorttitle$],
       [#counter(page).display()],
     )
   },
@@ -118,7 +118,7 @@
   set page(footer: none)
   v(1fr)
   cover[
-    #text(size: 11pt, weight: 500, fill: ink)[#mark() #h(4pt) Orbiters]
+    #text(size: 11pt, weight: 500, fill: ink)[#mark() #h(4pt) rebase]
     #v(14pt)
     #text(size: 24pt, weight: 500, fill: ink)[
       #set par(leading: 0.28em)

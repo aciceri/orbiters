@@ -1,33 +1,47 @@
 """The admin area over HTTP: a cookie in, the lists out, and nothing without it."""
 
 import json
+import re
 from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from orbiters_api.deps import get_http_call
-from orbiters_core.admin import AdminService
-from orbiters_core.config import Settings, get_settings
+from rebase_api.deps import get_http_call, get_sender
+from rebase_core.config import Settings, get_settings
+from rebase_core.http import MAX_BODY_BYTES
+from rebase_core.mail import RecordingSender
+from rebase_core.models import Freelancer, User
+from rebase_core.perks import PerkService
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
-CREDENTIALS = {"email": "ivan@orbiters.it", "password": "una-password-lunga"}
+ADMIN_EMAIL = "ivan@rebase.it"
 
 
 @pytest.fixture
-def admin(api_engine: Engine, api_session: Session) -> Iterator[None]:
-    settings = Settings(
-        database_url=api_engine.url.render_as_string(hide_password=False),
-        _env_file=None,  # type: ignore[call-arg]
-    )
-    AdminService(api_session, settings).create(
-        CREDENTIALS["email"], "Ivan", CREDENTIALS["password"]
-    )
+def sender(client: TestClient) -> Iterator[RecordingSender]:
+    recording = RecordingSender()
+    client.app.dependency_overrides[get_sender] = lambda: recording  # type: ignore[attr-defined]
+    yield recording
+
+
+@pytest.fixture
+def admin(api_session: Session) -> Iterator[None]:
+    api_session.add(User(email=ADMIN_EMAIL, nome="Ivan", cognome="", role="admin"))
+    api_session.commit()
     yield
     api_session.rollback()
-    for table in ("comments", "admin_sessions", "admin_users", "freelancers", "companies"):
+    for table in (
+        "guide_downloads",
+        "comments",
+        "admin_tokens",
+        "freelancers",
+        "companies",
+        "users",
+        "signups",
+    ):
         api_session.execute(text(f"DELETE FROM {table}"))
     api_session.commit()
 
@@ -50,36 +64,67 @@ def _apply(client: TestClient, email: str = "ada@studio.it") -> None:
 
 def test_without_the_cookie_every_admin_route_is_a_401(client: TestClient, admin: None) -> None:
     for path in (
-        "/api/hub/auth/me",
         "/api/hub/freelancers",
         "/api/hub/companies",
         "/api/hub/signups",
+        "/api/hub/talenti",
         "/api/hub/admins",
         "/api/hub/pigro/istanze",
+        "/api/hub/perks/guida",
     ):
         assert client.get(path).status_code == 401, path
-    refused = client.post(
-        "/api/hub/admins",
-        json={"email": "x@orbiters.it", "nome": "X", "password": "una-password-lunga"},
-    )
+    refused = client.post("/api/hub/admins/promote", json={"email": "x@rebase.it"})
     assert refused.status_code == 401
-    assert client.patch(f"/api/hub/admins/{MISSING}", json={"nome": "X"}).status_code == 401
+    assert client.post(f"/api/hub/admins/{MISSING}/demote").status_code == 401
 
 
-def test_login_sets_a_secure_httponly_cookie_and_the_lists_open(
-    client: TestClient, admin: None
+def test_the_guide_page_counts_downloads_and_names_who_took_it(
+    client: TestClient, admin: None, api_session: Session, sender: RecordingSender
 ) -> None:
-    refused = client.post("/api/hub/auth/login", json={**CREDENTIALS, "password": "no"})
-    assert refused.status_code == 401
-    assert refused.json()["detail"] == "Credenziali non valide"
+    """ORB-156: zero of everything on an empty hub, then the numbers follow the rows.
+    Two people on file, three downloads by one of them: totale 3, membri 1 of 2, all
+    three in the last week, the latest first, each with the member's name."""
+    _login(client, sender)
+    empty = client.get("/api/hub/perks/guida")
+    assert empty.status_code == 200
+    assert empty.json() == {
+        "totale": 0,
+        "membri": 0,
+        "membri_totali": 0,
+        "ultimi_7_giorni": 0,
+        "recenti": [],
+    }
 
-    login = client.post("/api/hub/auth/login", json=CREDENTIALS)
-    assert login.status_code == 200, login.text
-    assert login.json()["email"] == "ivan@orbiters.it"
-    cookie = login.headers["set-cookie"].lower()
-    assert "orbiters_admin=" in cookie and "httponly" in cookie and "secure" in cookie
+    _apply(client, "ada@studio.it")
+    _apply(client, "bob@studio.it")
+    listed = client.get("/api/hub/freelancers").json()["items"]
+    people = {item["email"]: item["id"] for item in listed}
+    ada_user_id = api_session.scalar(
+        select(Freelancer.user_id)
+        .join(User, User.id == Freelancer.user_id)
+        .where(User.email == "ada@studio.it")
+    )
+    perks = PerkService(api_session)
+    for _ in range(3):
+        perks.record_guide_download(ada_user_id)
 
-    assert client.get("/api/hub/auth/me").json()["nome"] == "Ivan"
+    stats = client.get("/api/hub/perks/guida").json()
+    assert (stats["totale"], stats["membri"], stats["membri_totali"]) == (3, 1, 2)
+    assert stats["ultimi_7_giorni"] == 3
+    assert len(stats["recenti"]) == 3
+    latest = stats["recenti"][0]
+    assert (latest["nome"], latest["cognome"]) == ("Ada", "Lovelace")
+    assert latest["email"] == "ada@studio.it"
+    assert latest["user_id"] == str(ada_user_id)
+    assert people["ada@studio.it"] != str(ada_user_id)  # the freelancer id, not the user id
+    moments = [item["downloaded_at"] for item in stats["recenti"]]
+    assert moments == sorted(moments, reverse=True)
+
+
+def test_an_admin_manages_a_freelancer_card_through_the_lists(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    _login(client, sender)
     _apply(client)
     listed = client.get("/api/hub/freelancers").json()
     assert listed["totale"] == 1
@@ -102,8 +147,66 @@ def test_login_sets_a_secure_httponly_cookie_and_the_lists_open(
     missing = client.get("/api/hub/companies/00000000-0000-7000-8000-000000000000")
     assert missing.status_code == 404
 
-    assert client.post("/api/hub/auth/logout").status_code == 204
-    assert client.get("/api/hub/auth/me").status_code == 401
+
+# ---- talenti (REB-282): the freelancer cards and the bare sign-ups, as one list ------
+
+
+def test_talenti_merges_cards_and_leads_and_counts_per_state(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    """A card and a bare sign-up read as one list: the card carries its own `stato`
+    and `origine == "wizard"`, the bare sign-up reads `stato == "lead"` and
+    `origine == "form"`, and `per_stato` counts both whatever `stato` was asked for."""
+    signup_id = _signup(client, sender, "lead@studio.it")
+    _apply(client, "ada@studio.it")
+
+    listed = client.get("/api/hub/talenti").json()
+    assert listed["totale"] == 2
+    by_email = {item["email"]: item for item in listed["items"]}
+    assert by_email["ada@studio.it"]["stato"] == "nuovo"
+    assert by_email["ada@studio.it"]["origine"] == "wizard"
+    assert by_email["lead@studio.it"]["stato"] == "lead"
+    assert by_email["lead@studio.it"]["origine"] == "form"
+    assert by_email["lead@studio.it"]["id"] == signup_id
+    assert listed["per_stato"] == {
+        "nuovo": 1,
+        "contattato": 0,
+        "attivo": 0,
+        "scartato": 0,
+        "lead": 1,
+    }
+
+    only_leads = client.get("/api/hub/talenti", params={"stato": "lead"}).json()
+    assert [item["email"] for item in only_leads["items"]] == ["lead@studio.it"]
+    assert only_leads["totale"] == 1
+    # `per_stato` counts the whole list regardless of the filter asked for.
+    assert only_leads["per_stato"] == listed["per_stato"]
+
+    only_new = client.get("/api/hub/talenti", params={"stato": "nuovo"}).json()
+    assert [item["email"] for item in only_new["items"]] == ["ada@studio.it"]
+    assert only_new["totale"] == 1
+
+
+def test_a_card_drafted_from_research_reads_origine_admin_on_talenti(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    signup_id = _signup(client, sender, "ricerca@studio.it")
+    created = client.post(f"/api/hub/signups/{signup_id}/scheda", json=DRAFT)
+    assert created.status_code == 201, created.text
+    item = next(
+        item
+        for item in client.get("/api/hub/talenti").json()["items"]
+        if item["email"] == "ricerca@studio.it"
+    )
+    assert item["origine"] == "admin" and item["stato"] == "nuovo"
+
+
+def test_a_signed_in_member_hitting_talenti_is_403_not_401(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    _apply(client, "membro@studio.it")
+    _login(client, sender, "membro@studio.it")
+    assert client.get("/api/hub/talenti").status_code == 403
 
 
 # ---- comments --------------------------------------------------------------------------
@@ -111,8 +214,11 @@ def test_login_sets_a_secure_httponly_cookie_and_the_lists_open(
 MISSING = "00000000-0000-7000-8000-000000000000"
 
 
-def _login(client: TestClient) -> None:
-    assert client.post("/api/hub/auth/login", json=CREDENTIALS).status_code == 200
+def _login(client: TestClient, sender: RecordingSender, email: str = ADMIN_EMAIL) -> None:
+    assert client.post("/api/hub/auth/link", json={"email": email}).status_code == 202
+    match = re.search(r"/entra\?t=([A-Za-z0-9_-]+)", sender.sent[-1].text)
+    assert match
+    assert client.post("/api/hub/auth/enter", json={"token": match.group(1)}).status_code == 200
 
 
 def _request_company(client: TestClient) -> None:
@@ -120,7 +226,8 @@ def _request_company(client: TestClient) -> None:
         "/api/hub/companies",
         json={
             "nome_azienda": "ACME Srl",
-            "referente": "Wile E.",
+            "referente_nome": "Wile",
+            "referente_cognome": "E.",
             "email": "wile@acme.it",
             "progetto": "Un backend developer per tre mesi.",
             "periodo_da": "2026-10-01",
@@ -141,9 +248,9 @@ def test_without_the_cookie_the_comment_routes_are_a_401(client: TestClient, adm
 
 
 def test_a_comment_is_signed_by_the_logged_in_admin_and_read_newest_first(
-    client: TestClient, admin: None
+    client: TestClient, admin: None, sender: RecordingSender
 ) -> None:
-    _login(client)
+    _login(client, sender)
     _apply(client)
     freelancer_id = client.get("/api/hub/freelancers").json()["items"][0]["id"]
 
@@ -171,8 +278,10 @@ def test_a_comment_is_signed_by_the_logged_in_admin_and_read_newest_first(
     assert client.get("/api/hub/freelancers").json()["items"][0]["commenti"] == []
 
 
-def test_a_company_gets_its_own_thread(client: TestClient, admin: None) -> None:
-    _login(client)
+def test_a_company_gets_its_own_thread(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    _login(client, sender)
     _request_company(client)
     company_id = client.get("/api/hub/companies").json()["items"][0]["id"]
     posted = client.post(f"/api/hub/companies/{company_id}/comments", json={"testo": "Budget ok."})
@@ -187,9 +296,9 @@ def test_a_company_gets_its_own_thread(client: TestClient, admin: None) -> None:
 
 
 def test_a_comment_on_a_missing_row_is_a_404_and_an_empty_one_a_422_naming_the_field(
-    client: TestClient, admin: None
+    client: TestClient, admin: None, sender: RecordingSender
 ) -> None:
-    _login(client)
+    _login(client, sender)
     assert client.get(f"/api/hub/freelancers/{MISSING}/comments").status_code == 200
     missing = client.post(f"/api/hub/freelancers/{MISSING}/comments", json={"testo": "Nessuno."})
     assert missing.status_code == 404
@@ -213,197 +322,6 @@ def test_a_comment_on_a_missing_row_is_a_404_and_an_empty_one_a_422_naming_the_f
     )
     assert forged.status_code == 422
     assert client.get(f"/api/hub/freelancers/{freelancer_id}/comments").json() == []
-
-
-# ---- admins ----------------------------------------------------------------------------
-#
-# ORB-123: an admin creates the next one from the area, with the CLI's own rules, and the
-# list says who is there. No deactivation and no deletion here, on purpose.
-
-
-def test_an_admin_lists_the_admins_and_creates_one_who_can_then_log_in(
-    client: TestClient, admin: None
-) -> None:
-    _login(client)
-    before = client.get("/api/hub/admins")
-    assert before.status_code == 200
-    assert [row["email"] for row in before.json()] == ["ivan@orbiters.it"]
-    assert before.json()[0]["attivo"] is True and "created_at" in before.json()[0]
-    assert "password_hash" not in before.json()[0]
-
-    created = client.post(
-        "/api/hub/admins",
-        json={
-            "email": "Lorenzo@Orbiters.it",
-            "nome": " Lorenzo ",
-            "password": "una-password-lunga",
-        },
-    )
-    assert created.status_code == 201, created.text
-    assert created.json()["email"] == "lorenzo@orbiters.it"
-    assert created.json()["nome"] == "Lorenzo"
-    assert "password" not in created.text and "password_hash" not in created.text
-
-    after = client.get("/api/hub/admins").json()
-    assert [row["email"] for row in after] == ["ivan@orbiters.it", "lorenzo@orbiters.it"]
-
-    # The new admin's credentials open a session of their own.
-    assert client.post("/api/hub/auth/logout").status_code == 204
-    login = client.post(
-        "/api/hub/auth/login",
-        json={"email": "lorenzo@orbiters.it", "password": "una-password-lunga"},
-    )
-    assert login.status_code == 200 and login.json()["nome"] == "Lorenzo"
-
-
-def test_creating_an_admin_points_the_form_at_the_field_that_is_wrong(
-    client: TestClient, admin: None
-) -> None:
-    _login(client)
-    duplicate = client.post(
-        "/api/hub/admins",
-        json={"email": "IVAN@orbiters.it", "nome": "Ancora", "password": "una-password-lunga"},
-    )
-    assert duplicate.status_code == 422
-    assert duplicate.json()["detail"][0]["loc"][-1] == "email"
-    short = client.post(
-        "/api/hub/admins", json={"email": "corta@orbiters.it", "nome": "Corta", "password": "breve"}
-    )
-    assert short.status_code == 422
-    assert short.json()["detail"][0]["loc"][-1] == "password"
-    malformed = client.post(
-        "/api/hub/admins",
-        json={"email": "non-una-mail", "nome": "X", "password": "una-password-lunga"},
-    )
-    assert malformed.status_code == 422
-    assert malformed.json()["detail"][0]["loc"][-1] == "email"
-    for nome in ("   ", "x" * 121, "Ada\x00"):
-        bad_name = client.post(
-            "/api/hub/admins",
-            json={"email": "nome@orbiters.it", "nome": nome, "password": "una-password-lunga"},
-        )
-        assert bad_name.status_code == 422, nome
-        assert bad_name.json()["detail"][0]["loc"][-1] == "nome"
-    # A key the schema does not declare is refused, not silently dropped: nobody creates
-    # an admin with `attivo` chosen from outside.
-    extra = client.post(
-        "/api/hub/admins",
-        json={
-            "email": "extra@orbiters.it",
-            "nome": "Extra",
-            "password": "una-password-lunga",
-            "attivo": False,
-        },
-    )
-    assert extra.status_code == 422
-    assert [row["email"] for row in client.get("/api/hub/admins").json()] == ["ivan@orbiters.it"]
-
-
-def test_an_admin_changes_another_admins_name_address_or_password(
-    client: TestClient, admin: None
-) -> None:
-    # ORB-129. The password field is optional and means «keep it» when absent.
-    _login(client)
-    created = client.post(
-        "/api/hub/admins",
-        json={"email": "lorenzo@orbiters.it", "nome": "Lorenzo", "password": "una-password-lunga"},
-    ).json()
-
-    renamed = client.patch(f"/api/hub/admins/{created['id']}", json={"nome": " Lorenzo Fiore "})
-    assert renamed.status_code == 200, renamed.text
-    assert (
-        renamed.json()["nome"] == "Lorenzo Fiore"
-        and renamed.json()["email"] == "lorenzo@orbiters.it"
-    )
-    assert "password" not in renamed.text
-
-    moved = client.patch(
-        f"/api/hub/admins/{created['id']}",
-        json={"email": "Lorenzo.Fiore@Orbiters.it", "password": "nuova-password-lunga"},
-    )
-    assert moved.status_code == 200, moved.text
-    assert moved.json()["email"] == "lorenzo.fiore@orbiters.it"
-    listed = client.get("/api/hub/admins").json()
-    assert [row["email"] for row in listed] == ["ivan@orbiters.it", "lorenzo.fiore@orbiters.it"]
-
-    # The new credentials open a session; the old password does not.
-    assert client.post("/api/hub/auth/logout").status_code == 204
-    old = client.post(
-        "/api/hub/auth/login",
-        json={"email": "lorenzo.fiore@orbiters.it", "password": "una-password-lunga"},
-    )
-    assert old.status_code == 401
-    new = client.post(
-        "/api/hub/auth/login",
-        json={"email": "lorenzo.fiore@orbiters.it", "password": "nuova-password-lunga"},
-    )
-    assert new.status_code == 200 and new.json()["nome"] == "Lorenzo Fiore"
-
-
-def test_changing_an_admin_points_the_form_at_the_field_that_is_wrong(
-    client: TestClient, admin: None
-) -> None:
-    _login(client)
-    me = client.get("/api/hub/auth/me").json()
-    other = client.post(
-        "/api/hub/admins",
-        json={"email": "lorenzo@orbiters.it", "nome": "Lorenzo", "password": "una-password-lunga"},
-    ).json()
-    for body, field in (
-        ({"email": "IVAN@orbiters.it"}, "email"),
-        ({"email": "non-una-mail"}, "email"),
-        ({"nome": "   "}, "nome"),
-        ({"nome": "x" * 121}, "nome"),
-        ({"password": "breve"}, "password"),
-        ({"attivo": False}, "attivo"),
-    ):
-        refused = client.patch(f"/api/hub/admins/{other['id']}", json=body)
-        assert refused.status_code == 422, body
-        assert refused.json()["detail"][0]["loc"][-1] == field, body
-    # An empty password in the body is «keep it», not a five-character password.
-    kept = client.patch(f"/api/hub/admins/{other['id']}", json={"password": ""})
-    assert kept.status_code == 200
-    # One's own row is editable like any other; the same address on itself is no duplicate.
-    own = client.patch(
-        f"/api/hub/admins/{me['id']}", json={"email": "IVAN@orbiters.it", "nome": "Ivan S."}
-    )
-    assert own.status_code == 200 and own.json()["nome"] == "Ivan S."
-    assert client.get("/api/hub/auth/me").json()["nome"] == "Ivan S."
-    assert client.patch(f"/api/hub/admins/{MISSING}", json={"nome": "Nessuno"}).status_code == 404
-
-
-def test_a_new_password_logs_the_other_admin_out_and_keeps_me_in(
-    client: TestClient, admin: None
-) -> None:
-    _login(client)
-    other = client.post(
-        "/api/hub/admins",
-        json={"email": "lorenzo@orbiters.it", "nome": "Lorenzo", "password": "una-password-lunga"},
-    ).json()
-    # Lorenzo logs in from his own browser.
-    lorenzo = TestClient(client.app, base_url="https://testserver")
-    assert (
-        lorenzo.post(
-            "/api/hub/auth/login",
-            json={"email": "lorenzo@orbiters.it", "password": "una-password-lunga"},
-        ).status_code
-        == 200
-    )
-    assert lorenzo.get("/api/hub/auth/me").status_code == 200
-
-    # I change his password: his session is gone, mine is untouched.
-    changed = client.patch(
-        f"/api/hub/admins/{other['id']}", json={"password": "nuova-password-lunga"}
-    )
-    assert changed.status_code == 200
-    assert lorenzo.get("/api/hub/auth/me").status_code == 401
-    assert client.get("/api/hub/auth/me").status_code == 200
-
-    # I change my own: I am still in.
-    me = client.get("/api/hub/auth/me").json()
-    own = client.patch(f"/api/hub/admins/{me['id']}", json={"password": "anche-la-mia-nuova"})
-    assert own.status_code == 200
-    assert client.get("/api/hub/auth/me").status_code == 200
 
 
 # ---- the spaces of PigroCRM (ORB-142) --------------------------------------------------
@@ -451,10 +369,10 @@ class FakePigro:
 def pigro(client: TestClient) -> Iterator[FakePigro]:
     fake = FakePigro()
     client.app.dependency_overrides[get_http_call] = lambda: fake  # type: ignore[attr-defined]
-    # Both values declared, so a developer's shell exporting `ORBITERS_PIGRO_API_URL`
+    # Both values declared, so a developer's shell exporting `REBASE_PIGRO_API_URL`
     # cannot change what the assertion below expects.
     client.app.dependency_overrides[get_settings] = lambda: Settings(  # type: ignore[attr-defined]
-        pigro_api_url="https://pigro.joinorbiters.com",
+        pigro_api_url="https://pigro.letsrebase.com",
         pigro_registry_token=PIGRO_TOKEN,
         _env_file=None,  # type: ignore[call-arg]
     )
@@ -462,27 +380,27 @@ def pigro(client: TestClient) -> Iterator[FakePigro]:
 
 
 def test_without_a_pigro_token_the_spaces_are_a_503_sentence(
-    client: TestClient, admin: None
+    client: TestClient, admin: None, sender: RecordingSender
 ) -> None:
-    _login(client)
+    _login(client, sender)
     response = client.get("/api/hub/pigro/istanze")
     assert response.status_code == 503, response.text
     assert response.json()["detail"] == (
-        "Il registro di Pigro non è configurato: manca ORBITERS_PIGRO_REGISTRY_TOKEN."
+        "Il registro di Pigro non è configurato: manca REBASE_PIGRO_REGISTRY_TOKEN."
     )
 
 
 def test_the_spaces_come_from_the_crm_with_the_token_and_name_the_member_who_owns_one(
-    client: TestClient, admin: None, pigro: FakePigro
+    client: TestClient, admin: None, pigro: FakePigro, sender: RecordingSender
 ) -> None:
-    _login(client)
+    _login(client, sender)
     _apply(client, email="ada@studio.it")
     response = client.get("/api/hub/pigro/istanze")
     assert response.status_code == 200, response.text
 
     # One GET to the CRM, the token as a bearer, and nothing else in the request.
     assert [(method, url) for method, url, _ in pigro.calls] == [
-        ("GET", "https://pigro.joinorbiters.com/api/tenants/")
+        ("GET", "https://pigro.letsrebase.com/api/tenants/")
     ]
     assert pigro.calls[0][2]["Authorization"] == f"Bearer {PIGRO_TOKEN}"
 
@@ -490,7 +408,7 @@ def test_the_spaces_come_from_the_crm_with_the_token_and_name_the_member_who_own
     assert body["totale"] == 2
     ada, bob = body["items"]
     assert ada["slug"] == "studio-ada"
-    assert ada["url"] == "https://pigro.joinorbiters.com/studio-ada/app/"
+    assert ada["url"] == "https://pigro.letsrebase.com/studio-ada/app/"
     assert ada["owner_email"] == "ada@studio.it"
     assert ada["created_at"].startswith("2026-09-10")
     # Ada filled in the wizard, so her space names her and points at her card.
@@ -504,9 +422,9 @@ def test_the_spaces_come_from_the_crm_with_the_token_and_name_the_member_who_own
 
 
 def test_a_member_is_matched_whatever_the_case_of_the_address(
-    client: TestClient, admin: None, pigro: FakePigro
+    client: TestClient, admin: None, pigro: FakePigro, sender: RecordingSender
 ) -> None:
-    _login(client)
+    _login(client, sender)
     _apply(client, email="bob@example.org")
     items = client.get("/api/hub/pigro/istanze").json()["items"]
     assert items[1]["owner_email"] == "Bob@Example.org"
@@ -514,9 +432,9 @@ def test_a_member_is_matched_whatever_the_case_of_the_address(
 
 
 def test_when_the_crm_refuses_or_falls_over_the_answer_is_a_502_sentence(
-    client: TestClient, admin: None, pigro: FakePigro
+    client: TestClient, admin: None, pigro: FakePigro, sender: RecordingSender
 ) -> None:
-    _login(client)
+    _login(client, sender)
     pigro.status = 401
     pigro.body = b'{"detail":"token non valido"}'
     refused = client.get("/api/hub/pigro/istanze")
@@ -527,9 +445,100 @@ def test_when_the_crm_refuses_or_falls_over_the_answer_is_a_502_sentence(
     garbled = client.get("/api/hub/pigro/istanze")
     assert garbled.status_code == 502, garbled.text
     assert garbled.json()["detail"] == "Pigro ha risposto qualcosa che non è un elenco."
+    pigro.body = b"[" + b"x" * MAX_BODY_BYTES  # what the seam's own cap would truncate to
+    too_long = client.get("/api/hub/pigro/istanze")
+    assert too_long.status_code == 502, too_long.text
+    assert too_long.json()["detail"] == "Pigro ha risposto qualcosa di troppo lungo."
     # A refused connection, a DNS miss or a timeout: the seam raises, and that is the most
     # likely failure of all, so it too is a 502 sentence rather than a traceback.
     pigro.raises = OSError("connection refused")
     down = client.get("/api/hub/pigro/istanze")
     assert down.status_code == 502, down.text
     assert down.json()["detail"] == "Pigro non risponde."
+
+
+# ---- a card from a signup (ORB-155) --------------------------------------------------
+
+
+def _signup(client: TestClient, sender: RecordingSender, email: str = "ada@studio.it") -> str:
+    response = client.post(
+        "/api/community/signups", json={"email": email, "nome": "Ada", "cognome": "Lovelace"}
+    )
+    assert response.status_code in (200, 201), response.text
+    _login(client, sender)
+    listed = client.get("/api/hub/signups").json()["iscrizioni"]
+    return next(item["id"] for item in listed if item["email"] == email)
+
+
+DRAFT = {
+    "nome": "Ada",
+    "cognome": "Lovelace",
+    "linkedin_url": "https://www.linkedin.com/in/ada",
+    "posizione": "Backend developer",
+    "links": ["https://github.com/ada"],
+    "fonti": ["https://www.linkedin.com/in/ada"],
+}
+
+
+def test_without_the_cookie_the_card_from_a_signup_is_a_401(
+    client: TestClient, admin: None
+) -> None:
+    response = client.post(f"/api/hub/signups/{MISSING}/scheda", json=DRAFT)
+    assert response.status_code == 401
+
+
+def test_an_admin_writes_an_incomplete_card_from_a_signup_and_the_list_points_at_it(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    signup_id = _signup(client, sender)
+    created = client.post(f"/api/hub/signups/{signup_id}/scheda", json=DRAFT)
+    assert created.status_code == 201, created.text
+    card = created.json()
+    assert card["email"] == "ada@studio.it"
+    assert card["compilata_da"] == "admin" and card["completa"] is False
+    assert card["cv_filename"] is None and card["tariffa_giornaliera"] is None
+    assert card["commenti"][0]["autore"] == "Ivan"
+    assert "https://www.linkedin.com/in/ada" in card["commenti"][0]["testo"]
+
+    items = client.get("/api/hub/signups").json()["iscrizioni"]
+    item = next(i for i in items if i["id"] == signup_id)
+    assert item["freelancer_id"] == card["id"]
+    assert client.get(f"/api/hub/freelancers/{card['id']}/cv").status_code == 404
+    everything = client.get("/api/hub/freelancers").json()
+    listed = everything["items"]
+    assert listed[0]["id"] == card["id"] and listed[0]["completa"] is False
+    # With a card, the signup is no longer a lead (ORB-163).
+    assert everything["lead"] == [] and everything["totale_lead"] == 0
+    # Born from a signup, so it also signed up on the landing: «form» (ORB-161).
+    assert listed[0]["provenienza"] == "form"
+    assert client.get(f"/api/hub/freelancers/{card['id']}").json()["provenienza"] == "form"
+
+    # A wrong id is a 404, a bad body a 422 naming the field, as everywhere else.
+    assert client.post(f"/api/hub/signups/{MISSING}/scheda", json=DRAFT).status_code == 404
+    bad = client.post(f"/api/hub/signups/{signup_id}/scheda", json={**DRAFT, "fonti": []})
+    assert bad.status_code == 422
+    assert bad.json()["detail"][0]["loc"][-1] == "fonti"
+
+
+def test_a_signup_without_a_card_is_a_lead_on_the_freelancer_list(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    signup_id = _signup(client, sender, "lead@studio.it")
+    everything = client.get("/api/hub/freelancers").json()
+    assert everything["items"] == [] and everything["totale_lead"] == 1
+    assert everything["lead"][0]["id"] == signup_id
+    assert everything["lead"][0]["email"] == "lead@studio.it"
+    assert client.get("/api/hub/freelancers", params={"stato": "lead"}).json()["totale_lead"] == 1
+    assert client.get("/api/hub/freelancers", params={"stato": "nuovo"}).json()["lead"] == []
+
+
+def test_research_is_refused_on_a_card_the_person_filled(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    _apply(client)
+    signup_id = _signup(client, sender)
+    body = {**DRAFT, "posizione": "CTO"}
+    refused = client.post(f"/api/hub/signups/{signup_id}/scheda", json=body)
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["detail"][0]["loc"][-1] == "email"
+    assert client.get("/api/hub/freelancers").json()["items"][0]["posizione"] == "Backend developer"

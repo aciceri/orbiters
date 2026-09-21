@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     # nothing new. Read from the environment only, never from `space_settings`. A secret
     # the same way `google_client_secret` is, so `repr=False` keeps it out of logs.
     registry_token: str = Field(default="", repr=False)
+    # Where the Orbiters hub answers, for the one question the signup asks it: whether an
+    # address belongs to a community member (`tenants/hub.py`, ORB-173). The bearer is
+    # `registry_token` above, the same value the hub reads as
+    # `REBASE_PIGRO_REGISTRY_TOKEN`: since ORB-173 it travels in both directions. Empty
+    # token, unreachable hub, anything but a 200: the answer is «not a member» and the
+    # signup goes on. The community is the fast lane, never a gate.
+    hub_url: str = "https://letsrebase.com"
     jwt_secret: str = "change-me-in-production-please-set-a-real-secret"
     access_token_minutes: int = 15
     # Six months, sliding: `/api/auth/refresh` consumes the old jti and issues a new row
@@ -73,10 +80,11 @@ class Settings(BaseSettings):
     # in production because "it's just a flag" should re-read this paragraph first.
     cookie_secure: bool = True
 
-    # Whether a personal access token may perform the sixteen operations listed in
-    # `actor.AGENT_FORBIDDEN_ACTIONS` -- issuing and annulling invoices, the fiscal
-    # profile, rates, cost categories, period locks, the hours-to-invoice bridge and the
-    # annual estimate -- plus sending mail and preparing a payment reminder.
+    # Whether a personal access token may perform the operations listed in
+    # `actor.AGENT_FORBIDDEN_ACTIONS` -- issuing and annulling invoices, rates, cost
+    # categories, period locks, the hours-to-invoice bridge and the annual estimate --
+    # plus sending mail and preparing a payment reminder. (Not the fiscal profile nor
+    # the emitter: an admin's token writes those on every installation, ORB-188.)
     #
     # `False` by default, and the default is the one nobody has to think about. Those
     # operations are not merely privileged, they are **irreversible in ways the rest of
@@ -167,6 +175,24 @@ class Settings(BaseSettings):
     # it. True means Testing, which means a consumer refresh token expires 7 days after
     # consent -- so `consent_expires_at` gets set and the UI warns 48 hours ahead.
     google_app_unverified: bool = False
+
+    # --- Outbound mail (spec 2026-09-12 §6.1). Resend sends the login link and the
+    # welcome mail. Empty key: no sender, and the endpoints that would mail answer 503
+    # with a sentence rather than pretend. `repr=False` for the same reason as the Google
+    # secret above: a Settings object reaches logs and tracebacks.
+    resend_api_key: str = Field(default="", repr=False)
+    # letsrebase.com already carries SPF and DKIM for Resend (the hub sends from it).
+    mail_from: str = "PigroCRM <ciao@letsrebase.com>"
+    # How long a link by mail is good for. Fifteen, like the hub's.
+    magic_link_minutes: int = Field(default=15, ge=1, le=120)
+
+    # --- Product analytics (docs/design/2026-09-12-posthog-analytics-design.md). The
+    # MCP server reports every tool call to PostHog when this holds the project key,
+    # the same public `phc_` key the browsers carry in `shared/analytics`. Empty: the
+    # installation measures nothing. Read by `pigrocrm_mcp.analytics` and by
+    # `core/telemetry.py` (the weekly digest's own event, REB-221).
+    posthog_key: str = ""
+    posthog_host: str = "https://eu.i.posthog.com"
 
     gmail_sync_address_batch_size: int = 20
     gmail_backfill_days: int = 90

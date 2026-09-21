@@ -1,4 +1,4 @@
-# Deploy, for the Orbiters hub only. Same shape as `deploy-website.yml` and, like it,
+# Deploy, for the rebase hub only. Same shape as `deploy-website.yml` and, like it,
 # deliberately its own file: two projects in this monorepo must never be able to deploy
 # each other. The mechanism is `_deploy-compose.yml`; this file is the two rules that
 # say when and the four values that say where.
@@ -13,9 +13,12 @@
 # Both environments stay off until their arming variable exists:
 # `vars.HUB_PREVIEW_ENABLED` and `vars.HUB_DEPLOY_ENABLED`.
 #
-# The production compose project is `orbiters`, not `hub`: that is the name the stack
-# went up under by hand on 2026-09-09 (ORB-17), its Postgres data sits under it, and a
-# different name here would start a second stack beside the running one.
+# The production compose project is `rebase`, not `hub`: the stack went up by hand on
+# 2026-09-09 (ORB-17) as `orbiters`, and a different name here starts a second stack
+# beside the running one rather than moving it. So the host moves first and the tag
+# second: stop the old project, move `/srv/orbiters-data` to `/srv/rebase-data`, rename
+# the database and the role with `ALTER`, rewrite the `.env` keys to `REBASE_*`, then
+# deploy. Both environments were migrated that way on 2026-09-15, preview first.
 name: Deploy hub
 
 on:
@@ -82,15 +85,22 @@ jobs:
     with:
       environment: hub-preview
       compose-dir: projects/hub
-      compose-project: orbiters-preview
+      compose-project: rebase-preview
       ref: ${{ github.event.workflow_run.head_sha }}
       # The API's probe touches the database (SELECT 1), so a green deploy means
       # Postgres is up and migrated, not only that uvicorn answered. The `url` is the
-      # preview name, behind basic auth, which since 2026-09-10 serves this stack's
-      # `/hub/` the way joinorbiters.com serves production's. Ports: §7 of
-      # docs/adding-a-project.md.
+      # preview name, open rather than behind a credential (docs/adding-a-project.md
+      # §7): `X-Robots-Tag: noindex, nofollow, noarchive` keeps it out of search, and
+      # its vhost proxies preview containers only, so a click here cannot walk out
+      # into production data. It has served this stack's `/hub/` since 2026-09-10,
+      # the way letsrebase.com serves production's. Ports: the same section.
       health-url: http://127.0.0.1:8086/health
-      url: https://preview.joinorbiters.com/hub/
+      # The mcp service (REB-213) has a /health of its own on REBASE_MCP_PORT
+      # (projects/hub/AGENTS.md), curled here so a crashed mcp container fails the
+      # deploy too (REB-246), rather than only showing up when an agent's client
+      # gets a 502 from /api/hub/mcp.
+      extra-health-url: http://127.0.0.1:8089/health
+      url: https://preview.letsrebase.com/hub/
     secrets: inherit
 
   production:
@@ -104,7 +114,8 @@ jobs:
     with:
       environment: hub-production
       compose-dir: projects/hub
-      compose-project: orbiters
+      compose-project: rebase
       health-url: http://127.0.0.1:8084/health
-      url: https://joinorbiters.com/hub/
+      extra-health-url: http://127.0.0.1:8088/health
+      url: https://letsrebase.com/hub/
     secrets: inherit

@@ -1,7 +1,8 @@
-/* The part of the visual system the two landing sheets share, injected once.
-   palette-plugin.ts prepends this file to landing.css and to orbiters.css right after
-   the tokens, so the grid line, the tile, the step and the glyph are written here and
-   nowhere else in the landing. The app cannot consume this file (Tailwind owns its
+/* The part of the visual system every TOKEN_CONSUMERS sheet shares, injected once.
+   palette-plugin.ts prepends this file to landing.css, to community.css and to
+   pitch.css right after the tokens, so the grid line, the tile, the step and the glyph
+   are written here and nowhere else in the landing (pitch.css keeps its own larger,
+   `.dark`-aware drawing of the tiles for the deck's chrome, see its own comment). The app cannot consume this file (Tailwind owns its
    cascade), so tokens.css restates the grid line and BrandMark.tsx the glyph; the
    test in landing-style.test.ts holds those two copies to these values.
 
@@ -9,9 +10,52 @@
 :root {
   /* Prussian Blue at 7%: the line of the grid every page sits on. */
   --system-grid: color-mix(in oklab, var(--color-prussian-blue) 7%, transparent);
-  /* The tile. Orbiters shrinks it to 14px on a phone (see orbiters.css) so the field
+  /* The tile. The community page shrinks it to 14px on a phone (see community.css) so the field
      stays legible there; the landing and the app keep 16px. */
   --system-cell: 16px;
+}
+
+/* A stand-in for Outfit while it loads (REB-267): `font-display: swap` on the real
+   @font-face (shared/brand/font.css) already avoids invisible text, but the swap
+   itself still reflows every line under it, because the reader's own `sans-serif`
+   has a different average glyph width and a different ascent/descent than Outfit.
+   `termini.html` measured 0.165 of CLS from exactly that swap on its one paragraph,
+   and the same swap reflows the hero conversation on `pigrocrm.html` (measured: the
+   chat figure renders 24px taller with the fallback active than with Outfit loaded,
+   at a 390px viewport). The descriptors below give a *fallback* font Outfit's own
+   box, so the swap changes the letterforms without changing the line height:
+   `size-adjust` scales the fallback so its average character width
+   (xAvgCharWidth/unitsPerEm) matches Outfit's, then `ascent-override` and
+   `descent-override` restate Outfit's own ascent/descent (both /unitsPerEm) against
+   that scaled-down em, so the vertical box matches too. Values computed with
+   fontTools against `shared/brand/fonts/outfit-variable-latin.woff2`, instanced at
+   weight 300 (`body`'s own `font-weight`, not the variable font's default 100
+   instance: Outfit's `xAvgCharWidth` moves from 555 to 564 between those two, and
+   `body` never renders the lighter one) and
+   `/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf`: Liberation
+   Sans, not Noto Sans, because `local()` matches a font's full name or PostScript
+   name, never its family name alone, and Chrome resolves nothing for `local('Noto
+   Sans')` (its full name is "Noto Sans Regular") -- confirmed by rebuilding and
+   re-running Lighthouse, which reported the pre-fix CLS unchanged until this was
+   fixed. Liberation Sans's full name is "Liberation Sans" (matches its family
+   name), it is designed to be advance-width-compatible with Arial, and it is what
+   `fc-match Arial` resolves to on this box, so calibrating against it also serves
+   an Arial-only reader reasonably well without measuring a font this repository
+   does not have. Outfit's 564/1000 em average width over Liberation Sans's
+   1187/2048 gives size-adjust 97.31%; Outfit's ascent 1000/1000 and descent
+   260/1000 (no line gap, unchanged across weights) divided by that ratio give the
+   two overrides. `local()` never fetches a font, so this costs nothing on a system
+   with neither name installed: `--font-sans` still falls through to its own
+   `ui-sans-serif, system-ui, sans-serif`, exactly as before. */
+@font-face {
+  font-family: 'Outfit Fallback';
+  src:
+    local('Liberation Sans'),
+    local('Arial');
+  size-adjust: 97.31%;
+  ascent-override: 102.76%;
+  descent-override: 26.72%;
+  line-gap-override: 0%;
 }
 
 /* Four tiles, one of them the accent: the wordmark is the field, at glyph scale. */
@@ -32,8 +76,9 @@
    content or takes the focus: see `body::after` below for how the first half of that is
    kept on a phone. No animation: the one these pages spend is the title's cursor, below.
 
-   Only shared tokens, like the rest of this file: the two sheets map them to their own
-   names (--orb-*, --landing-*), so a colour spelled here would be a third palette. */
+   Only shared tokens, like the rest of this file: each consumer maps them to its own
+   names (--orb-*, --landing-*, pitch.css's own six), so a colour spelled here would be
+   a fork of its own. */
 .consent {
   position: fixed;
   left: 1rem;
@@ -153,7 +198,7 @@ body::after {
   }
 }
 
-/* Text for the ear only: the form's labels on Orbiters and the title's first line on
+/* Text for the ear only: the form's labels on the community page and the title's first line on
    both pages, which names the roles the typewriter cycles through. Out of the layout
    entirely, so it moves nothing. */
 .sr-only {

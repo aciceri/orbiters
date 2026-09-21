@@ -1,20 +1,39 @@
 {
-  "name": "@orbiters/brand",
+  "name": "@rebase/brand",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "The palette, the typeface and the four-tile mark, shared by every Orbiters surface.",
+  "description": "The palette, the typeface, the four-tile mark, the wordmark and the contrast maths, shared by every surface.",
+  "scripts": {
+    "build:echo": "node tools/build-echo.mjs",
+    "build:wordmark": "uv run tools/build-wordmark.py"
+  },
   "exports": {
     "./palette.css": "./palette.css",
     "./font.css": "./font.css",
     "./fonts/*": "./fonts/*",
     "./mark": "./mark.ts",
+    "./wordmark.svg": "./wordmark.svg",
+    "./lockup.svg": "./lockup.svg",
+    "./wordmark-paper.svg": "./wordmark-paper.svg",
+    "./lockup-paper.svg": "./lockup-paper.svg",
+    "./echo/*": "./echo/*",
+    "./contrast": "./contrast.ts",
     "./package.json": "./package.json"
   },
   "files": [
     "palette.css",
     "font.css",
     "fonts",
-    "mark.ts"
-  ]
+    "mark.ts",
+    "wordmark.svg",
+    "lockup.svg",
+    "wordmark-paper.svg",
+    "lockup-paper.svg",
+    "echo",
+    "contrast.ts"
+  ],
+  "devDependencies": {
+    "@playwright/test": "catalog:"
+  }
 }

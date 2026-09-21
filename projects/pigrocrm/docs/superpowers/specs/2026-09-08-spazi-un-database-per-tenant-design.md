@@ -1,8 +1,8 @@
 # Spazi — un CRM per iscritto, un database per spazio
 
 **Data:** 2026-09-08
-**Ambito:** dal login di https://pigro.joinorbiters.com chiunque può creare il proprio spazio con
-nome, email e password. Lo spazio risponde a `https://pigro.joinorbiters.com/<nome>` ed è un
+**Ambito:** dal login di https://pigro.letsrebase.com chiunque può creare il proprio spazio con
+nome, email e password. Lo spazio risponde a `https://pigro.letsrebase.com/<nome>` ed è un
 PigroCRM completo e isolato. I nomi sono unici e alcuni sono riservati.
 
 ---
@@ -19,7 +19,7 @@ L'alternativa, una colonna `tenant_id` su trenta tabelle e in ogni query, avrebb
 prodotto per lo stesso risultato e reso ogni dimenticanza una fuga di dati fra clienti. Qui una
 dimenticanza è impossibile: la richiesta ha una sola connessione, a un solo database.
 
-L'installazione di Ivan resta la **radice**: `https://pigro.joinorbiters.com/app` e `/api` senza
+L'installazione di Ivan resta la **radice**: `https://pigro.letsrebase.com/app` e `/api` senza
 prefisso usano `PIGROCRM_DATABASE_URL` come prima.
 
 ## 2. Il registro

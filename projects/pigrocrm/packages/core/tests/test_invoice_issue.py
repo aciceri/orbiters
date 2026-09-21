@@ -509,6 +509,26 @@ def test_a_name_outside_latin_1_is_refused_before_the_number_is_taken(
     assert again.numero is None
 
 
+def test_a_pec_pasted_from_a_mail_client_is_refused_before_the_number_is_taken(
+    service: InvoiceService, db_session: Session
+) -> None:
+    """`PECDestinatario` is `EmailType` in the vendored schema, a plain `local@domain`
+    address; until REB-227 the pre-check measured only its width, so a PEC copied out
+    of a mail client with the display name and angle brackets still attached passed
+    `issue`, spent a register number, and could never be exported. Now the refusal
+    comes from `issue`, names the field, and the counter has not moved."""
+    customer_id = _customer(db_session, codice_sdi=None, pec="Studio Rossi <pec@studiorossi.it>")
+    draft = _draft(service, customer_id)
+    with pytest.raises(ValidationFailed) as caught:
+        service.issue(draft, InvoiceIssue(), ADMIN)
+    assert caught.value.details["entity"] == "customer"
+    assert caught.value.details["field"] == "pec"
+    _nothing_consumed(db_session)
+    again = service.get(draft, ADMIN)
+    assert again.stato == "bozza"
+    assert again.numero is None
+
+
 def test_a_foreign_customer_with_no_usable_fiscal_identity_is_refused_before_the_number_is_taken(
     service: InvoiceService, db_session: Session
 ) -> None:

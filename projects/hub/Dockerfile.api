@@ -17,15 +17,15 @@ COPY projects/pigrocrm/apps/mcp/pyproject.toml projects/pigrocrm/apps/mcp/
 COPY projects/hub/packages/core/pyproject.toml projects/hub/packages/core/
 COPY projects/hub/apps/api/pyproject.toml projects/hub/apps/api/
 COPY projects/hub/apps/mcp/pyproject.toml projects/hub/apps/mcp/
-RUN uv sync --frozen --no-dev --no-install-workspace --package orbiters-api --package orbiters-mcp
+RUN uv sync --frozen --no-dev --no-install-workspace --package rebase-api --package rebase-mcp
 
 COPY projects/hub/packages ./projects/hub/packages
 COPY projects/hub/apps/api ./projects/hub/apps/api
 COPY projects/hub/apps/mcp ./projects/hub/apps/mcp
-RUN uv sync --frozen --no-dev --package orbiters-api --package orbiters-mcp
+RUN uv sync --frozen --no-dev --package rebase-api --package rebase-mcp
 
 EXPOSE 8000
 # Migrations at start-up, one instance. `--no-sync` for the reason PigroCRM's
 # Dockerfile.api records at length: without it `uv run` re-syncs the dev group over the
 # network on every container start.
-CMD ["sh", "-c", "cd projects/hub/packages/core && uv run --no-sync alembic upgrade head && cd /app && uv run --no-sync uvicorn orbiters_api.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "cd projects/hub/packages/core && uv run --no-sync alembic upgrade head && cd /app && uv run --no-sync uvicorn rebase_api.main:app --host 0.0.0.0 --port 8000"]

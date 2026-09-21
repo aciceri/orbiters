@@ -12,8 +12,8 @@ from typing import Any
 
 import pytest
 
-from orbiters_core.config import Settings
-from orbiters_core.conversions import (
+from rebase_core.config import Settings
+from rebase_core.conversions import (
     CONVERSIONS_URL,
     NETWORK_ERROR_STATUS,
     USER_AGENT_MAX_LENGTH,
@@ -26,7 +26,7 @@ from orbiters_core.conversions import (
 PIXEL_ID = "9r6qrnPxBV8WDVGtpuaqxh"
 KEY = "sk-svcacct-non-una-chiave-vera"
 EVENT_ID = "8f14e45f-ceea-467a-9f36-dcd8b0eba0b1"
-SIGNUP_URL = "https://joinorbiters.com/"
+SIGNUP_URL = "https://letsrebase.com/"
 
 
 class FakeHttp:

@@ -36,16 +36,28 @@ was decided, and the reason is written down.
 ```
 packages/core/   the domain: models, services, migrations, rendering. Depends on neither adapter.
 apps/api/        FastAPI. Imports core.
-apps/mcp/        the MCP server, stdio. Imports core.
+apps/mcp/        the MCP server, stdio and Streamable HTTP. Imports core.
 apps/web/        Vite + React SPA, served under /app.
 deploy/          the nginx vhost and the server setup script.
 ```
 
 The public pages are **not here**: they are their own project, `projects/website`
-(joinorbiters.com and the pages the product signs itself with). Its built output is
+(letsrebase.com and the pages the product signs itself with). Its built output is
 still copied into this project's web image and served at the document root, which is
 a serving arrangement and not a dependency of the application on it. The palette,
 the typeface and the brand mark both surfaces use live in `shared/brand`.
+
+**The UI comes from `@rebase/ui`, and a primitive is not written here.** The token
+layer and the eighteen shared primitives live in that package (REB-299, REB-300):
+`src/styles/tokens.css` is a three-line entry file that only fixes the import order
+and declares nothing, and a component imports `@rebase/ui/button`, never a local copy.
+Three generated files stayed under `src/components/ui/`, because nothing else renders
+them: `avatar`, `command` and the `input-group` it composes. There is no
+`components.json` in this application, on purpose: `shadcn add` is run in `shared/ui`
+(`pnpm --filter @rebase/ui exec shadcn add <name>`), and a fourth local primitive here
+needs a reason written down, not a generator flag. `shadows.test.tsx` holds those three
+to the rule, and the package's `tokens.test.ts` and `e2e/gallery.spec.ts` hold the
+system itself.
 
 **`packages/core` may import neither adapter, and neither adapter may import the
 other.** This is enforced twice and both are load-bearing: `ruff.toml`'s
@@ -67,6 +79,11 @@ pnpm --filter web dev
 
 `docker compose` runs from this directory, and its build context is the repository
 root two levels up, because that is where the lockfiles are.
+
+Two jobs run themselves once deployed, each one line in the deploy user's crontab:
+`pigrocrm gmail-sync` every fifteen minutes and `pigrocrm digest` every Monday at 08:00
+Europe/Rome. Neither is a process this repository starts on its own; the runbook is
+`docs/superpowers/notes/2026-09-09-gmail-cron-runbook.md`.
 
 ## Things that will cost you an afternoon if you do not know them
 
@@ -94,27 +111,57 @@ it starts. On this shared box that is a real collision with other projects, and 
 why `pigrocrm-e2e` is `serial: true` in `.github/preflight.json`. Editing those three
 values into `${VAR:-default}` form is a genuine improvement and has not been done.
 
-**Two concurrent `pigrocrm-e2e` runs corrupt each other through the pidfile, not just
-the ports.** `e2e/resilience.spec.ts` kills the API mid-suite and relaunches it,
+**Two concurrent `pigrocrm-e2e` runs still corrupt each other through the pidfile, not
+just the ports.** `e2e/resilience.spec.ts` kills the API mid-suite and relaunches it,
 tracking the pid through the fixed path `PIGROCRM_E2E_API_PIDFILE`
-(`/tmp/pigrocrm-e2e-api.pid` by default) rather than through a per-checkout handle.
-With a second run alive on the same box, `helpers.ts`'s `killApi()` can read a pid
-that run already replaced or reaped and die on `kill ESRCH` at `helpers.ts:209`
-instead of the test it was meant to run — observed live on 2026-09-10 with several
-other agents' containers and dev servers on the same devbox, filed as ORB-91. Run
-`pigrocrm-e2e` one checkout at a time; the pidfile trap does not show up any other
-way.
+(`/tmp/pigrocrm-e2e-api.pid` by default) rather than through a per-checkout handle. A
+second run alive on the same box reaping this pid before `killApi()` gets to it, or
+removing the pidfile in its own teardown, no longer kills the run: `helpers.ts`'s
+`killApi()` treats `ESRCH` and a missing pidfile as "already gone" and waits for the
+port to actually close either way (REB-91, fixing the `kill ESRCH` observed live on
+2026-09-10 with several other agents' containers and dev servers on the same devbox,
+filed as ORB-91). What the fix does not remove: a second run that *replaces* the pid
+with its own, live API before this one gets to it, which this process has no way to
+tell from its own API still running. Run `pigrocrm-e2e` one checkout at a time; the
+pidfile trap does not show up any other way.
 
 **Migrations live in `packages/core/migrations` with `alembic.ini` beside them**, and
 `tenants/service.py` finds that file from `pigrocrm.core.__file__` rather than from
 the checkout, so it works identically in the image. The API container runs
 `alembic upgrade head` at start-up; there is one instance, so there is no
-concurrent-migration risk.
+concurrent-migration risk. That command migrates the **root** database only. After it
+the same `CMD` runs `pigrocrm ensure-space-defaults`, which brings every space in the
+registry to head with the same `migrate_to_head` provisioning uses (ORB-189: a space
+was migrated once, at creation, and `pigrocrm-v0.13.0` broke every space's login by
+shipping a migration they had never received), then gives it its default stages,
+templates and cost categories where a table is empty, and never fails the boot (spec
+2026-09-12 §6.5). A new migration reaches the spaces at the first boot after the deploy,
+not before: nothing else runs DDL on a space.
 
 **`--no-sync` on the container's `uv run` calls is load-bearing.** Without it, uv
 re-evaluates the environment against the default group selection — which includes
 `dev` — decides the image's venv is out of date, and downloads mypy and ruff into a
 running production container on every start. That happened once, live.
+
+## Deploying
+
+Through CI only, as every project here (`docs/adding-a-project.md` §7): preview on a
+push to `main` that touched PigroCRM, production on a tag `pigrocrm-v<semver>`, both by
+`.github/workflows/deploy-pigrocrm.yml` calling `_deploy-compose.yml`. The production
+compose project is `pigrocrm`; the preview's is `pigrocrm-preview`.
+
+Each environment's `.env` is `${DEPLOY_PATH}/.env`, the root of that environment's
+checkout and two levels above the compose file: the deploy passes
+`--env-file "${DEPLOY_PATH}/.env"`, never rsyncs a `.env`, and reads nothing beside the
+compose file. It holds the `PIGROCRM_*` and `POSTGRES_*` values and is never in the
+repository. Locally, `docker compose` instead reads `projects/pigrocrm/.env`, beside
+this file, and `uv run uvicorn`/`uv run pytest` read `.env` in the repository root
+(`.env.example`'s own header says the same, in more detail). `PIGROCRM_DATA_DIR` has no
+default in the compose file, so a `.env` that forgets it fails the stack instead of
+mounting an empty directory (REB-258).
+
+Ports, loopback only, from the table in `docs/adding-a-project.md` §7: production web
+8080, Postgres 55432; preview web 8081, Postgres 55434.
 
 ## Namespace
 

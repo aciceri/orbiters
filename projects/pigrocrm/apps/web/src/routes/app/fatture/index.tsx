@@ -4,14 +4,14 @@ import { useState } from 'react'
 import { DataTable } from '@/components/DataTable'
 import { FilterChips, FilterRow } from '@/components/FilterRow'
 import { PageHeader } from '@/components/PageHeader'
-import { Button } from '@/components/ui/button'
+import { Button } from '@rebase/ui/button'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
+} from '@rebase/ui/select'
 import { buildInvoiceColumns } from '@/features/invoices/columns'
 import { NewProformaButton } from '@/features/invoices/NewProformaDialog'
 import { booleanSearchParam } from '@/lib/searchParams'
@@ -64,9 +64,15 @@ export function InvoicesList({ scadute }: { scadute?: boolean }) {
   // the same predicate evaluated on the same rows (criterion 2). Re-deciding "overdue"
   // here -- comparing `data_scadenza` against today's date in the browser -- is how the
   // count and the list start disagreeing on an invoice due today.
+  //
+  // «Tutte» is every document that stands on its own. A consumed proforma does not: its
+  // number lives on the fattura it became, and listing both doubled every issued proforma
+  // (ORB-169). So with no state chosen the server leaves them out; the «Consumata» chip
+  // asks for exactly them and gets them.
   const invoices = useInvoices({
     tipo: tipo === ANY ? undefined : (tipo as InvoiceTipo),
     stato: stato ?? undefined,
+    escludi_consumate: stato === null ? true : undefined,
     scadute,
   })
 

@@ -12,7 +12,7 @@ project per `docs/adding-a-project.md` §9 once the code exists).
   links.
 - A **dedicated flow for companies**: company name, a short project description, the
   period of need, the daily budget.
-- The joinorbiters.com landing sends people to the hub when they want to sign up.
+- The letsrebase.com landing sends people to the hub when they want to sign up.
 - A **new landing** that tells the project better -- CTAs, perks, clients and
   testimonials -- with example.com as the structural reference. For now it
   **replaces `/pigrocrm`**; the root `/` stays as it is today.
@@ -21,7 +21,7 @@ project per `docs/adding-a-project.md` §9 once the code exists).
   `pigrocrm-mcp`.
 - The admin area is a **dedicated section of the hub**, with its own login -- not a
   section of PigroCRM.
-- The hub answers at **joinorbiters.com/hub/**.
+- The hub answers at **letsrebase.com/hub/**.
 - Clients and testimonials are **placeholders** in one combined section shaped as
   "Mario Rossi ha lavorato per XYZ" plus a quote, until Ivan supplies the real ones.
 - **CVs live in the Orbiters database.**
@@ -41,7 +41,7 @@ minus the three things that legitimately stay (see the end of this section).
 | `packages/core/src/pigrocrm/core/config.py` | `orbiters_database_url`, `openai_pixel_id`, `openai_conversions_api_key`, `orbiters_signup_url`, `openai_conversions_send_hashed_email` | -- |
 | `docker-compose.yml`, `.env.example`, `README.md`, `AGENTS.md` | the five variables above and their prose | -- |
 | tests | `core/tests/test_orbiters.py`, `test_orbiters_conversions.py`, `test_compose_environment.py` (the variables), `api/tests/test_orbiters_api.py`, `mcp/tests/test_orbiters_tool.py`, `test_mcp_surface_coverage.py` (the tool count) | -- |
-| `deploy/nginx/pigro.joinorbiters.conf`, `spa.conf` | comments only | -- |
+| `deploy/nginx/pigro.letsrebase.conf`, `spa.conf` | comments only | -- |
 
 Stays in PigroCRM: `db/sidecar.py` (also used by `tenants/` and `storage/local.py`),
 the reserved slug `orbiters` in `tenants/schemas.py` (a URL namespace rule of the CRM,
@@ -153,9 +153,9 @@ hub.
 - `projects/hub/docker-compose.yml`: `db` (its own Postgres, data under the host
   directory `ORBITERS_DATA_DIR` names, outside the repository), `api`, `web` on
   `127.0.0.1:8084`.
-- Host nginx `joinorbiters.conf`: `location ^~ /hub/` → 8084; `location ^~ /api/hub/`
+- Host nginx `letsrebase.conf`: `location ^~ /hub/` → 8084; `location ^~ /api/hub/`
   and `location = /api/orbiters/signups` → the hub API (the latter re-pointed from the
-  PigroCRM API). Nothing on pigro.joinorbiters.com changes.
+  PigroCRM API). Nothing on pigro.letsrebase.com changes.
 - Data: `pg_dump orbiters` from the PigroCRM Postgres, restore into the hub's Postgres,
   then run the hub migrations; the PigroCRM copy is dropped only after a week of the
   hub answering.

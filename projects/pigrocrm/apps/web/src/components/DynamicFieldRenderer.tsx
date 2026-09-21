@@ -1,6 +1,6 @@
-import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Checkbox } from '@rebase/ui/checkbox'
+import { Input } from '@rebase/ui/input'
+import { Label } from '@rebase/ui/label'
 import {
   Select,
   SelectContent,
@@ -8,8 +8,8 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
+} from '@rebase/ui/select'
+import { Textarea } from '@rebase/ui/textarea'
 import { formatIsoDateItalian } from '@/lib/dates'
 import type { FieldDefinition } from '@/lib/schema'
 
@@ -37,10 +37,12 @@ const EMPTY = '—'
 const CLEAR_OPTION = '\u0000'
 
 /** Shared by both the label above a control and the label beside a checkbox. Always
- *  the semantic `destructive` token (the AA-compliant Watermelon variant every
- *  `aria-invalid` state in components/ui already uses — see styles/tokens.css),
- *  never the raw brand `--color-watermelon` that AppShell/login reserve for
- *  decorative accents: this asterisk is small body text, not a logo. */
+ *  the semantic `destructive` token (the darkened Watermelon step every `aria-invalid`
+ *  state in `@rebase/ui` already uses, declared in `@rebase/ui/tokens.css`), never the
+ *  raw brand `--color-watermelon` that AppShell and the login reserve for decorative
+ *  accents: this asterisk is small body text, not a logo. How far that step clears AA
+ *  as text was REB-307, answered on 2026-09-18: the token moved to the deep step and
+ *  measures 5.38:1 on the page ground and 6.04:1 on a white card. */
 function RequiredMark() {
   return <span className="ml-1 text-destructive">*</span>
 }

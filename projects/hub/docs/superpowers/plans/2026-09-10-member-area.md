@@ -247,7 +247,7 @@ from orbiters_core.mail import (
 )
 
 KEY = "re_non_una_chiave_vera"
-FROM = "Orbiters <ciao@joinorbiters.com>"
+FROM = "Rebase <ciao@letsrebase.com>"
 
 
 class FakeHttp:
@@ -305,10 +305,10 @@ def test_no_key_means_no_sender() -> None:
 
 
 def test_the_magic_link_mail_carries_the_link_and_how_long_it_lasts() -> None:
-    mail = magic_link_mail("ada@studio.it", "https://joinorbiters.com/hub/entra?t=abc", 15)
+    mail = magic_link_mail("ada@studio.it", "https://letsrebase.com/hub/entra?t=abc", 15)
     assert mail.to == "ada@studio.it"
     assert mail.subject == "Il tuo accesso a Orbiters"
-    assert "https://joinorbiters.com/hub/entra?t=abc" in mail.text
+    assert "https://letsrebase.com/hub/entra?t=abc" in mail.text
     assert "15 minuti" in mail.text
     assert "una volta sola" in mail.text
 ```
@@ -328,10 +328,10 @@ In `config.py`, after `admin_session_days`:
     # link request with a 503 sentence rather than pretending a mail went out: the key
     # lives in the server's `.env` only (`.env.example`).
     resend_api_key: str = ""
-    mail_from: str = "Orbiters <ciao@joinorbiters.com>"
+    mail_from: str = "Rebase <ciao@letsrebase.com>"
     # Where the SPA answers, for the link in the mail: `{hub_url}/entra?t=...`. Local
     # development points it at the Vite dev server.
-    hub_url: str = "https://joinorbiters.com/hub"
+    hub_url: str = "https://letsrebase.com/hub"
     magic_link_minutes: int = 15
     # Sliding, as the admin's.
     member_session_days: int = 30
@@ -2060,7 +2060,7 @@ describe('/io', () => {
     expect(screen.getByRole('link', { name: /Ada CV\.pdf/ })).toHaveAttribute('href', '/api/hub/me/cv')
     expect(screen.getByRole('link', { name: /Apri PigroCRM/ })).toHaveAttribute(
       'href',
-      'https://pigro.joinorbiters.com/app/registrati',
+      'https://pigro.letsrebase.com/app/registrati',
     )
     expect(screen.getByText('Altro in arrivo')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Modifica' })).toHaveAttribute('href', '/io/modifica')
@@ -2113,7 +2113,7 @@ import { formatBytes } from '@/lib/format'
 import { toApplication, useMember, useMemberLogout } from '@/lib/member'
 import { FREELANCER_STEPS } from '@/pages/FreelancerWizard'
 
-const PIGROCRM_URL = 'https://pigro.joinorbiters.com/app/registrati'
+const PIGROCRM_URL = 'https://pigro.letsrebase.com/app/registrati'
 
 /** What the person sent, under the wizard's own questions, and the perks. The email is
  *  shown and not editable: it is the address the link proved. */
@@ -2627,9 +2627,9 @@ In `Shell.tsx`, wrap the right side of the header so it holds two links:
           </Link>
           <a
             className="text-muted-foreground underline-offset-2 hover:underline"
-            href="https://joinorbiters.com/"
+            href="https://letsrebase.com/"
           >
-            joinorbiters.com
+            letsrebase.com
           </a>
         </nav>
 ```
@@ -2642,11 +2642,11 @@ In `Shell.tsx`, wrap the right side of the header so it holds two links:
 # --- the member area: the magic link by mail ------------------------------------------
 # Resend sends the login link. Empty key: the link request answers 503 with a sentence
 # and nothing pretends to send. The key is a secret and lives in this file on the
-# server only; the SPF and DKIM records for joinorbiters.com are set in Resend's panel.
+# server only; the SPF and DKIM records for letsrebase.com are set in Resend's panel.
 ORBITERS_RESEND_API_KEY=
-ORBITERS_MAIL_FROM=Orbiters <ciao@joinorbiters.com>
+ORBITERS_MAIL_FROM=Rebase <ciao@letsrebase.com>
 # Where the SPA answers, for the link in the mail. Local development: the Vite server.
-ORBITERS_HUB_URL=https://joinorbiters.com/hub
+ORBITERS_HUB_URL=https://letsrebase.com/hub
 ```
 
 `projects/hub/docker-compose.yml`, in the `api` service's `environment`, after the conversions lines:
@@ -2654,11 +2654,11 @@ ORBITERS_HUB_URL=https://joinorbiters.com/hub
 ```yaml
       # The member area's mail. Empty key is a hub with the area's door still closed.
       ORBITERS_RESEND_API_KEY: ${ORBITERS_RESEND_API_KEY:-}
-      ORBITERS_MAIL_FROM: ${ORBITERS_MAIL_FROM:-Orbiters <ciao@joinorbiters.com>}
-      ORBITERS_HUB_URL: ${ORBITERS_HUB_URL:-https://joinorbiters.com/hub}
+      ORBITERS_MAIL_FROM: ${ORBITERS_MAIL_FROM:-Rebase <ciao@letsrebase.com>}
+      ORBITERS_HUB_URL: ${ORBITERS_HUB_URL:-https://letsrebase.com/hub}
 ```
 
-`projects/hub/AGENTS.md`: in the layout block change the `apps/web/` line to `pnpm package \`hub\`: the SPA at joinorbiters.com/hub/ (wizards, the member area, admin)`; in «What it is» add one sentence: «Since 2026-09-10 a freelancer can get back in with a magic link by mail (`/hub/accedi`, `/hub/io`): spec `docs/superpowers/specs/2026-09-10-member-area-design.md`.»; in «Deploying» add: «The member area's mail needs `ORBITERS_RESEND_API_KEY` and `ORBITERS_MAIL_FROM` in the host `.env`; without the key `/hub/accedi` answers 503 with a sentence.»
+`projects/hub/AGENTS.md`: in the layout block change the `apps/web/` line to `pnpm package \`hub\`: the SPA at letsrebase.com/hub/ (wizards, the member area, admin)`; in «What it is» add one sentence: «Since 2026-09-10 a freelancer can get back in with a magic link by mail (`/hub/accedi`, `/hub/io`): spec `docs/superpowers/specs/2026-09-10-member-area-design.md`.»; in «Deploying» add: «The member area's mail needs `ORBITERS_RESEND_API_KEY` and `ORBITERS_MAIL_FROM` in the host `.env`; without the key `/hub/accedi` answers 503 with a sentence.»
 
 `docs/design/DECISIONS.md`, one row at the end:
 

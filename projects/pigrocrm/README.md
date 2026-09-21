@@ -103,7 +103,7 @@ would rewrite the reverse proxy on every commit, and the guard that's meant to p
 TLS configuration looks for a file named after the domain (`sites-available/yourdomain.it`).
 If certbot has left the vhost under a different name, the guard doesn't find it and the script
 adds a second vhost with the same `server_name`. On this host that's exactly the case:
-the file is named `pigro.joinorbiters.conf`.
+the file is named `pigro.letsrebase.conf`.
 
 ### 4. Enable TLS — before trying to log in
 
@@ -143,7 +143,7 @@ from the network inside a production container already running, on every single 
 
 `https://tuodominio.it/`, with the credentials just created.
 
-### 7. The Gmail sync cron (only if you connect Gmail)
+### 7. The cron jobs
 
 There is no daemon and no queue: the Gmail sync is a loop that starts, does its work and
 ends. The fifteen minutes are cron's, one line in the `crontab` of the user that owns the
@@ -161,9 +161,48 @@ running, which is not an error — and `1`, with a sentence on `stderr`, when th
 missing, is ambiguous, belongs to a deactivated user or the consent has been revoked.
 `--env-file ../../.env` and `--no-sync` are here for exactly the reasons of §1 and §5.
 
+Same shape for the weekly report, one line for `pigrocrm digest` at eight on Monday:
+
+```
+0 8 * * 1 cd $DEPLOY_PATH/projects/pigrocrm && docker compose --env-file ../../.env exec -T api uv run --no-sync pigrocrm digest >> /var/log/pigrocrm-digest.log 2>&1
+```
+
+Every run prints one line per space: `inviato a N`, `vuoto`, `già inviato`, `nessun
+destinatario`, or `saltato (Type)` on `stderr`. `0 8` assumes the host's clock is already
+on Europe/Rome — check with `timedatectl` before pasting the line, or the report lands at
+the wrong hour. The runbook below now covers both jobs.
+
 The runbook — the table of error sentences, what to do about each one and how they relate
 to the expiry of the Google consent — is
 [`docs/superpowers/notes/2026-09-09-gmail-cron-runbook.md`](docs/superpowers/notes/2026-09-09-gmail-cron-runbook.md).
+
+## Connect an agent
+
+Every operation in the UI is also an MCP tool. Over HTTP the server answers at
+`https://<host>/mcp` for the root installation and `https://<host>/<slug>/mcp` for a
+space, authenticated with a personal access token as a bearer. In the app, the
+«Collega un agente» entry at the bottom of the sidebar mints a token and gives you
+both snippets below with the values filled in.
+
+```
+claude mcp add --transport http pigrocrm https://<host>/mcp --header "Authorization: Bearer pgc_..."
+```
+
+```json
+{"mcpServers": {"pigrocrm": {"type": "http", "url": "https://<host>/mcp",
+  "headers": {"Authorization": "Bearer pgc_..."}}}}
+```
+
+The host vhosts in `deploy/nginx/` gained a `/mcp` block with a long read timeout for
+this, because a tool call answers only when it has finished: an installation still
+serving an older copy of its vhost caps every call at nginx's 60-second default until it
+re-applies the file (`deploy/setup-server.sh`).
+
+The token inherits the whole role of whoever created it; revoke it from Impostazioni →
+Token if it leaks. Claude Code, Cursor, Codex and any client that can send a header
+work; the connectors of claude.ai and Claude Desktop need OAuth, which this server does
+not offer yet. The stdio transport is still there for a client that launches the server
+itself (see the head of `docker-compose.yml`).
 
 ## Status
 

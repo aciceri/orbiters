@@ -182,7 +182,10 @@ commit would otherwise ship the red code. The price is one full run per release.
 The mechanism lives in `.github/workflows/_deploy-compose.yml` and is shared. What a
 project writes is a caller, `deploy-<name>.yml`, with one job per environment, each
 naming four things: the GitHub environment, the compose directory, the compose project
-name, and a health URL. Copy `deploy-pigrocrm.yml`; it is deliberately short.
+name, and a health URL. A stack with more than one process worth probing (REB-246)
+also names an `extra-health-url`, curled the same way alongside the first; optional,
+and empty by default for every project that has only the one. Copy
+`deploy-pigrocrm.yml`; it is deliberately short.
 
 The preview trigger is `workflow_run` on CI, not `push`, because the deploy refuses an
 unverified commit and waiting for CI on a billed runner cost more than the deploy
@@ -214,7 +217,7 @@ give the Deployments tab a real per-environment history, and they are where a re
 reviewer on production goes the day the account is on a paid plan.
 
 ```
-gh api -X PUT repos/joinorbiters/<repo>/environments/<name>-preview
+gh api -X PUT repos/letsrebase/rebase/environments/<name>-preview
 gh secret set DEPLOY_HOST --env <name>-preview --body '...'
 ```
 
@@ -250,7 +253,7 @@ building it.** Landing them the other way round leaves a window where the name p
 at a container that no longer has the pages, and on this repository that window was not
 theoretical: while production was still deployed from `main` by hand, a merge was
 effectively a release whatever the tag policy said. It cost twenty minutes of a
-redirecting joinorbiters.com on 2026-09-09 (ORB-16). Since that afternoon nothing is
+redirecting joinorbiters.com on 2026-09-09 (REB-16). Since that afternoon nothing is
 deployed by hand (`docs/design/DECISIONS.md`, 2026-09-09): production moves only on a
 tag, so the order above is what makes the tag safe to push.
 
@@ -271,10 +274,10 @@ rows.
 |---|---|---|
 | PigroCRM | web 8080, Postgres 55432 | web 8081, Postgres 55434 |
 | website | web 8082 | web 8083 |
-| hub (`orbiters`, `orbiters-preview`) | api 8084, web 8085, Postgres 55435 | api 8086, web 8087, Postgres 55436 |
+| hub (`rebase`, `rebase-preview`) | api 8084, web 8085, mcp 8088, Postgres 55435 | api 8086, web 8087, mcp 8089, Postgres 55436 |
 
-Since 2026-09-10 preview has public names too: `preview.joinorbiters.com` mirrors the
-website plus hub map, `preview.pigro.joinorbiters.com` mirrors the CRM's. So a new
+Since 2026-09-10 preview has public names too: `preview.letsrebase.com` mirrors the
+website plus hub map, `preview.pigro.letsrebase.com` mirrors the CRM's. So a new
 project's preview gets a vhost as well as a production one, the two files stay the same
 shape, and only the ports differ.
 
@@ -288,9 +291,11 @@ search; a preview name only ever proxies preview containers, so a click inside p
 cannot walk out into production data; and preview's own database and secrets are its
 own. The consequence for a new project: if its preview would expose something that must
 not be read by whoever finds the URL, that is a reason to keep the surface off preview,
-not a reason to put a password back.
+not a reason to put a password back. `projects/website/deploy/check-unindexable.sh`
+(preflight `check-unindexable`) is what proves this stays true against the live
+names rather than only against the vhost files that promise it (REB-108).
 
-TLS on the preview names is a **certificate of their own**, `preview.joinorbiters.com`,
+TLS on the preview names is a **certificate of their own**, `preview.letsrebase.com`,
 covering both of them, rather than two more names on the production certificate. The
 reason is blast radius: `certbot --nginx --expand` reinstalls the certificate into every
 vhost whose `server_name` it matches, which means it rewrites the two production files
@@ -301,6 +306,89 @@ The copy in the repository is plain HTTP and is the source of truth for what the
 are. The copy in `/etc/nginx/sites-available/` has certbot's port-443 block on top of
 it: **edit that one in place**, with `nginx -t` before the reload. Overwriting it from
 the repository takes TLS away on the spot.
+
+### What PostHog's warehouse reads
+
+Since 2026-09-12 (REB-187) PostHog's data warehouse reads the hub's production database
+(`rebase` on 55435: `signups`, `freelancers`, `companies`, `guide_downloads`, `logins`,
+`comments`) and the CRM's production registry (`pigrocrm_tenants` on 55432: `tenants`),
+so the events the surfaces send can be joined to the rows behind them. `logins` was
+`member_logins` until the identity merge renamed it (REB-281, migration 0012); the grant
+followed the table, the sync did not, and PostHog paused it with «something this sync
+depends on no longer exists». The preview databases (55434, 55436) are not connected.
+The design is `docs/design/2026-09-12-posthog-analytics-design.md`. Both Postgres answer on the
+loopback only, so PostHog reaches them through an SSH tunnel, and the arrangement on the
+server is:
+
+- a user `posthog`, shell `/usr/sbin/nologin`, whose one `authorized_keys` line is the
+  public half of a key pair generated for this purpose (the private half is stored in
+  PostHog's source configuration and nowhere else), restricted to the two forwards:
+
+  ```
+  restrict,port-forwarding,permitopen="127.0.0.1:55435",permitopen="127.0.0.1:55432" ssh-ed25519 ...
+  ```
+
+- `/etc/ssh/sshd_config.d/60-posthog-tunnel.conf`, a `Match User posthog` block with
+  `AllowTcpForwarding yes`, `PermitOpen` on the same two addresses, `PermitTTY no`,
+  `X11Forwarding no`, `AllowAgentForwarding no`, `PasswordAuthentication no`,
+  `ForceCommand /bin/false`. A `Match` block runs to the end of its file, so nothing
+  else goes in that drop-in. A shell attempt answers nologin's «This account is
+  currently not available»; a forward to either port works and to anything else does
+  not. `sshd -t` before the reload, and `sshd -T -C user=posthog` prints the effective
+  `permitopen` for that user;
+- a role `posthog_ro` in each database, `LOGIN` with its own password, `CONNECT` on the
+  database, `USAGE` on `public` and `SELECT` on the tables above and nothing else. The
+  sessions, the admin users and the magic-link tokens are not granted.
+
+In PostHog the two sources are Postgres sources with prefixes `hub` and `pigro`, host
+`127.0.0.1` and the container's host port, the SSH tunnel enabled towards the server's
+address with key-pair auth as `posthog`, and **«Require TLS through tunnel» off**: the
+tunnel is the encryption, the containers speak plain Postgres, and with the switch on
+every attempt answers «Your database doesn't support the encrypted connection PostHog
+requires». Through the API the switch is `ssh_tunnel.require_tls: {"enabled": false}`
+in the source payload, which the wizard shows and the API reference does not name.
+
+Keeping it working:
+
+- **A new table** PostHog should see needs its own `GRANT SELECT` (the grants are per
+  table, a migration does not extend them) and then a schema refresh on the source.
+- **A renamed table or column breaks a sync**, and this is the one that has already
+  happened twice: the `orbiters` → `rebase` database rename on 2026-09-15, and
+  `member_logins` → `logins` on 2026-09-21. `test_warehouse_contract.py` in the hub's
+  core now fails on the second kind, on the pull request, instead of leaving it to an
+  email nine days later. A rename carries the grant with it, so nothing here refuses PostHog; the
+  sync simply names an object that no longer exists and is paused until somebody
+  re-points it, which is a schema refresh on the source plus the sync enabled on the new
+  name. The old sync's rows stay in PostHog under the old name: delete them there, or
+  two tables claim to be the same thing. Same for a column dropped from a synced table.
+- **A column moved out of a synced table takes its data out of the warehouse**, without
+  failing anything. The identity merge moved `nome`, `cognome`, `email` and
+  `linkedin_url` from `freelancers` and `companies` into `users`, which is deliberately
+  not granted: those syncs keep running and arrive without the identity they used to
+  carry, so a dashboard that joins a person to their card is empty rather than broken.
+  Granting `users` is a decision about what a third party holds, not a repair.
+- **A source syncs every column of a table unless somebody says otherwise**, which for
+  `freelancers` means `cv_bytes`: the CV itself, up to five megabytes of PDF per person.
+  The column picker is behind «Columns» beside the table in the source's table list. The
+  grant is per table here, so the database does not stop it; on 2026-09-21
+  `pg_statio_user_tables` showed 384,866 TOAST block reads against 6,972 heap reads on a
+  table of 14 MB, which is what a repeated full-table read of the binaries looks like.
+  Unchecking the column is the fix. **Not** a column-level grant: a sync reads whole
+  rows, so revoking one column fails the whole table. What keeps it that way in the
+  repository is `projects/hub/packages/core/tests/test_warehouse_contract.py`, which
+  fails when a synced table grows another binary column; what keeps it that way in
+  production, if the answer is ever «not even once», is a view without the column, as
+  the credential rule above already prescribes.
+- **A new project's database**: a `permitopen` for its port on the key line and in the
+  `Match` block, `sshd -t`, `systemctl reload ssh`; a `posthog_ro` role with `SELECT` on
+  the tables that matter; a source with the prefix the project is called.
+- **Rotating the key**: generate a new pair, replace the one `authorized_keys` line,
+  put the new private half in each source's SSH settings, and test both forwards.
+- **Rotating a role password**: `ALTER ROLE posthog_ro PASSWORD '...'` in that
+  database, then the new password on the source; no restart anywhere.
+
+Per-space CRM databases are deliberately not connected: one source per space does not
+scale, and the activation funnel is read from events.
 
 ## 8. Documentation
 
@@ -313,7 +401,7 @@ Linear is the tracker and `docs/tracker.md` is the contract: initiatives, projec
 milestones, statuses, the two label groups and the loop an issue goes through are all
 defined there, checked against the board, and this page does not carry a copy of them
 because a copy drifts, which is exactly what an earlier version of this section did
-(ORB-45). What a new monorepo project needs is an initiative of its own, named as the
+(REB-45). What a new monorepo project needs is an initiative of its own, named as the
 directory reads to people (`PigroCRM`, not `pigrocrm`) and created by hand in the Linear
 UI since the MCP surface cannot create one, and a first project under it with a scope
 that can actually close, a lead and both members (the members in the UI too, since

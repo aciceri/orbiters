@@ -35,6 +35,27 @@ server {
     server_name ${DOMAIN};
     client_max_body_size 25M;
 
+    # REB-271: the same set installed on pigro.letsrebase.com's own vhost
+    # (deploy/nginx/security-headers.conf has the reasoning behind each line and why
+    # \`Referrer-Policy\` is \`strict-origin\` here, not \`strict-origin-when-cross-
+    # origin\`), inlined here rather than \`include\`d: this script has nothing that
+    # provisions /etc/nginx/snippets/ on a fresh self-hosted install, and an
+    # \`include\` of a path that does not exist fails \`nginx -t\` outright.
+    # \`frame-ancestors 'none'\` and nosniff cost nothing and are enforced from day
+    # one; the rest of the policy is the same guess at what the SPA loads and ships
+    # report-only for the same reason. No \`includeSubDomains\` on the HSTS line,
+    # unlike the committed vhost: \$PIGROCRM_DOMAIN here is a domain this script does
+    # not own (a self-hoster's own apex), and pinning every sibling subdomain of it to
+    # HTTPS for a year from a single CRM visit could brick an unrelated HTTP-only
+    # service on the same domain that this installation has no say over.
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin always;
+    add_header X-Frame-Options DENY always;
+    add_header Content-Security-Policy "frame-ancestors 'none';" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://eu-assets.i.posthog.com; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; frame-src 'self' blob:; connect-src 'self' https://eu.i.posthog.com https://eu-assets.i.posthog.com; object-src 'none'; base-uri 'self';" always;
+
     location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host \$host;

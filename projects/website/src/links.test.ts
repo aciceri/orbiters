@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { REDIRECTS, route } from './path-map-plugin'
+import { PAGES, REDIRECTS, SITE_HOST, route } from './path-map-plugin'
 
 /**
  * ORB-66: nothing else in the suite resolves an `<a href>` against what the site
@@ -32,18 +32,18 @@ import { REDIRECTS, route } from './path-map-plugin'
  *   route to resolve.
  * - A link that resolves through `REDIRECTS` is treated as wrong, not merely checked
  *   for a working target. `REDIRECTS` exists for a bookmark or an inbound link this
- *   site does not control (`/orbiters`, from before the community page took `/`);
+ *   site does not control (`/orbiters`, the community page's name before REB-212);
  *   markup this build produces itself should say what it means directly. That rule is
  *   what the three links this issue names actually trip: none of them 404, all three
  *   still 301 to a page that exists, and all three are "wrong" only in that sense,
  *   which is exactly why nothing before this test noticed them.
  * - A path under `ELSEWHERE` (`/app/`, `/hub/...`) resolves to another tenant of the
- *   origin, named in `deploy/joinorbiters.conf` and served by a container this suite
+ *   origin, named in `deploy/letsrebase.conf` and served by a container this suite
  *   never runs, so the check stops at "the path map hands it away" and does not, and
  *   cannot, follow it further.
  */
 
-const PAGE_FILES = ['index.html', 'orbiters.html', 'privacy.html', 'termini.html', 'pitch.html'] as const
+const PAGE_FILES = ['index.html', 'pigrocrm.html', 'community.html', 'privacy.html', 'termini.html', 'pitch.html'] as const
 type PageFile = (typeof PAGE_FILES)[number]
 
 const SRC_DIR = join(__dirname)
@@ -61,14 +61,14 @@ function idsOn(page: string): Set<string> {
 /** The site's own trusted external destinations. Mirrors the allowlist
  *  `landing-pages.test.ts`'s "requests nothing from another origin" test already
  *  enforces for `href`/`src` subresources, kept as its own list here because that
- *  file does not cover `orbiters.html`, and because an `<a>` a visitor clicks is a
+ *  file does not cover `community.html`, and because an `<a>` a visitor clicks is a
  *  different concern from a subresource the page fetches for itself: this list is
  *  free to diverge from that one without either test lying about what it guarantees.
  *  No `example.com` here on purpose: it is the host the suite's fixtures use, and a link
  *  to it on a page is a fixture that leaked into the markup (ORB-116, after ORB-97 on
  *  the hub). */
 // `www.linkedin.com` since ORB-151: the four voices link to their public profiles.
-const EXTERNAL_HOSTS = ['github.com', 'pigro.joinorbiters.com', 'openai.com', 'humancraft.tech', 'www.linkedin.com']
+const EXTERNAL_HOSTS = ['github.com', 'pigro.letsrebase.com', 'openai.com', 'posthog.com', 'humancraft.tech', 'www.linkedin.com']
 
 function checkExternal(href: string): string | undefined {
   let url: URL
@@ -141,11 +141,46 @@ describe('REDIRECTS resolve to something real', () => {
   })
 })
 
+/** `PAGES` maps a served path to a file (e.g. `/pigrocrm` -> `/pigrocrm.html`); this
+ *  inverts it to the file name this test already keys on (`pigrocrm.html`), so the
+ *  canonical address and `og:url` each page declares can be checked against the one
+ *  map that says what its real address is (REB-111). */
+const PATH_OF: Record<PageFile, string> = Object.fromEntries(
+  Object.entries(PAGES).map(([path, file]) => [file.replace(/^\//, ''), path]),
+) as Record<PageFile, string>
+
+describe('PAGE_FILES, the set this file checks', () => {
+  it('is exactly the set of files the path map serves', () => {
+    // A page in PAGES but missing here would get no canonical/og:url assertion at
+    // all, the hole REB-111 closes; a page here but missing from PAGES would make
+    // PATH_OF[name] undefined and the expected value a nonsense string. Either drift
+    // fails on its own terms rather than as a confusing string mismatch below.
+    const served = Object.values(PAGES).map((file) => file.replace(/^\//, ''))
+    expect([...PAGE_FILES].sort()).toEqual(served.sort())
+  })
+})
+
 describe.each(PAGE_FILES)('%s', (name) => {
   it('links only to what the site actually serves', () => {
     const hrefs = [...html[name].matchAll(/<a\s[^>]*\bhref="([^"]+)"/g)].map((m) => m[1]!)
     const failures = hrefs.map((href) => checkHref(name, href)).filter((reason): reason is string => reason !== undefined)
     expect(failures).toEqual([])
+  })
+
+  it('declares its own canonical address, and og:url agrees with the path map', () => {
+    const expected = `${SITE_HOST}${PATH_OF[name]}`
+    // A tolerant attribute-order pattern, like the `meta()` helper elsewhere in the
+    // suite, so a reflow or a reordered attribute is not mistaken for a missing tag.
+    const canonical = html[name].match(/<link[^>]*\brel="canonical"[^>]*\bhref="([^"]*)"/)?.[1]
+    const ogUrl = html[name].match(/<meta[^>]*\bproperty="og:url"[^>]*\bcontent="([^"]*)"/)?.[1]
+    expect(canonical, `${name} <link rel="canonical">`).toBe(expected)
+    expect(ogUrl, `${name} og:url`).toBe(expected)
+  })
+
+  it('carries structured data only if it is the front door', () => {
+    // REB-113: the WebSite/Organization block lives on index.html alone; the assertion
+    // that block is well-formed and says what the legal pages say is landing-pages.test.ts's.
+    expect(html[name].includes('application/ld+json'), name).toBe(name === 'index.html')
   })
 })
 
@@ -162,15 +197,20 @@ describe('idsOn, the id-extraction helper behind the fragment check', () => {
 
 describe('checkHref, edge cases none of the four pages exercise today', () => {
   it('catches a mistyped absolute asset path, and passes the real one', () => {
-    expect(checkHref('index.html', '/orbiters-logo.svg')).toBeUndefined()
-    expect(checkHref('index.html', '/orbiter-logo.svg')).toMatch(/no file under src\/ answers it/)
+    expect(checkHref('index.html', '/rebase-logo.svg')).toBeUndefined()
+    expect(checkHref('index.html', '/rebase-log.svg')).toMatch(/no file under src\/ answers it/)
   })
 
   it('drops the query string before routing, like the dev server does', () => {
     expect(checkHref('index.html', '/privacy?utm_source=newsletter')).toBeUndefined()
     // The redirect-is-wrong rule still applies once the query string is gone.
-    expect(checkHref('index.html', '/pigrocrm?utm_source=newsletter')).toMatch(/is a redirect to \//)
-    expect(checkHref('index.html', '/orbiters?utm_source=newsletter')).toBeUndefined()
+    expect(checkHref('index.html', '/pigrocrm?utm_source=newsletter')).toBeUndefined()
+    expect(checkHref('index.html', '/community?utm_source=newsletter')).toBeUndefined()
+    expect(checkHref('index.html', '/orbiters?utm_source=newsletter')).toMatch(
+      /redirect to \/community/,
+    )
+    // An unknown path is still refused.
+    expect(checkHref('index.html', '/vecchia?utm_source=newsletter')).toMatch(/404s it/)
   })
 
   it('skips a scheme it does not otherwise resolve, the same way it skips mailto:', () => {

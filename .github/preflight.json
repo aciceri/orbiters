@@ -53,24 +53,13 @@
       "why": "The fifty-thousand-row corpus: twelve minutes, almost all of it inside PostgreSQL. Serial and never under -n, because every assertion in those two files is about which plan the planner picks and load changes the answer. It selects on core alone: the two files import `pigrocrm.core` and the local `corpus` helper beside them and nothing else, so an edit under apps/api or apps/mcp cannot change which plan PostgreSQL picks over core's schema, and it used to buy twelve minutes of waiting for that (ORB-141)."
     },
     {
-      "id": "pigrocrm-py-planner",
-      "run": "uv run pytest -q -m \"planner\" projects/pigrocrm/packages/core/tests",
-      "when": [
-        "projects/pigrocrm/packages/**",
-        "projects/pigrocrm/conftest.py",
-        "pyproject.toml",
-        "uv.lock"
-      ],
-      "serial": true,
-      "why": "Deselected on both CI tiers because a hosted runner picks the other plan (ORB-9). This is the one machine where the assertion means something, so it has to run here or it runs nowhere. Scoped to core for the same reason as the corpus above."
-    },
-    {
       "id": "pigrocrm-web-lint",
       "run": "pnpm --filter web lint",
       "when": [
         "projects/pigrocrm/apps/web/**",
         "package.json",
-        "pnpm-workspace.yaml"
+        "pnpm-workspace.yaml",
+        "shared/ui/**"
       ]
     },
     {
@@ -78,10 +67,12 @@
       "run": "pnpm --filter web test",
       "when": [
         "projects/pigrocrm/apps/web/**",
+        "projects/pigrocrm/deploy/nginx/pigro.letsrebase.conf",
         "pnpm-lock.yaml",
-        "pnpm-workspace.yaml"
+        "pnpm-workspace.yaml",
+        "shared/ui/**"
       ],
-      "why": "vitest, jsdom, no services. Also the step that writes src/routeTree.gen.ts, which the typecheck below needs and which nothing else generates."
+      "why": "vitest, jsdom, no services. Also the step that writes src/routeTree.gen.ts, which the typecheck below needs and which nothing else generates. The vhost path is here, not under apps/web, because src/test/robots.test.ts (REB-107) reads it directly."
     },
     {
       "id": "pigrocrm-web-build",
@@ -90,16 +81,37 @@
         "projects/pigrocrm/apps/web/**",
         "package.json",
         "pnpm-lock.yaml",
-        "pnpm-workspace.yaml"
+        "pnpm-workspace.yaml",
+        "shared/ui/**"
       ],
       "why": "Build before typecheck, always: a bare tsc --noEmit on a clean checkout fails every route file with TS2307 because src/routeTree.gen.ts is gitignored and only a Vite run writes it."
+    },
+    {
+      "id": "analytics-unit",
+      "run": "pnpm --filter @rebase/analytics lint && pnpm --filter @rebase/analytics test && pnpm --filter @rebase/analytics exec tsc --noEmit",
+      "when": [
+        "shared/analytics/**",
+        "pnpm-lock.yaml"
+      ],
+      "why": "The one PostHog project every surface reports to, and the init policy the two SPAs share. A second of vitest with posthog-js mocked; the consumers test their own wiring."
+    },
+    {
+      "id": "ui-unit",
+      "run": "pnpm --filter @rebase/ui lint && pnpm --filter @rebase/ui test && pnpm --filter @rebase/ui build && pnpm --filter @rebase/ui exec tsc --noEmit",
+      "when": [
+        "shared/ui/**",
+        "shared/brand/**",
+        "pnpm-lock.yaml"
+      ],
+      "why": "The token contract both applications render on and the eighteen primitives that read it: every colour resolved back through the brand palette, the five chart mixes evaluated the way a browser does, the rules of the 2026-09-18 record (zero radius, ink lines, no blur, one scheme), and the gallery built, which is what proves the primitives still compile against Tailwind outside an application."
     },
     {
       "id": "website-lint",
       "run": "pnpm --filter website lint",
       "when": [
         "projects/website/**",
-        "shared/brand/**"
+        "shared/brand/**",
+        "shared/analytics/**"
       ]
     },
     {
@@ -108,6 +120,7 @@
       "when": [
         "projects/website/**",
         "shared/brand/**",
+        "shared/analytics/**",
         "pnpm-lock.yaml"
       ],
       "why": "99 assertions on the built and unbuilt text: which tokens each sheet may declare, what each page promises, how the field behaves. No services, about two seconds."
@@ -118,11 +131,19 @@
       "when": [
         "projects/hub/content/**",
         "projects/hub/tools/**",
-        "projects/hub/packages/core/src/orbiters_core/perks/**",
+        "projects/hub/packages/core/src/rebase_core/perks/**",
         "shared/brand/palette.css",
         "shared/brand/fonts/**"
       ],
       "why": "The other half of packages/core/tests/test_guide_pdf.py. That test compares hashes and needs nothing installed, so it runs in the hub's gate on every pull request; this rebuilds the PDF with pandoc, Typst and fontTools and compares the bytes, which only a machine with all three can do. Two seconds, and it is what makes committing a built artefact safe: a source edited without a regeneration fails here rather than leaving a download that says something the repository no longer does."
+    },
+    {
+      "id": "wordmark",
+      "run": "uv run shared/brand/tools/build-wordmark.py --check",
+      "when": [
+        "shared/brand/**"
+      ],
+      "why": "wordmark.svg, lockup.svg, wordmark-paper.svg and lockup-paper.svg are drawn from the constants at the top of tools/build-wordmark.py and committed rather than built by either surface, so nothing else notices a hand edit or a redraw that never ran. This reruns the script with --check, which needs the network for the pinned font unless the tempdir cache is warm, and for the two PEP 723 packages it declares (fonttools, uharfbuzz) unless uv's own cache is warm, and compares the bytes it would write against what is on disk. It is what makes committing the four generated SVGs safe: a source edited without a regeneration fails here rather than leaving four files that say something the repository no longer draws."
     },
     {
       "id": "website-build",
@@ -130,6 +151,7 @@
       "when": [
         "projects/website/**",
         "shared/brand/**",
+        "shared/analytics/**",
         "package.json",
         "pnpm-lock.yaml",
         "pnpm-workspace.yaml"
@@ -165,7 +187,8 @@
       "when": [
         "projects/hub/apps/web/**",
         "package.json",
-        "pnpm-workspace.yaml"
+        "pnpm-workspace.yaml",
+        "shared/ui/**"
       ]
     },
     {
@@ -174,6 +197,8 @@
       "when": [
         "projects/hub/apps/web/**",
         "shared/brand/**",
+        "shared/analytics/**",
+        "shared/ui/**",
         "pnpm-lock.yaml",
         "pnpm-workspace.yaml"
       ],
@@ -185,6 +210,8 @@
       "when": [
         "projects/hub/apps/web/**",
         "shared/brand/**",
+        "shared/analytics/**",
+        "shared/ui/**",
         "pnpm-lock.yaml",
         "pnpm-workspace.yaml"
       ],
@@ -195,22 +222,35 @@
       "run": "pnpm --filter website exec tsc --noEmit",
       "when": [
         "projects/website/**",
-        "shared/brand/**"
+        "shared/brand/**",
+        "shared/analytics/**"
       ],
       "why": "Vitest transpiles without typechecking, so unit tests pass on code tsc rejects. This project has noUncheckedIndexedAccess on and the trunk went red that way once (ORB-15)."
+    },
+    {
+      "id": "ui-e2e",
+      "run": "pnpm --filter @rebase/ui test:e2e",
+      "when": [
+        "shared/ui/**",
+        "shared/brand/**"
+      ],
+      "serial": true,
+      "why": "Playwright against the gallery on 4174, which is the half of the token contract only a browser knows: what the cascade computes on a rendered primitive, what axe measures on the pixels, and that an OS in dark mode still reaches nothing (ORB-138). Serial because the port is fixed, like the website's 4173 next to it."
     },
     {
       "id": "website-e2e",
       "run": "pnpm --filter website test:e2e",
       "when": [
         "projects/website/**",
-        "shared/brand/**"
+        "shared/brand/**",
+        "shared/analytics/**"
       ],
       "unless": [
-        "projects/website/src/**/*.test.ts"
+        "projects/website/src/**/*.test.ts",
+        "projects/website/deploy/check-unindexable.sh"
       ],
       "serial": true,
-      "why": "Playwright against `vite preview` on 4173. Serial because that port is fixed and shared with anything else on this box. The vitest files under src/ are excluded: Playwright loads projects/website/e2e/ and the site it previews is the build, which no unit test enters (ORB-141)."
+      "why": "Playwright against `vite preview` on 4173. Serial because that port is fixed and shared with anything else on this box. The vitest files under src/ are excluded: Playwright loads projects/website/e2e/ and the site it previews is the build, which no unit test enters (ORB-141). check-unindexable.sh is excluded for the same reason: it reaches live hosts over the network, never `dist/`."
     },
     {
       "id": "pigrocrm-e2e",
@@ -218,20 +258,22 @@
       "when": [
         "projects/pigrocrm/apps/web/**",
         "projects/pigrocrm/apps/api/**",
-        "projects/pigrocrm/packages/core/src/**"
+        "projects/pigrocrm/packages/core/src/**",
+        "shared/ui/**"
       ],
       "serial": true,
       "why": "The Playwright suite against a real API and a real Postgres. `serial` because it binds three fixed host ports -- 55433 for its own Postgres, 8000 for the API, 5173 for Vite -- which are hardcoded in projects/pigrocrm/apps/web/scripts/e2e-env.sh rather than read from the environment. On a shared box that is also a collision with anything else holding them, and the script clears :5173 and :8000 before it starts."
     },
     {
       "id": "pigrocrm-images",
-      "run": "cd projects/pigrocrm && POSTGRES_PASSWORD=build-only PIGROCRM_JWT_SECRET=build-only-and-long-enough-for-the-validator docker compose build",
+      "run": "cd projects/pigrocrm && POSTGRES_PASSWORD=build-only PIGROCRM_JWT_SECRET=build-only-and-long-enough-for-the-validator PIGROCRM_DATA_DIR=./build-only-never-mounted docker compose build",
       "when": [
         "projects/pigrocrm/Dockerfile.api",
         "projects/pigrocrm/Dockerfile.web",
         "projects/pigrocrm/docker-compose.yml",
         "projects/pigrocrm/deploy/nginx/spa.conf",
         ".dockerignore",
+        "shared/ui/**",
         "pnpm-lock.yaml",
         "uv.lock"
       ],
@@ -244,29 +286,32 @@
       "when": [
         "projects/website/**",
         "shared/brand/**",
+        "shared/analytics/**",
         ".dockerignore",
         "pnpm-lock.yaml"
       ],
       "unless": [
-        "projects/website/src/**/*.test.ts"
+        "projects/website/src/**/*.test.ts",
+        "projects/website/deploy/check-unindexable.sh"
       ],
       "serial": true,
-      "why": "The deploy builds this image on a single-core server. Building it here is seconds and it is the only check that reads projects/website/deploy/nginx.conf at all. Excluded for the same reason as website-e2e: the Dockerfile runs `pnpm --filter website build`, whose rollup inputs are the four HTML files, so a vitest file under src/ reaches neither dist nor the nginx layer."
+      "why": "The deploy builds this image on a single-core server. Building it here is seconds and it is the only check that reads projects/website/deploy/nginx.conf at all. Excluded for the same reason as website-e2e: the Dockerfile runs `pnpm --filter website build`, whose rollup inputs are the four HTML files, so a vitest file under src/ reaches neither dist nor the nginx layer; check-unindexable.sh reaches live hosts and the Dockerfile does not read it either."
     },
     {
       "id": "hub-image",
-      "run": "cd projects/hub && POSTGRES_PASSWORD=build-only-never-used ORBITERS_DATA_DIR=./build-only-never-mounted docker compose -p orbiters build",
+      "run": "cd projects/hub && POSTGRES_PASSWORD=build-only-never-used REBASE_DATA_DIR=./build-only-never-mounted docker compose -p rebase build",
       "when": [
         "projects/hub/Dockerfile.api",
         "projects/hub/Dockerfile.web",
         "projects/hub/docker-compose.yml",
         "projects/hub/deploy/**",
         ".dockerignore",
+        "shared/ui/**",
         "pnpm-lock.yaml",
         "uv.lock"
       ],
       "serial": true,
-      "why": "The one project whose images were verified on no tier before the trunk: ci.yml builds them on push only, so a broken Dockerfile here reached main before anything said so. `-p orbiters` because that is the project name the deploy passes (docs/adding-a-project.md section 7) and the name decides the image tags. Serial for the same reason as the other two: a docker build saturates the box."
+      "why": "The one project whose images were verified on no tier before the trunk: ci.yml builds them on push only, so a broken Dockerfile here reached main before anything said so. `-p rebase` because that is the project name the deploy passes (docs/adding-a-project.md section 7) and the name decides the image tags. Serial for the same reason as the other two: a docker build saturates the box."
     },
     {
       "id": "nix-packages",
@@ -303,6 +348,17 @@
       ],
       "serial": true,
       "why": "The three NixOS modules, each booted in a VM and probed through nginx: the SPA on a deep link, the API behind its prefix, the migration against a local Postgres, the pinned renderer under the unit's sandbox. Serial because each is a QEMU guest with KVM and three at once contend with everything else on the box. The `when` names the files a module restates (compose, deploy/nginx, migrations) so a change to one of them runs the test that would notice the copy drifting."
+    },
+    {
+      "id": "check-unindexable",
+      "run": "sh projects/website/deploy/check-unindexable.sh",
+      "when": [
+        "projects/website/deploy/preview.letsrebase.conf",
+        "projects/pigrocrm/deploy/nginx/pigro.letsrebase.conf",
+        "projects/pigrocrm/deploy/nginx/preview.pigro.letsrebase.conf",
+        "projects/website/deploy/check-unindexable.sh"
+      ],
+      "why": "The three vhosts that decide whether a preview or the CRM's production host tells a crawler to stay out are edited by hand and rewritten in place by certbot, and nothing else ever asks the live host what it actually answers. Named one by one rather than globbed: the directories they live in also hold nginx.conf, spa.conf, orbiters-proxy.conf and letsrebase.conf (production website, which stays indexable and this script never asserts on), none of which the live hosts under test depend on, and a docker build or Playwright run over an unrelated comment in one of those was exactly the ORB-141 cost this repository already paid once. Reaches preview.letsrebase.com, preview.pigro.letsrebase.com and pigro.letsrebase.com over HTTPS for the X-Robots-Tag and robots.txt REB-108 checks; a GitHub-hosted runner has nothing of its own to prove here, which is why this runs only from the devbox."
     }
   ]
 }

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { toast } from 'sonner'
+import { toast } from '@rebase/ui/sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TokensPanel } from './TokensPanel'
 import { api } from '@/lib/api'
@@ -12,7 +12,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
   return { ...actual, api: { GET: vi.fn(), POST: vi.fn(), DELETE: vi.fn(), PATCH: vi.fn() } }
 })
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
+vi.mock('@rebase/ui/sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
@@ -74,10 +74,21 @@ beforeEach(() => {
   vi.mocked(toast.success).mockReset()
   vi.mocked(useBlocker).mockClear()
   vi.mocked(useAuth).mockReturnValue({
-    user: { id: 'u1', email: 'admin@pigro.it', nome: 'Admin', ruolo: 'admin', attivo: true },
+    user: {
+      id: 'u1',
+      email: 'admin@pigro.it',
+      nome: 'Admin',
+      ruolo: 'admin',
+      attivo: true,
+      tariffa_oraria_default: null,
+      costo_orario_default: null,
+      created_at: '2026-08-06T10:00:00Z',
+      digest_settimanale: true,
+    },
     isLoading: false,
     login: vi.fn(),
     logout: vi.fn(),
+    enterWithLink: vi.fn(),
   })
   Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
 })
@@ -145,6 +156,7 @@ describe('TokensPanel', () => {
       isLoading: false,
       login: vi.fn(),
       logout: vi.fn(),
+    enterWithLink: vi.fn(),
     })
     vi.mocked(api.GET).mockReturnValue(Promise.resolve(ok([])))
     renderPanel()
@@ -185,6 +197,11 @@ describe('TokensPanel', () => {
       renderPanel()
       await userEvent.click(await screen.findByRole('button', { name: /nuovo token/i }))
       expect(screen.getByRole('button', { name: 'Crea' })).not.toBeDisabled()
+    })
+
+    it('gives the revealed token field an accessible name', async () => {
+      await createToken()
+      expect(screen.getByLabelText('Token')).toHaveValue('pgc_the-entire-raw-secret-value')
     })
 
     it('lets the value be copied to the clipboard', async () => {

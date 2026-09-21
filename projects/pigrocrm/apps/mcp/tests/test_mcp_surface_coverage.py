@@ -75,10 +75,10 @@ Method = tuple[str, str]
 #    policy; they appear here only so that the sweep's arithmetic accounts for them, and
 #    a test below asserts this block names exactly the same methods that file bans. If
 #    the two ever disagree, one of them is out of date and neither can be trusted.
-#    `FiscalProfileService.upsert` is the one banned as a `(service, method)` pair rather
-#    than by bare name -- `EmitterProfileService` has an `upsert` too -- which is the
-#    shape this table has used all along, and the reason the comparison test below
-#    compares the qualified bans as pairs and the rest as names.
+#    A ban expressed as a `(service, method)` pair rather than by bare name (as
+#    `FiscalProfileService.upsert` was until ORB-188: `EmitterProfileService` has an
+#    `upsert` too) is the shape this table has used all along, and the reason the
+#    comparison test below compares the qualified bans as pairs and the rest as names.
 _VIETATE: dict[Method, str] = {
     ("InvoiceService", "issue"): "atto fiscale irreversibile (slice 3 §11)",
     ("InvoiceService", "annul"): "atto fiscale irreversibile (slice 3 §11)",
@@ -98,10 +98,6 @@ _VIETATE: dict[Method, str] = {
     ("CostCategoryService", "unarchive_cost_category"): (
         "configurazione: e' `archive_cost_category` nel verso opposto, e slice 4 §11 "
         "non l'aveva elencata per omissione, non per distinzione"
-    ),
-    ("FiscalProfileService", "upsert"): (
-        "decide aliquota, natura, bollo e riferimento normativo di ogni riga emessa "
-        "(slice 3 §11: `update_fiscal_profile`)"
     ),
     ("PeriodLockService", "close_period"): "chiusura di periodo (slice 4 §11)",
     ("PeriodLockService", "reopen_period"): "riapertura di periodo (slice 4 §11)",
@@ -358,8 +354,16 @@ _CREDENZIALI: dict[Method, str] = {
     ("RefreshTokenService", "issue"): "sessione del browser, non superficie agentica",
     ("RefreshTokenService", "consume"): "sessione del browser, non superficie agentica",
     ("RefreshTokenService", "rotate"): "sessione del browser, non superficie agentica",
+    ("RefreshTokenService", "revoke_all"): "sessione del browser, non superficie agentica",
+    ("MagicLinkService", "request"): "e' il passo di login via mail, non un'operazione",
+    ("MagicLinkService", "enter"): "e' il passo di login via mail, non un'operazione",
     ("UserService", "create"): "creare utenti e' amministrazione dell'account",
     ("UserService", "update"): "cambiare ruoli e' amministrazione dell'account",
+    ("UserService", "update_own_digest"): (
+        "e' la preferenza di una persona sulla mail che riceve il lunedi' (REB-221), "
+        "scelta dal suo profilo: un agente non decide che cosa arriva nella casella di "
+        "chi lo ha collegato"
+    ),
     ("UserService", "list"): "l'anagrafica utenti non serve a nessun tool",
     ("UserService", "authenticate"): "e' il passo di login, non un'operazione",
 }
@@ -400,7 +404,6 @@ _CONFIGURAZIONE: dict[Method, str] = {
         "proprietario: il token di un admin passerebbe qualunque check"
     ),
     ("CostCategoryService", "seed_defaults"): "installa le categorie iniziali",
-    ("EmitterProfileService", "upsert"): "identita' fiscale dell'emittente",
     ("FieldDefinitionService", "create"): "definisce lo schema, non lo popola",
     ("FieldDefinitionService", "update"): "definisce lo schema, non lo popola",
     ("FieldDefinitionService", "archive"): "definisce lo schema, non lo popola",
@@ -472,6 +475,12 @@ _BYTE: dict[Method, str] = {
 #    survive being asked why, and the only way to keep that true is to delete the ones
 #    that do not the moment the tool is written.
 _COPERTE_O_UMANE: dict[Method, str] = {
+    ("DigestService", "build"): (
+        "compone il resoconto settimanale che `pigrocrm digest` manda per mail il lunedi' "
+        "(REB-221): ogni numero che contiene e' gia' un tool o una resource (i tre "
+        "cruscotti, le fatture, le ore, la pipeline), e un agente che vuole la settimana "
+        "la legge da li' invece di ricevere una pagina di prosa"
+    ),
     ("AnalyticsService", "economic_overview"): (
         "la scheda economica della dashboard porta con se' la stima fiscale calcolata su "
         "incassato e proiettato: valgono le ragioni di `get_fiscal_estimate`, che non e' "
@@ -501,6 +510,11 @@ _COPERTE_O_UMANE: dict[Method, str] = {
         "`GET /api/tenants/` with `PIGROCRM_REGISTRY_TOKEN` (ORB-142): the installation's "
         "spaces are not the titolare's CRM data, and an agent acting in one space has no "
         "business listing everybody else's"
+    ),
+    ("TenantService", "count_for_owner"): (
+        "il registro degli spazi non e' superficie di uno spazio: lo legge la registrazione "
+        "(`POST /api/tenants/membro`, ORB-173) per dire a chi torna che ha gia' aperto degli "
+        "spazi, prima che esista un actor; un agente dentro uno spazio non ha motivo di leggerlo"
     ),
     ("DocumentService", "create"): "create_document_from_template e' l'unica creazione "
     "che non richieda di caricare byte",
@@ -746,7 +760,7 @@ def test_no_declared_exclusion_is_actually_reachable(service: str, method: str) 
     """An exclusion that is reachable is a false statement, and the most expensive kind:
     it reads as a considered refusal while the operation is in fact exposed. This is what
     catches somebody adding a tool for a method and forgetting the table -- including,
-    and especially, one of the fourteen forbidden ones."""
+    and especially, one of the forbidden ones."""
     assert (service, method) not in REACHABLE, (
         f"'{service}.{method}' e' dichiarato non esposto ma un tool o una resource lo "
         "chiama davvero"
@@ -798,15 +812,16 @@ def test_nothing_hides_in_the_out_of_sweep_block() -> None:
     assert ("DriveReader", "read_text") in _FUORI_DAL_SETACCIO
 
 
-@pytest.mark.parametrize(("service", "method"), FORBIDDEN_QUALIFIED_CALLS)
-def test_no_qualified_ban_is_reachable_from_a_resource_either(service: str, method: str) -> None:
+def test_no_qualified_ban_is_reachable_from_a_resource_either() -> None:
     """The same extension for the qualified half, asserted on the pair: a resource that
-    called `FiscalProfileService(...).upsert(...)` would be as agent-reachable as a tool
-    that did, while the ban test's own scan reads `tools/` only."""
-    assert (service, method) not in REACHABLE, (
-        f"'{service}.{method}' e' raggiungibile attraverso tools/ o resources/, ma e' "
-        "una delle operazioni escluse per costruzione dalla superficie MCP"
-    )
+    called a banned `(service, method)` would be as agent-reachable as a tool that did,
+    while the ban test's own scan reads `tools/` only. A loop, not a parametrisation:
+    the tuple is empty since ORB-188 and must assert nothing rather than skip."""
+    for service, method in FORBIDDEN_QUALIFIED_CALLS:
+        assert (service, method) not in REACHABLE, (
+            f"'{service}.{method}' e' raggiungibile attraverso tools/ o resources/, ma e' "
+            "una delle operazioni escluse per costruzione dalla superficie MCP"
+        )
 
 
 @pytest.mark.parametrize("method", sorted(set(FORBIDDEN_SERVICE_CALLS)))

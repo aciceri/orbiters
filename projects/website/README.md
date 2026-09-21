@@ -1,11 +1,11 @@
 # website
 
-joinorbiters.com: the public site. Today that is the Orbiters landing at `/`, the
-community page with its signup form at `/orbiters`, and the two policy pages
+letsrebase.com: the public site. Today that is the rebase landing at `/`, the
+community page with its signup form at `/community`, and the two policy pages
 (`/privacy`, `/termini`); it is called `website` rather than `landing` because it is
 expected to grow past those.
 
-Five HTML pages, five scripts, four stylesheets. No React, no Tailwind, no router.
+Six HTML pages, six scripts, five stylesheets. No React, no Tailwind, no router.
 That absence is the requirement rather than an omission: this is the first page a
 visitor loads, and it does not drag an application bundle behind it. The build takes
 about 300 milliseconds. Anything added here should keep that true.
@@ -26,17 +26,28 @@ pnpm --filter website lint
 
 | Page | Served at | What it is |
 |---|---|---|
-| `src/index.html` | `joinorbiters.com/` | The Orbiters landing: two doors into the hub, how it works, the four voices, the perks. Since 2026-09-11 (ORB-145); `/pigrocrm`, where it lived before, is a 301 here |
-| `src/orbiters.html` | `/orbiters` | The community page and its signup form, the front door until 2026-09-11 |
+| `src/index.html` | `letsrebase.com/` | The rebase landing: two doors into the hub, how it works, the four voices, the perks. Since 2026-09-11 (ORB-145) |
+| `src/pigrocrm.html` | `/pigrocrm` | PigroCRM's own page (ORB-159): one door into rebase beside a drawn Claude conversation, the four things inside, the guide, the closing box. Its own `pigrocrm.css` on top of `landing.css` |
+| `src/community.html` | `/community` | The community page and its signup form, the front door until 2026-09-11. `/orbiters` still answers, as a 301 (REB-212, 2026-09-15) |
 | `src/privacy.html` | `/privacy` | Privacy notice |
 | `src/termini.html` | `/termini` | Terms |
 | `src/pitch.html` | `/pitch` | The pitch deck, nineteen slides with keyboard, swipe and wheel navigation; shared by link, `noindex`. Its own stylesheet, `pitch.css`; its pictures under `src/pitch/` |
 
-The Orbiters form posts to `POST /api/orbiters/signups`, which since 2026-09-09 is
-implemented in the Orbiters hub's API (`projects/hub/apps/api`) and reached on the same
+The community form posts to `POST /api/community/signups`, which since 2026-09-09 is
+implemented in the rebase hub's API (`projects/hub/apps/api`) and reached on the same
 origin. The landing's two calls to action point at `/hub/freelance` and `/hub/aziende`,
 the hub's wizards, on the same origin again. Those paths are the things this project
 does not own, and why the dev server proxies `/api` and leaves `/hub/` alone.
+
+## Measurement
+
+Two trackers, and one door for both: `src/consent.js` shows the cookie notice and
+injects the ChatGPT Ads pixel and PostHog only after «Va bene». Before that click no
+page requests either host; a refusal is remembered. `src/pixel.test.ts` is the rule book
+(which pages may carry a tracker, that no page carries one in its markup, that the
+PostHog literals equal `shared/analytics`), `src/consent.test.ts` drives the gate in a
+DOM, and `e2e/site.spec.ts` watches the network. The policy pages describe both in
+`privacy.html` § Cookie e misurazione. Design: `docs/design/2026-09-12-posthog-analytics-design.md`.
 
 ## Colour, typeface and the mark
 
@@ -44,35 +55,43 @@ All three come from [`shared/brand`](../../shared/brand), and none of them may b
 restated here:
 
 - **Palette.** `src/palette-plugin.ts` reads the seven shared tokens out of
-  `@orbiters/brand/palette.css` at build time and prepends them to the two stylesheets
-  as plain custom properties. The application consumes the same file as part of its
-  Tailwind theme. A hex pasted into a stylesheet here is the fork both mechanisms exist
-  to prevent, and the plugin fails the build if the palette stops being extractable.
-- **Typeface.** Outfit, self-hosted, declared once in `@orbiters/brand/font.css` and
+  `@rebase/brand/palette.css` at build time and prepends them to its three consumers
+  (`landing.css`, `community.css`, `pitch.css`) as plain custom properties. The
+  application consumes the same file as part of its Tailwind theme. A hex pasted into a
+  stylesheet here is the fork both mechanisms exist to prevent, and the plugin fails the
+  build if the palette stops being extractable.
+- **Typeface.** Outfit, self-hosted, declared once in `@rebase/brand/font.css` and
   prepended the same way. Nothing is fetched from a CDN, on purpose: PigroCRM is sold
   on self-hosting, and a webfont request hands every visitor's IP to a third party.
-- **The mark.** The four tiles are `.glyph` in `src/system.css` here and Tailwind
-  classes in the application's `BrandMark.tsx`. Both assert their order against
-  `@orbiters/brand/mark`, so the two cannot drift.
+- **The mark.** The four tiles are `.glyph` in `src/system.css` here (shared by
+  `landing.css` and `community.css`), a second, larger drawing of the same four
+  colours in `pitch.css` for the deck's own chrome, and Tailwind classes in the
+  application's `BrandMark.tsx`. The first and third assert their order against
+  `@rebase/brand/mark`, so those two cannot drift.
 
 ## How it is served
 
 Its own container. `Dockerfile` builds the pages into an nginx image, `docker-compose.yml`
 runs it on 127.0.0.1:8082 (8083 for preview), and `deploy/nginx.conf` inside the image
-holds the path map: which extensionless path is which file, a 301 from `/pigrocrm` to
-`/`, and a 404 for anything else. That map and `src/path-map-plugin.ts` say the same
+holds the path map: which extensionless path is which file, and a 404 for anything
+else. That map and `src/path-map-plugin.ts` say the same
 thing twice, once for production and once for the dev and preview servers. Change one
 and change the other: `path-map-plugin.test.ts` reads `nginx.conf` and fails until you
 have.
 
-`deploy/joinorbiters.conf` is the host's vhost: it terminates TLS and sends everything
-here except what belongs to the other tenants of the origin: `/hub/`, `/api/hub/` and
-`/api/orbiters/signups` go to the Orbiters hub (`projects/hub`), `/health` stays on
-PigroCRM's stack, and `/app` and `/app/` redirect to `pigro.joinorbiters.com`, which is
-the CRM.
+`robots.txt` (REB-109) and `sitemap.xml` (REB-110) are a third kind of build output,
+next to the six pages and the hashed assets: `src/path-map-plugin.ts`'s own
+`writeBundle` hook writes both straight into `dist/`, since neither has an HTML input
+in `vite.config.ts` to build it from. `GENERATED_PATHS` in that file lists them, and
+is where the next file made this way goes.
+
+`deploy/letsrebase.conf` is the host's vhost: it terminates TLS and sends everything
+here except what belongs to the other tenants of the origin: `/hub/`, `/api/hub/`,
+`/api/community/signups` and `/health` go to the rebase hub (`projects/hub`), and
+`/app` and `/app/` redirect to `pigro.letsrebase.com`, which is the CRM.
 
 Deploys are `deploy-website.yml`: preview on a push to `main` that touched this project,
 production on a `website-v<semver>` tag. Until 2026-09-09 this project had no deployable
 of its own and was carried inside the CRM's web image; the four public paths that
-answered on `pigro.joinorbiters.com` are now 301s to this site, so a policy page has one
+answered on `pigro.letsrebase.com` are now 301s to this site, so a policy page has one
 canonical copy.

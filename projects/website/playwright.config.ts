@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test'
 // The site is four static pages: the suite drives a real browser against the built
 // output, served exactly as `vite preview` serves it, which is the closest thing to
 // production this project can run on its own. The API proxy in vite.config.ts is what
-// lets the Orbiters form be exercised without the CRM's stack; the specs that need it
+// lets the community form be exercised without the CRM's stack; the specs that need it
 // stub the response.
 export default defineConfig({
   testDir: './e2e',

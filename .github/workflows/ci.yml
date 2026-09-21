@@ -109,6 +109,8 @@ jobs:
       website_image: ${{ steps.filter.outputs.website_image }}
       hub_py: ${{ steps.filter.outputs.hub_py }}
       hub_web: ${{ steps.filter.outputs.hub_web }}
+      shared_analytics: ${{ steps.filter.outputs.shared_analytics }}
+      shared_ui: ${{ steps.filter.outputs.shared_ui }}
       hub_image: ${{ steps.filter.outputs.hub_image }}
       pigrocrm_deploy: ${{ steps.filter.outputs.pigrocrm_deploy }}
       website_deploy: ${{ steps.filter.outputs.website_deploy }}
@@ -185,7 +187,13 @@ jobs:
               - '.github/workflows/_python-gate.yml'
             pigrocrm_web:
               - 'projects/pigrocrm/apps/web/**'
+              # The vhost `projects/pigrocrm/apps/web/src/test/robots.test.ts` reads
+              # (REB-107): not under `apps/web/**` itself, so a change to just this
+              # file would otherwise skip the test that guards it.
+              - 'projects/pigrocrm/deploy/nginx/pigro.letsrebase.conf'
               - 'shared/brand/**'
+              - 'shared/analytics/**'
+              - 'shared/ui/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -194,6 +202,7 @@ jobs:
             website:
               - 'projects/website/**'
               - 'shared/brand/**'
+              - 'shared/analytics/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -214,6 +223,30 @@ jobs:
             hub_web:
               - 'projects/hub/apps/web/**'
               - 'shared/brand/**'
+              - 'shared/analytics/**'
+              - 'shared/ui/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/_node-gate.yml'
+            # shared/analytics's own suite: no `_node-gate.yml` caller above installs
+            # it as anything but a dependency of the SPA that imports it, which never
+            # runs the dependency's own `lint`/`test`/`tsc` (REB-253).
+            shared_analytics:
+              - 'shared/analytics/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/_node-gate.yml'
+            # shared/ui's own suite, for the same reason as shared/analytics above: the
+            # SPAs install it as a dependency and never run the dependency's own
+            # lint/test/tsc, so the token contract would go unchecked on a change that
+            # touches nothing else (REB-299).
+            shared_ui:
+              - 'shared/ui/**'
+              - 'shared/brand/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -227,6 +260,8 @@ jobs:
             pigrocrm_image: &pigrocrm_image
               - 'projects/pigrocrm/**'
               - 'shared/brand/**'
+              - 'shared/analytics/**'
+              - 'shared/ui/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -237,6 +272,7 @@ jobs:
             website_image: &website_image
               - 'projects/website/**'
               - 'shared/brand/**'
+              - 'shared/analytics/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -245,6 +281,8 @@ jobs:
             hub_image: &hub_image
               - 'projects/hub/**'
               - 'shared/brand/**'
+              - 'shared/analytics/**'
+              - 'shared/ui/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -324,15 +362,22 @@ jobs:
         projects/pigrocrm/apps/api/tests
         projects/pigrocrm/apps/mcp/tests
       # `slow` builds a fifty-thousand-row corpus, so a PR does not pay for it and the
-      # trunk does. `planner` is a different thing and is deselected on both: it asserts
-      # which plan Postgres picks, the winning plan sits within a few percent of the
-      # loser at this row count, and a hosted runner picks the other one.
+      # trunk does. `planner` is a different thing, deselected on this job's own filter
+      # below: it asserts which plan Postgres picks, the winning plan sits within a few
+      # percent of the loser at this row count, and a hosted runner picks the other one.
       # `test_trgm_escape.py`'s case (ORB-9) failed on the trunk run of the merge commit
       # for exactly that reason, on code that had passed the same assertion on the devbox
       # minutes earlier; its fix stopped costing the plan on whatever bloat the rest of
       # the suite happened to leave behind, so it no longer carries the marker.
-      # `test_sort_plan.py` still does, for its own sort-plan assertions, and stays in
-      # preflight, which runs on one known machine.
+      # `test_sort_plan.py` (REB-90) no longer carries the marker either, and no test in
+      # the repository currently does; `planner` stays registered and deselected here for
+      # whichever assertion needs it next. Worth being exact about what changed: the job
+      # below (`pigrocrm-py-corpus`) selects on `slow` alone, with no `and not planner`,
+      # so `test_sort_plan.py` -- `slow` and, until REB-90, also `planner` -- ran there on
+      # the hosted runner throughout, which is how 34294151175 was able to fail on one at
+      # all. Dropping the marker changed no CI selection; it retired the preflight lane
+      # (`pigrocrm-py-planner`) that duplicated the corpus job's own coverage of this file
+      # on a single known machine, once nothing was left for that lane to select.
       #
       # `slow` is not skipped on the trunk, it moved: the job below runs it in
       # parallel with this one. Measured 2026-09-09, the two are 10m and 12m of a
@@ -384,7 +429,7 @@ jobs:
     with:
       filter: web
 
-  # joinorbiters.com, the website. Its own project, so its own job: static pages with
+  # letsrebase.com, the website. Its own project, so its own job: static pages with
   # no framework, which is why this one costs seconds where the application's gate
   # costs minutes. It shares `shared/brand` with the application, so a change there
   # runs both.
@@ -396,7 +441,7 @@ jobs:
     with:
       filter: website
 
-  # The Orbiters hub (projects/hub): its own Python gate, without the renderer -- it
+  # The rebase hub (projects/hub): its own Python gate, without the renderer -- it
   # produces no PDF and shells out to nothing.
   hub-py:
     name: hub · python
@@ -424,6 +469,36 @@ jobs:
     with:
       filter: hub
 
+  # shared/analytics's own suite: two vitest files (posthog.test.ts and
+  # browser.test.ts) and a tsconfig, run by no hosted tier before this -- a
+  # `_node-gate.yml` caller with `filter: web`/`website`/`hub` installs the
+  # dependency closure but never runs a dependency's own scripts (REB-253).
+  # `build: false` because the package ships as source, with no build script.
+  shared-analytics:
+    name: shared/analytics · web
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.all == 'true' || needs.changes.outputs.shared_analytics == 'true') }}
+    uses: ./.github/workflows/_node-gate.yml
+    with:
+      filter: '@rebase/analytics'
+      build: false
+
+  # shared/ui's own suite: the token contract test and the three primitive suites that
+  # came with the components in REB-300, run by no other tier for the same reason as
+  # shared/analytics above.
+  shared-ui:
+    name: shared/ui · web
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.all == 'true' || needs.changes.outputs.shared_ui == 'true') }}
+    uses: ./.github/workflows/_node-gate.yml
+    with:
+      filter: '@rebase/ui'
+      # The package ships source, which each application bundles itself, so there was
+      # nothing to build until REB-300. Its build is the gallery, and building it is
+      # what proves the eighteen primitives still compile against Tailwind and the
+      # tokens outside an application.
+      build: true
+
   # Tier 3, and scoped like everything else: an image nobody can have changed is an
   # image not worth two minutes of a metered runner.
   pigrocrm-images:
@@ -438,10 +513,16 @@ jobs:
         working-directory: projects/pigrocrm
         # The compose file's own build definitions, so this proves the same context
         # and the same Dockerfiles a deploy will use, rather than a parallel
-        # invocation that can drift from them.
+        # invocation that can drift from them. POSTGRES_PASSWORD, PIGROCRM_JWT_SECRET
+        # and (since REB-258) PIGROCRM_DATA_DIR are all `:?` there; a build reads none
+        # of them, but compose interpolates the whole file before building, so all
+        # three need a throwaway value, and the data directory has to stay
+        # path-shaped or compose reads the word as a named volume and refuses the
+        # project.
         env:
           POSTGRES_PASSWORD: build-only-never-used
           PIGROCRM_JWT_SECRET: build-only-never-used-and-long-enough-for-the-validator
+          PIGROCRM_DATA_DIR: ./build-only-never-mounted
         run: docker compose build
 
   website-image:
@@ -470,7 +551,7 @@ jobs:
       - name: Build both images from the repository root context
         working-directory: projects/hub
         # Through compose, so this proves the same context and the same files the
-        # deploy uses. `-p orbiters` changes only what the throwaway images are called
+        # deploy uses. `-p rebase` changes only what the throwaway images are called
         # (the names the deploy's project gives them, which is what preflight's twin
         # builds too). The two variables exist because compose interpolates the whole
         # file before a build and both are `:?` there; a build reads neither, and the
@@ -478,8 +559,8 @@ jobs:
         # volume and refuses the project.
         env:
           POSTGRES_PASSWORD: build-only-never-used
-          ORBITERS_DATA_DIR: ./build-only-never-mounted
-        run: docker compose -p orbiters build
+          REBASE_DATA_DIR: ./build-only-never-mounted
+        run: docker compose -p rebase build
 
   ci:
     name: ci
@@ -487,7 +568,7 @@ jobs:
     # arrives. This is the only status check the repository should ever be asked to
     # require: every job name above can change forever without touching a ruleset.
     if: always()
-    needs: [changes, pigrocrm-py, pigrocrm-py-corpus, pigrocrm-web, website, hub-py, hub-web, pigrocrm-images, website-image, hub-images]
+    needs: [changes, pigrocrm-py, pigrocrm-py-corpus, pigrocrm-web, website, hub-py, hub-web, shared-analytics, shared-ui, pigrocrm-images, website-image, hub-images]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

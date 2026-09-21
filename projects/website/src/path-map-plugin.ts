@@ -1,4 +1,6 @@
+import { writeFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { join } from 'node:path'
 import type { Plugin } from 'vite'
 
 /**
@@ -16,23 +18,82 @@ import type { Plugin } from 'vite'
  * two copies of anything stay equal.
  */
 
+/** The host every absolute address in this module points at: this file's own
+ *  robots.txt, the sitemap it names (REB-110), and every page's canonical and
+ *  og:url (REB-111). One constant, so a rebrand (REB-193 already moved it once from
+ *  joinorbiters.com) is one line here instead of one per consumer. */
+export const SITE_HOST = 'https://letsrebase.com'
+
 /** `location = <path> { try_files <file> =404; }`, one line each in nginx.conf. */
 export const PAGES: Readonly<Record<string, string>> = {
   '/': '/index.html',
-  '/orbiters': '/orbiters.html',
+  '/pigrocrm': '/pigrocrm.html',
+  '/community': '/community.html',
   '/pitch': '/pitch.html',
   '/privacy': '/privacy.html',
   '/termini': '/termini.html',
 }
 
 /** `location = <path> { return 301 <to>; }`. nginx's `return` drops the query string
- *  and so does this. */
-export const REDIRECTS: Readonly<Record<string, string>> = {
-  '/pigrocrm': '/',
+ *  and so does this. `/orbiters` is the community page's name before REB-212 moved it
+ *  to `/community`; kept so a bookmark or an inbound link still lands. */
+export const REDIRECTS: Readonly<Record<string, string>> = { '/orbiters': '/community' }
+
+/** Paths nginx serves via `try_files`, exactly like `PAGES`, whose file this plugin
+ *  writes at build time instead of Vite building it from an HTML input named in
+ *  `vite.config.ts`: robots.txt (REB-109), naming the sitemap, and sitemap.xml
+ *  (REB-110), listing every entry in `PAGES` that is not in `NOINDEX`. A page added to
+ *  `PAGES` needs no edit here. */
+export const GENERATED_PATHS = ['/robots.txt', '/sitemap.xml'] as const
+type GeneratedPath = (typeof GENERATED_PATHS)[number]
+
+/** Pages excluded from the sitemap, in the same list shape as `GENERATED_PATHS` since
+ *  neither is a `PAGES`-style map from a path to a file: today just `/pitch`, which
+ *  carries `<meta name="robots" content="noindex">` (`src/pitch.html:8`) and would
+ *  otherwise be the one page in `PAGES` a sitemap tells a crawler to index anyway.
+ *  `path-map-plugin.test.ts` reads every page's own head and fails if this list ever
+ *  disagrees with it. */
+export const NOINDEX = ['/pitch'] as const
+
+/** No `Disallow` line: `/pitch` is the one page a visitor reaches that this site
+ *  would rather a crawler skipped, and it already says so with its own
+ *  `<meta name="robots" content="noindex">` (`src/pitch.html:8`). Blocking the crawl
+ *  in robots.txt too would stop a crawler from ever reaching that tag, and Google's
+ *  own guidance is that a page blocked from crawling can still be indexed by an
+ *  inbound link with no snippet, worse than the noindex outcome it has today
+ *  (developers.google.com/search/docs/crawling-indexing/block-indexing). So robots.txt
+ *  disallows nothing a visitor can reach, exactly what REB-109 asked for. */
+function robotsTxt(): string {
+  return `User-agent: *\nSitemap: ${SITE_HOST}/sitemap.xml\n`
+}
+
+/** No `lastmod`, `changefreq` or `priority`: none of them would be true. A build
+ *  timestamp on every page every deploy tells a crawler nothing and is worse than
+ *  their absence (REB-110). */
+function sitemapXml(): string {
+  const urls = Object.keys(PAGES)
+    .filter((path) => !(NOINDEX as readonly string[]).includes(path))
+    .map((path) => `  <url><loc>${SITE_HOST}${path}</loc></url>`)
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`
+}
+
+/** The content and `Content-Type` for one of `GENERATED_PATHS`, computed fresh on
+ *  every call: cheap, and it keeps a single function honest about what ships. */
+function generate(pathname: GeneratedPath): { content: string; contentType: string } {
+  switch (pathname) {
+    case '/robots.txt':
+      return { content: robotsTxt(), contentType: 'text/plain; charset=utf-8' }
+    case '/sitemap.xml':
+      // text/xml, not application/xml: nginx serves the built file from disk under
+      // its own mime.types, which maps .xml to text/xml, and this module's whole
+      // point is saying the same thing nginx says.
+      return { content: sitemapXml(), contentType: 'text/xml; charset=utf-8' }
+  }
 }
 
 /**
- * Paths the host's vhost (`deploy/joinorbiters.conf`) hands to other tenants of the
+ * Paths the host's vhost (`deploy/letsrebase.conf`) hands to other tenants of the
  * origin before the website container ever sees them. The container 404s them; a
  * visitor never does. A Vite server cannot run those tenants, so it does the one
  * honest thing short of pretending: `/api` is proxied to a running API so the form can
@@ -43,13 +104,14 @@ export const REDIRECTS: Readonly<Record<string, string>> = {
 export const ELSEWHERE: Readonly<Record<string, string>> = {
   '/api': 'the Orbiters hub API (projects/hub), proxied here to WEBSITE_API_URL',
   '/hub': 'the Orbiters hub SPA (projects/hub)',
-  '/app': 'PigroCRM, a 302 to https://pigro.joinorbiters.com',
-  '/health': "the hub API's probe",
+  '/app': 'PigroCRM, a 302 to https://pigro.letsrebase.com',
+  '/health': "the rebase hub API's probe (projects/hub)",
 }
 
 export type Route =
   | { kind: 'page'; file: string }
   | { kind: 'redirect'; to: string }
+  | { kind: 'generated'; content: string; contentType: string }
   | { kind: 'proxy' }
   | { kind: 'elsewhere'; owner: string }
   | { kind: 'file' }
@@ -66,6 +128,9 @@ export function route(pathname: string): Route {
   if (redirect !== undefined) return { kind: 'redirect', to: redirect }
   const file = PAGES[pathname]
   if (file !== undefined) return { kind: 'page', file }
+  if ((GENERATED_PATHS as readonly string[]).includes(pathname)) {
+    return { kind: 'generated', ...generate(pathname as GeneratedPath) }
+  }
   for (const [prefix, owner] of Object.entries(ELSEWHERE)) {
     if (underPrefix(pathname, prefix)) return prefix === '/api' ? { kind: 'proxy' } : { kind: 'elsewhere', owner }
   }
@@ -85,18 +150,25 @@ function handle(req: IncomingMessage, res: ServerResponse, next: () => void): vo
   switch (decision.kind) {
     case 'redirect':
       res.statusCode = 301
-      res.setHeader('Location', decision.to)
+      // With the query string, as nginx does with `$is_args$args`: the links that still
+      // say /orbiters are ads and newsletters, and they carry the utm_* the form reads.
+      res.setHeader('Location', `${decision.to}${query ? `?${query}` : ''}`)
       res.end()
       return
     case 'page':
       req.url = `${decision.file}${query ? `?${query}` : ''}`
       next()
       return
+    case 'generated':
+      res.statusCode = 200
+      res.setHeader('Content-Type', decision.contentType)
+      res.end(decision.content)
+      return
     case 'elsewhere':
       res.statusCode = 200
       res.setHeader('Content-Type', 'text/plain; charset=utf-8')
       res.end(
-        `${pathname} is not served by projects/website. In production it belongs to ${decision.owner}; see deploy/joinorbiters.conf.\n`,
+        `${pathname} is not served by projects/website. In production it belongs to ${decision.owner}; see deploy/letsrebase.conf.\n`,
       )
       return
     case 'not-found':
@@ -122,6 +194,18 @@ export function pathMapPlugin(): Plugin {
     },
     configurePreviewServer(server) {
       server.middlewares.use(handle)
+    },
+    // GENERATED_PATHS have no HTML input in vite.config.ts for Vite to build, so this
+    // writes them straight into the build's output directory once the rest of it
+    // exists. `writeBundle` over `generateBundle`: a plain file write needs none of
+    // Rollup's asset bookkeeping, and this hook runs only at the end of a real
+    // `bundle.write()`, exactly when there is an output directory to write into.
+    writeBundle(options) {
+      const dir = options.dir
+      if (!dir) throw new Error('website-path-map: the build has no output directory, so GENERATED_PATHS cannot be written')
+      for (const pathname of GENERATED_PATHS) {
+        writeFileSync(join(dir, pathname.slice(1)), generate(pathname).content)
+      }
     },
   }
 }

@@ -131,6 +131,32 @@ describe('/io, a card (REB-279: reads the merged `useMe`, gated on `ha_scheda`)'
     expect(screen.queryByText('Nessun CV')).toBeNull()
   })
 
+  it('gives both perk cards a growing description block, so a footer note cannot shift the button (REB-312)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, PROFILE))
+    mount()
+    const pigrocrmButton = await screen.findByRole('link', { name: /Apri PigroCRM/ })
+    const guideButton = screen.getByRole('link', { name: /Scarica la guida/ })
+    const pigrocrmCard = pigrocrmButton.parentElement
+    const guideCard = guideButton.parentElement
+    // jsdom does not lay out flexbox, so the real proof that the two buttons land at
+    // the same height is the live browser screenshot; here we assert the structural
+    // fix instead: both cards wrap their eyebrow/title/description in a `flex-1`
+    // block that absorbs whatever space is left above the button (rather than the
+    // button itself carrying `mt-auto`), and both cards reserve the same footer slot
+    // below the button -- visible with its text on the guide card, present but
+    // `invisible` on the card with no footer note -- so a trailing note cannot push
+    // one button higher than the other.
+    expect(pigrocrmCard?.querySelector(':scope > .flex-1')).not.toBeNull()
+    expect(guideCard?.querySelector(':scope > .flex-1')).not.toBeNull()
+    expect(pigrocrmButton.className).not.toMatch(/\bmt-auto\b/)
+    expect(guideButton.className).not.toMatch(/\bmt-auto\b/)
+    const pigrocrmFooter = pigrocrmCard?.querySelector(':scope > p:last-child')
+    const guideFooter = guideCard?.querySelector(':scope > p:last-child')
+    expect(pigrocrmFooter).toHaveClass('invisible')
+    expect(guideFooter).not.toHaveClass('invisible')
+    expect(guideFooter).toHaveTextContent('PDF, 6 pagine, 48 KB.')
+  })
+
   it('asks the person to complete a card the admin wrote, and shows no CV link', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(200, INCOMPLETE))
     mount()

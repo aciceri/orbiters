@@ -41,7 +41,7 @@ export function Area() {
         </p>
       )}
 
-      <header className="flex flex-wrap items-start justify-between gap-4">
+      <header className="flex flex-wrap items-start justify-between gap-4 pt-6">
         <div>
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">La tua area</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">
@@ -118,26 +118,33 @@ export function Area() {
 
       <section aria-label="I tuoi vantaggi" className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-3 rounded-2xl border-2 border-foreground bg-card p-6">
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Per chi è dentro</p>
-          <h2 className="text-lg font-semibold">PigroCRM è tuo, gratis</h2>
-          <p className="text-sm text-muted-foreground">
-            Preventivo, contratto, fattura, ore: fatturare e farti pagare, con i dati fiscali già giusti.
-          </p>
-          <Button asChild className="mt-auto self-start">
+          <div className="flex-1 space-y-3">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Per chi è dentro</p>
+            <h2 className="text-lg font-semibold">PigroCRM è tuo, gratis</h2>
+            <p className="text-sm text-muted-foreground">
+              Preventivo, contratto, fattura, ore: fatturare e farti pagare, con i dati fiscali già giusti.
+            </p>
+          </div>
+          <Button asChild className="self-start">
             <a href={PIGROCRM_URL}>
               Apri PigroCRM
               <ArrowUpRight className="ml-2 size-4" />
             </a>
           </Button>
+          <p className="invisible text-xs text-muted-foreground" aria-hidden="true">
+            &nbsp;
+          </p>
         </div>
         <div className="flex flex-col gap-3 rounded-2xl border-2 border-foreground bg-card p-6">
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Per chi è dentro</p>
-          <h2 className="text-lg font-semibold">I primi passi da freelance</h2>
-          <p className="text-sm text-muted-foreground">
-            La parte che nessuno ti spiega prima della prima fattura: come dirti in una frase,
-            come arrivare a un numero e difenderlo, cosa scrivere prima di iniziare. Venti minuti.
-          </p>
-          <Button asChild className="mt-auto self-start">
+          <div className="flex-1 space-y-3">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Per chi è dentro</p>
+            <h2 className="text-lg font-semibold">I primi passi da freelance</h2>
+            <p className="text-sm text-muted-foreground">
+              La parte che nessuno ti spiega prima della prima fattura: come dirti in una frase,
+              come arrivare a un numero e difenderlo, cosa scrivere prima di iniziare. Venti minuti.
+            </p>
+          </div>
+          <Button asChild className="self-start">
             <a href={member.guideUrl} onClick={() => capture('guida_scaricata')}>
               <Download className="mr-2 size-4" />
               Scarica la guida

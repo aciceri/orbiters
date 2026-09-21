@@ -301,9 +301,7 @@ def test_created_between_and_utm_source_narrow_both_sides_of_the_merge(clean: Se
 
 def test_per_stato_respects_an_active_search(clean: Session) -> None:
     service = FreelancerService(clean)
-    service.apply(
-        _application("ada@studio.it", cognome="Rossi"), PDF, "cv.pdf", "application/pdf"
-    )
+    service.apply(_application("ada@studio.it", cognome="Rossi"), PDF, "cv.pdf", "application/pdf")
     service.apply(
         _application("bob@studio.it", cognome="Bianchi"), PDF, "cv.pdf", "application/pdf"
     )

@@ -1,21 +1,24 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { ArrowLeft, Download } from 'lucide-react'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Badge } from '@rebase/ui/badge'
 import { Button } from '@rebase/ui/button'
 import { Input } from '@rebase/ui/input'
 import { Label } from '@rebase/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@rebase/ui/select'
 import { Textarea } from '@rebase/ui/textarea'
 import {
   admin,
   ApiError,
   type Comment,
+  type CompaniesFilters,
   type Company,
   type Freelancer,
   type FreelancerDraft,
   type Remoto,
   type Talento,
+  type TalentiFilters,
 } from '@/lib/api'
 import {
   COMPANY_STATES,
@@ -30,6 +33,20 @@ import {
 } from '@/lib/format'
 import { cn } from '@rebase/ui/cn'
 import { Comments } from './Comments'
+
+const SEARCH_DEBOUNCE_MS = 300
+
+/** Debounces a fast-changing value so a keystroke does not trigger a request until the
+ *  admin stops typing for `delayMs` (REB-286): the search boxes on Talenti and Aziende
+ *  both use this at 300ms. */
+function useDebounce<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs)
+    return () => clearTimeout(timer)
+  }, [value, delayMs])
+  return debounced
+}
 
 const TONE: Record<string, string> = {
   nuovo: 'bg-[var(--color-royal-gold)]',
@@ -104,6 +121,84 @@ function StateFilter({
   )
 }
 
+// A `Select` needs a non-empty string for "no filter"; the query string simply omits
+// the key instead, same reasoning as `ANY` in the CRM's own fatture list.
+const ANY = 'tutti'
+
+function boolToSelect(value: boolean | undefined): string {
+  return value === undefined ? ANY : value ? 'si' : 'no'
+}
+
+function selectToBool(value: string): boolean | undefined {
+  return value === 'si' ? true : value === 'no' ? false : undefined
+}
+
+function FilterField({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string
+  htmlFor: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {children}
+    </div>
+  )
+}
+
+/** «Nessun risultato per questi filtri» when a search or a filter narrowed an
+ *  otherwise non-empty table down to nothing, the plain sentence when the table itself
+ *  has nothing in it yet (REB-286): a zero from a filter and a zero from an empty
+ *  table are different facts, and only one of them goes away by clearing something. */
+function isFilterActive(filters: Record<string, unknown>): boolean {
+  return Object.values(filters).some((value) => value !== undefined && value !== '')
+}
+
+/** The affordance under a truncated page (REB-286), reimplemented here from the CRM's
+ *  `LoadMoreInvoices` (PR #179) since this app may not import PigroCRM: a button that
+ *  walks `next_cursor` one page further, a count of what is already on screen, and an
+ *  `IntersectionObserver` sentinel so scrolling to the end does what the button does.
+ *  Guarded against a missing `IntersectionObserver` (jsdom in tests) rather than
+ *  shipping a polyfill for an admin-only page. */
+function LoadMore({
+  label,
+  isFetchingMore,
+  onLoadMore,
+}: {
+  label: string
+  isFetchingMore: boolean
+  onLoadMore: () => void
+}) {
+  const sentinel = useRef<HTMLDivElement>(null)
+  const onLoadMoreRef = useRef(onLoadMore)
+  useEffect(() => {
+    onLoadMoreRef.current = onLoadMore
+  })
+  useEffect(() => {
+    const node = sentinel.current
+    if (!node || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) onLoadMoreRef.current()
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+  return (
+    <div ref={sentinel} className="flex flex-wrap items-center gap-3 px-6 py-4">
+      <Button type="button" variant="outline" size="sm" onClick={onLoadMore} disabled={isFetchingMore}>
+        {isFetchingMore ? 'Caricamento…' : 'Mostra altri'}
+      </Button>
+      <span role="status" className="text-sm text-muted-foreground">
+        {label}
+      </span>
+    </div>
+  )
+}
+
 export function Empty({ children }: { children: React.ReactNode }) {
   return <p className="px-6 py-10 text-center text-sm text-muted-foreground">{children}</p>
 }
@@ -126,37 +221,203 @@ export function Figure({ label, value, note }: { label: string; value: number; n
 /** «Talenti»: every freelancer card and every bare sign-up as one list (REB-282/283),
  *  `stato` `lead` for the bare ones and the freelancer's own state otherwise -- the
  *  single list that replaced «Developer e CTO» and «Iscrizioni». A card row opens the
- *  existing freelancer detail; a lead row opens the page that offers to draft one. */
+ *  existing freelancer detail; a lead row opens the page that offers to draft one.
+ *  REB-286 adds the search box, the filter row and infinite scroll, all three carried
+ *  in the URL through `validateSearch` on `/admin/talenti` (`router.tsx`) so a reload
+ *  or a shared link reproduces the exact view; only `q` is debounced client-side
+ *  before it reaches the URL and the query, everything else applies immediately like
+ *  the state pills always have. */
 export function AdminTalenti() {
-  const [stato, setStato] = useState<string | undefined>(undefined)
-  const list = useQuery({ queryKey: ['talenti', stato], queryFn: () => admin.talenti(stato) })
+  const search = useSearch({ from: '/signedIn/admin/talenti' })
+  const navigate = useNavigate()
+  const [qInput, setQInput] = useState(search.q ?? '')
+  const debouncedQ = useDebounce(qInput, SEARCH_DEBOUNCE_MS)
+
+  useEffect(() => {
+    if (debouncedQ === (search.q ?? '')) return
+    void navigate({
+      to: '/admin/talenti',
+      search: (prev: TalentiFilters) => ({ ...prev, q: debouncedQ || undefined }),
+      replace: true,
+    })
+  }, [debouncedQ, navigate, search.q])
+
+  function setFilter<K extends keyof TalentiFilters>(key: K, value: TalentiFilters[K]) {
+    void navigate({
+      to: '/admin/talenti',
+      search: (prev: TalentiFilters) => ({ ...prev, [key]: value }),
+      replace: true,
+    })
+  }
+
+  const filters: TalentiFilters = { ...search, q: debouncedQ || undefined }
+  const list = useInfiniteQuery({
+    queryKey: ['talenti', filters],
+    queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+      admin.talenti({ ...filters, cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  })
+  const items = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data?.pages])
+  const activeFilters = isFilterActive(search)
+
   return (
     <>
-      <Header title="Talenti" count={list.data?.totale}>
-        <StateFilter states={FREELANCER_LIST_STATES} value={stato} onChange={setStato} />
+      <Header title="Talenti" count={list.data?.pages[0]?.totale}>
+        <StateFilter
+          states={FREELANCER_LIST_STATES}
+          value={search.stato}
+          onChange={(value) => setFilter('stato', value)}
+        />
       </Header>
+      <div className="grid gap-4 border-b px-6 py-4 sm:grid-cols-2 lg:grid-cols-4">
+        <FilterField label="Cerca" htmlFor="talenti-q">
+          <Input
+            id="talenti-q"
+            type="search"
+            maxLength={200}
+            placeholder="Nome, cognome, email, posizione…"
+            value={qInput}
+            onChange={(event) => setQInput(event.target.value)}
+          />
+        </FilterField>
+        <FilterField label="Posizione" htmlFor="talenti-posizione">
+          <Input
+            id="talenti-posizione"
+            value={search.posizione ?? ''}
+            onChange={(event) => setFilter('posizione', event.target.value || undefined)}
+          />
+        </FilterField>
+        <FilterField label="Da remoto" htmlFor="talenti-remoto">
+          <Select
+            value={search.remoto ?? ANY}
+            onValueChange={(value) => setFilter('remoto', value === ANY ? undefined : (value as Remoto))}
+          >
+            <SelectTrigger id="talenti-remoto">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ANY}>Tutti</SelectItem>
+              {Object.entries(REMOTO_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
+        <FilterField label="Tariffa min (€/giorno)" htmlFor="talenti-tariffa-min">
+          <Input
+            id="talenti-tariffa-min"
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            value={search.tariffa_min ?? ''}
+            onChange={(event) => setFilter('tariffa_min', event.target.value || undefined)}
+          />
+        </FilterField>
+        <FilterField label="Tariffa max (€/giorno)" htmlFor="talenti-tariffa-max">
+          <Input
+            id="talenti-tariffa-max"
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            value={search.tariffa_max ?? ''}
+            onChange={(event) => setFilter('tariffa_max', event.target.value || undefined)}
+          />
+        </FilterField>
+        <FilterField label="Pagina di provenienza" htmlFor="talenti-origine">
+          <Input
+            id="talenti-origine"
+            placeholder="home, pigrocrm…"
+            value={search.origine ?? ''}
+            onChange={(event) => setFilter('origine', event.target.value || undefined)}
+          />
+        </FilterField>
+        <FilterField label="UTM source" htmlFor="talenti-utm-source">
+          <Input
+            id="talenti-utm-source"
+            value={search.utm_source ?? ''}
+            onChange={(event) => setFilter('utm_source', event.target.value || undefined)}
+          />
+        </FilterField>
+        <FilterField label="Ha un CV" htmlFor="talenti-has-cv">
+          <Select value={boolToSelect(search.has_cv)} onValueChange={(value) => setFilter('has_cv', selectToBool(value))}>
+            <SelectTrigger id="talenti-has-cv">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ANY}>Tutti</SelectItem>
+              <SelectItem value="si">Sì</SelectItem>
+              <SelectItem value="no">No</SelectItem>
+            </SelectContent>
+          </Select>
+        </FilterField>
+        <FilterField label="Ha fatto accesso" htmlFor="talenti-con-accessi">
+          <Select
+            value={boolToSelect(search.con_accessi)}
+            onValueChange={(value) => setFilter('con_accessi', selectToBool(value))}
+          >
+            <SelectTrigger id="talenti-con-accessi">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ANY}>Tutti</SelectItem>
+              <SelectItem value="si">Sì</SelectItem>
+              <SelectItem value="no">No</SelectItem>
+            </SelectContent>
+          </Select>
+        </FilterField>
+        <FilterField label="Creato dal" htmlFor="talenti-creato-da">
+          <Input
+            id="talenti-creato-da"
+            type="date"
+            value={search.creato_da ?? ''}
+            onChange={(event) => setFilter('creato_da', event.target.value || undefined)}
+          />
+        </FilterField>
+        <FilterField label="Creato al" htmlFor="talenti-creato-a">
+          <Input
+            id="talenti-creato-a"
+            type="date"
+            value={search.creato_a ?? ''}
+            onChange={(event) => setFilter('creato_a', event.target.value || undefined)}
+          />
+        </FilterField>
+      </div>
       {list.isError ? (
         <Empty>Non riesco a leggere la lista.</Empty>
       ) : list.isPending ? (
         <Empty>Caricamento…</Empty>
-      ) : list.data.items.length === 0 ? (
-        <Empty>Nessun profilo qui.</Empty>
+      ) : items.length === 0 ? (
+        <Empty>{activeFilters ? 'Nessun risultato per questi filtri.' : 'Nessun profilo qui.'}</Empty>
       ) : (
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted-foreground">
-            <tr className="border-b">
-              <th className="px-6 py-2 font-medium">Chi</th>
-              <th className="px-3 py-2 font-medium">Stato</th>
-              <th className="px-3 py-2 font-medium">Provenienza</th>
-              <th className="px-6 py-2 text-right font-medium">Quando</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.data.items.map((item) => (
-              <TalentoRow key={item.id} item={item} />
-            ))}
-          </tbody>
-        </table>
+        <>
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-muted-foreground">
+              <tr className="border-b">
+                <th className="px-6 py-2 font-medium">Chi</th>
+                <th className="px-3 py-2 font-medium">Stato</th>
+                <th className="px-3 py-2 font-medium">Provenienza</th>
+                <th className="px-6 py-2 text-right font-medium">Quando</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <TalentoRow key={item.id} item={item} />
+              ))}
+            </tbody>
+          </table>
+          {list.hasNextPage && (
+            <LoadMore
+              label={`Mostrati ${items.length} talenti, ce ne sono altri.`}
+              isFetchingMore={list.isFetchingNextPage}
+              onLoadMore={() => void list.fetchNextPage()}
+            />
+          )}
+        </>
       )}
     </>
   )
@@ -215,7 +476,10 @@ export function AdminTalentoLead() {
   const { id } = useParams({ from: '/signedIn/admin/talenti/$id' })
   const navigate = useNavigate()
   const client = useQueryClient()
-  const leads = useQuery({ queryKey: ['talenti', 'lead'], queryFn: () => admin.talenti('lead') })
+  const leads = useQuery({
+    queryKey: ['talenti', 'lead'],
+    queryFn: () => admin.talenti({ stato: 'lead', limit: 500 }),
+  })
   const lead = leads.data?.items.find((item) => item.id === id)
   const [draft, setDraft] = useState(LEAD_DRAFT_EMPTY)
   const seeded = useRef(false)
@@ -639,50 +903,160 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 // ---- companies -------------------------------------------------------------------------
 
+/** «Aziende»: every company request as a list. REB-286 adds the search box, the
+ *  filter row and infinite scroll, all three carried in the URL through
+ *  `validateSearch` on `/admin/aziende` (`router.tsx`) the same way `AdminTalenti`
+ *  carries its own -- see that component's own note for why only `q` is debounced. */
 export function AdminCompanies() {
-  const [stato, setStato] = useState<string | undefined>(undefined)
-  const list = useQuery({ queryKey: ['companies', stato], queryFn: () => admin.companies(stato) })
+  const search = useSearch({ from: '/signedIn/admin/aziende' })
+  const navigate = useNavigate()
+  const [qInput, setQInput] = useState(search.q ?? '')
+  const debouncedQ = useDebounce(qInput, SEARCH_DEBOUNCE_MS)
+
+  useEffect(() => {
+    if (debouncedQ === (search.q ?? '')) return
+    void navigate({
+      to: '/admin/aziende',
+      search: (prev: CompaniesFilters) => ({ ...prev, q: debouncedQ || undefined }),
+      replace: true,
+    })
+  }, [debouncedQ, navigate, search.q])
+
+  function setFilter<K extends keyof CompaniesFilters>(key: K, value: CompaniesFilters[K]) {
+    void navigate({
+      to: '/admin/aziende',
+      search: (prev: CompaniesFilters) => ({ ...prev, [key]: value }),
+      replace: true,
+    })
+  }
+
+  const filters: CompaniesFilters = { ...search, q: debouncedQ || undefined }
+  const list = useInfiniteQuery({
+    queryKey: ['companies', filters],
+    queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+      admin.companies({ ...filters, cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  })
+  const items = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data?.pages])
+  const activeFilters = isFilterActive(search)
+
   return (
     <>
-      <Header title="Aziende" count={list.data?.totale}>
-        <StateFilter states={COMPANY_STATES} value={stato} onChange={setStato} />
+      <Header title="Aziende" count={list.data?.pages[0]?.totale}>
+        <StateFilter states={COMPANY_STATES} value={search.stato} onChange={(value) => setFilter('stato', value)} />
       </Header>
+      <div className="grid gap-4 border-b px-6 py-4 sm:grid-cols-2 lg:grid-cols-4">
+        <FilterField label="Cerca" htmlFor="aziende-q">
+          <Input
+            id="aziende-q"
+            type="search"
+            maxLength={200}
+            placeholder="Azienda, referente, email, progetto…"
+            value={qInput}
+            onChange={(event) => setQInput(event.target.value)}
+          />
+        </FilterField>
+        <FilterField label="Budget min (€/giorno)" htmlFor="aziende-budget-min">
+          <Input
+            id="aziende-budget-min"
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            value={search.budget_min ?? ''}
+            onChange={(event) => setFilter('budget_min', event.target.value || undefined)}
+          />
+        </FilterField>
+        <FilterField label="Budget max (€/giorno)" htmlFor="aziende-budget-max">
+          <Input
+            id="aziende-budget-max"
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            value={search.budget_max ?? ''}
+            onChange={(event) => setFilter('budget_max', event.target.value || undefined)}
+          />
+        </FilterField>
+        <FilterField label="Periodo dal" htmlFor="aziende-periodo-da">
+          <Input
+            id="aziende-periodo-da"
+            type="date"
+            value={search.periodo_da ?? ''}
+            onChange={(event) => setFilter('periodo_da', event.target.value || undefined)}
+          />
+        </FilterField>
+        <FilterField label="Pagina di provenienza" htmlFor="aziende-origine">
+          <Input
+            id="aziende-origine"
+            placeholder="home, pigrocrm…"
+            value={search.origine ?? ''}
+            onChange={(event) => setFilter('origine', event.target.value || undefined)}
+          />
+        </FilterField>
+        <FilterField label="Creata dal" htmlFor="aziende-creato-da">
+          <Input
+            id="aziende-creato-da"
+            type="date"
+            value={search.creato_da ?? ''}
+            onChange={(event) => setFilter('creato_da', event.target.value || undefined)}
+          />
+        </FilterField>
+        <FilterField label="Creata al" htmlFor="aziende-creato-a">
+          <Input
+            id="aziende-creato-a"
+            type="date"
+            value={search.creato_a ?? ''}
+            onChange={(event) => setFilter('creato_a', event.target.value || undefined)}
+          />
+        </FilterField>
+      </div>
       {list.isError ? (
         <Empty>Non riesco a leggere la lista.</Empty>
       ) : list.isPending ? (
         <Empty>Caricamento…</Empty>
-      ) : list.data.items.length === 0 ? (
-        <Empty>Nessuna richiesta qui.</Empty>
+      ) : items.length === 0 ? (
+        <Empty>{activeFilters ? 'Nessun risultato per questi filtri.' : 'Nessuna richiesta qui.'}</Empty>
       ) : (
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted-foreground">
-            <tr className="border-b">
-              <th className="px-6 py-2 font-medium">Azienda</th>
-              <th className="px-3 py-2 font-medium">Progetto</th>
-              <th className="px-3 py-2 font-medium">Periodo</th>
-              <th className="px-3 py-2 text-right font-medium">Budget</th>
-              <th className="px-3 py-2 font-medium">Stato</th>
-              <th className="px-6 py-2 text-right font-medium">Quando</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.data.items.map((item) => (
-              <tr key={item.id} className="border-b last:border-0 hover:bg-muted">
-                <td className="px-6 py-2.5">
-                  <Link to="/admin/aziende/$id" params={{ id: item.id }} className="font-medium hover:underline">
-                    {item.nome_azienda}
-                  </Link>
-                  <p className="text-xs text-muted-foreground">{item.referente} · {item.email}</p>
-                </td>
-                <td className="max-w-xs truncate px-3 py-2.5">{item.progetto}</td>
-                <td className="px-3 py-2.5">dal {formatDate(item.periodo_da)}, {item.durata}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums">{formatEuro(item.budget_giornaliero)}</td>
-                <td className="px-3 py-2.5"><StatePill stato={item.stato} /></td>
-                <td className="px-6 py-2.5 text-right text-muted-foreground">{formatDate(item.created_at)}</td>
+        <>
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-muted-foreground">
+              <tr className="border-b">
+                <th className="px-6 py-2 font-medium">Azienda</th>
+                <th className="px-3 py-2 font-medium">Progetto</th>
+                <th className="px-3 py-2 font-medium">Periodo</th>
+                <th className="px-3 py-2 text-right font-medium">Budget</th>
+                <th className="px-3 py-2 font-medium">Stato</th>
+                <th className="px-6 py-2 text-right font-medium">Quando</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.id} className="border-b last:border-0 hover:bg-muted">
+                  <td className="px-6 py-2.5">
+                    <Link to="/admin/aziende/$id" params={{ id: item.id }} className="font-medium hover:underline">
+                      {item.nome_azienda}
+                    </Link>
+                    <p className="text-xs text-muted-foreground">{item.referente} · {item.email}</p>
+                  </td>
+                  <td className="max-w-xs truncate px-3 py-2.5">{item.progetto}</td>
+                  <td className="px-3 py-2.5">dal {formatDate(item.periodo_da)}, {item.durata}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{formatEuro(item.budget_giornaliero)}</td>
+                  <td className="px-3 py-2.5"><StatePill stato={item.stato} /></td>
+                  <td className="px-6 py-2.5 text-right text-muted-foreground">{formatDate(item.created_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {list.hasNextPage && (
+            <LoadMore
+              label={`Mostrate ${items.length} aziende, ce ne sono altre.`}
+              isFetchingMore={list.isFetchingNextPage}
+              onLoadMore={() => void list.fetchNextPage()}
+            />
+          )}
+        </>
       )}
     </>
   )

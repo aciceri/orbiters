@@ -1,6 +1,14 @@
 import { resetUser } from '@rebase/analytics/browser'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiError, member, type FreelancerApplication, type Me, type MemberUpdate } from './api'
+import {
+  ApiError,
+  member,
+  type CompanyRequest,
+  type CompanyUpdate,
+  type FreelancerApplication,
+  type Me,
+  type MemberUpdate,
+} from './api'
 import { linkedinFieldValue, linkedinProfile } from './linkedin'
 
 /** REB-279: `lib/auth.tsx`'s `useAdmin` and `lib/member.tsx`'s `useMember` merge into
@@ -44,6 +52,14 @@ export function useUpdateProfile() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (data: MemberUpdate) => member.update(data),
+    onSuccess: (me) => client.setQueryData(ME_KEY, me),
+  })
+}
+
+export function useUpdateCompany() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (data: CompanyUpdate) => member.updateCompany(data),
     onSuccess: (me) => client.setQueryData(ME_KEY, me),
   })
 }
@@ -100,5 +116,35 @@ export function toUpdate(value: FreelancerApplication): MemberUpdate {
     posizione: value.posizione.trim(),
     remoto: value.remoto as MemberUpdate['remoto'],
     links: value.links.map((link) => link.trim()).filter(Boolean),
+  }
+}
+
+/** The most recent request in the wizard's own shape, so `COMPANY_FIELDS`' `progetto`/
+ *  `periodo_da`/`budget_giornaliero` entries can render and validate it exactly as
+ *  they do in `CompanyWizard`. The company's own identity (`nome_azienda`, the
+ *  referente) is never part of self-edit (REB-314) and is left blank here -- those
+ *  three fields never read it. Only meaningful when `ha_azienda` is true; the caller
+ *  checks that first (`Area.tsx`, `ModificaAzienda.tsx`). */
+export function toCompanyApplication(me: Me): CompanyRequest {
+  return {
+    nome_azienda: '',
+    referente_nome: '',
+    referente_cognome: '',
+    email: '',
+    progetto: me.progetto ?? '',
+    periodo_da: me.periodo_da ?? '',
+    durata: me.durata ?? '',
+    budget_giornaliero: me.budget_giornaliero ?? '',
+  }
+}
+
+/** What `PATCH /me/azienda` takes: the four project answers, trimmed the way the
+ *  wizard trims before posting. */
+export function toCompanyUpdate(value: CompanyRequest): CompanyUpdate {
+  return {
+    progetto: value.progetto.trim(),
+    periodo_da: value.periodo_da,
+    durata: value.durata.trim(),
+    budget_giornaliero: value.budget_giornaliero.replace(',', '.').trim(),
   }
 }

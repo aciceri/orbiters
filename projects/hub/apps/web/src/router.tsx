@@ -28,6 +28,7 @@ import { Accedi } from '@/pages/member/Accedi'
 import { Area } from '@/pages/member/Area'
 import { Entra } from '@/pages/member/Entra'
 import { Modifica } from '@/pages/member/Modifica'
+import { ModificaAzienda } from '@/pages/member/ModificaAzienda'
 
 /**
  * The route tree, in code: this many screens is not enough to want a file-based router and
@@ -109,6 +110,11 @@ const ioIndex = createRoute({
   }),
 })
 const ioModifica = createRoute({ getParentRoute: () => io, path: '/modifica', component: Modifica })
+const ioModificaAzienda = createRoute({
+  getParentRoute: () => io,
+  path: '/modifica-azienda',
+  component: ModificaAzienda,
+})
 
 const adminArea = createRoute({ getParentRoute: () => signedInLayout, path: '/admin', component: AdminGuard })
 const adminTalenti = createRoute({
@@ -157,7 +163,7 @@ const routeTree = root.addChildren([
   bareLayout.addChildren([chooser]),
   publicLayout.addChildren([freelance, aziende, grazie, accedi, entra]),
   signedInLayout.addChildren([
-    io.addChildren([ioIndex, ioModifica]),
+    io.addChildren([ioIndex, ioModifica, ioModificaAzienda]),
     adminArea.addChildren([
       adminTalenti,
       adminTalentoLead,

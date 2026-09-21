@@ -374,7 +374,9 @@ export const admin = {
  *  `MemberProfile`): a `users` row is not necessarily an applicant with a card any
  *  more, so `ha_scheda` says whether one exists, and the seven card fields answer
  *  blank -- `null`, `false`, `[]` -- when it does not, the shape a signed-in admin
- *  with no card gets. */
+ *  with no card gets. `ha_azienda` and the four request fields mirror `ha_scheda`'s
+ *  own shape for a company contact's most recent request (REB-314): a person can
+ *  carry both, one, or neither. */
 export interface Me {
   id: string
   nome: string
@@ -391,6 +393,11 @@ export interface Me {
   posizione: string | null
   remoto: Remoto | null
   links: string[]
+  ha_azienda: boolean
+  progetto: string | null
+  periodo_da: string | null
+  durata: string | null
+  budget_giornaliero: string | null
   /** CV, rate, position and remote preference all present. Always `false` without a
    *  card (`ha_scheda`). */
   completa: boolean
@@ -407,6 +414,15 @@ export interface MemberUpdate {
   links: string[]
 }
 
+/** The four answers a company contact may change about their most recent request
+ *  (REB-314): never `stato`, `note` or the company's own identity. */
+export interface CompanyUpdate {
+  progetto: string
+  periodo_da: string
+  durata: string
+  budget_giornaliero: string
+}
+
 export const member = {
   /** 202 whether the address is known or not; the page says one thing in both cases. */
   requestLink: (email: string) => request<{ ok: true }>('/api/hub/auth/link', json({ email })),
@@ -414,6 +430,12 @@ export const member = {
   me: () => request<Me>('/api/hub/me'),
   update: (data: MemberUpdate) =>
     request<Me>('/api/hub/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+  updateCompany: (data: CompanyUpdate) =>
+    request<Me>('/api/hub/me/azienda', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),

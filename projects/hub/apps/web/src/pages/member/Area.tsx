@@ -4,8 +4,9 @@ import { ArrowUpRight, Download, Pencil } from 'lucide-react'
 import { Button } from '@rebase/ui/button'
 import { member } from '@/lib/api'
 import { formatBytes } from '@/lib/format'
-import { toApplication, useMe } from '@/lib/me'
+import { toApplication, toCompanyApplication, useMe } from '@/lib/me'
 import { GUIDE } from '@/lib/perks'
+import { COMPANY_FIELDS } from '@/pages/CompanyWizard'
 import { FREELANCER_FIELDS } from '@/pages/FreelancerWizard'
 
 const PIGROCRM_URL = 'https://pigro.letsrebase.com/app/registrati'
@@ -16,10 +17,12 @@ const ROLE_LABELS: Record<string, string> = { admin: 'Amministratore', member: '
  *
  *  `useMe()` answers member and admin alike (REB-279): a `users` row is no longer
  *  guaranteed to carry a freelancer card, so the card section renders only when
- *  `ha_scheda` is true, and a card-less admin sees their name, email and role instead
- *  of a wizard-shaped section reading from fields that are all `null`. The two perks
- *  stay unconditional -- PigroCRM and the guide are for the community, not for having
- *  applied through the wizard specifically.
+ *  `ha_scheda` is true, and the company section only when `ha_azienda` is true
+ *  (REB-314); a person with neither sees their name, email and role instead of a
+ *  wizard-shaped section reading from fields that are all `null`. A person can carry
+ *  both, and both render together. The two perks stay unconditional -- PigroCRM and
+ *  the guide are for the community, not for having applied through a wizard
+ *  specifically.
  *
  *  The `negato` flag is set by `AdminGuard` when a signed-in non-admin is bounced off
  *  `/admin/*`: this is where they land, with a sentence saying why instead of a blank
@@ -32,6 +35,10 @@ export function Area() {
   const profile = me.data
   const value = profile.ha_scheda ? toApplication(profile) : null
   const fields = FREELANCER_FIELDS.filter((field) => field.id !== 'email' && field.id !== 'cv')
+  const companyValue = profile.ha_azienda ? toCompanyApplication(profile) : null
+  const companyFields = COMPANY_FIELDS.filter(
+    (field) => field.id === 'progetto' || field.id === 'periodo_da' || field.id === 'budget_giornaliero',
+  )
 
   return (
     <div className="mx-auto max-w-2xl space-y-10">
@@ -62,7 +69,7 @@ export function Area() {
         )}
       </header>
 
-      {value ? (
+      {value && (
         <>
           {!profile.completa && (
             // What is missing is what a company would search by, so it is said here and not
@@ -105,7 +112,33 @@ export function Area() {
             </dl>
           </section>
         </>
-      ) : (
+      )}
+
+      {companyValue && (
+        <section aria-label="La tua richiesta" className="space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-lg font-semibold tracking-tight">La tua richiesta più recente</h2>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/io/modifica-azienda">
+                <Pencil className="mr-2 size-4" />
+                Modifica richiesta
+              </Link>
+            </Button>
+          </div>
+          <dl className="divide-y rounded-2xl border bg-card">
+            {companyFields.map((field) => (
+              <div key={field.id} className="flex items-start gap-4 px-4 py-3 text-sm">
+                <dt className="w-40 shrink-0 text-muted-foreground">{field.label}</dt>
+                <dd className="min-w-0 flex-1 break-words font-medium">
+                  {field.summary(companyValue) || '—'}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
+
+      {!value && !companyValue && (
         <section aria-label="Chi sei">
           <dl className="divide-y rounded-2xl border bg-card">
             <div className="flex items-start gap-4 px-4 py-3 text-sm">

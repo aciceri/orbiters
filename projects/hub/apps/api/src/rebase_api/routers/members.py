@@ -6,7 +6,9 @@ provider failure says whether an address is known. `POST /auth/enter` spends the
 and sets `orbiters_user`, for anyone with a `users` row, member or admin alike
 (REB-278): the identity resolution behind both lives in `rebase_core.users`, not here.
 Everything under `/me` reads the row from the session and never from the URL: there is
-no `/me/{id}`.
+no `/me/{id}`. `PATCH /me/azienda` (REB-314) is the same discipline for the referente's
+company side: it reaches only their most recent `Company` request, never `stato`,
+`note` or the company's own identity.
 
 `POST /auth/link`, `POST /auth/enter` and `PUT /me/cv` all spend from the public rate
 limit: the first two because they are unauthenticated by design, `PUT /me/cv` because
@@ -44,6 +46,7 @@ from rebase_core.models import CV_MAX_BYTES
 from rebase_core.perks import GUIDE_FILENAME, PerkService, guide_bytes
 from rebase_core.schemas import (
     Ack,
+    CompanyUpdate,
     EnterRequest,
     LinkRequest,
     MemberLookup,
@@ -124,6 +127,11 @@ def update_me(me: MeDep, session: SessionDep, payload: MemberUpdate) -> MeRead:
     freelancer = service.require_card(me.id)
     service.update(freelancer.id, payload)
     return service.me_read(me.id)
+
+
+@router.patch("/me/azienda", response_model=MeRead)
+def update_my_company(me: MeDep, session: SessionDep, payload: CompanyUpdate) -> MeRead:
+    return MemberService(session).update_company(me.id, payload)
 
 
 @router.put("/me/cv", response_model=MeRead)

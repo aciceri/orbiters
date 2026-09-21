@@ -1,10 +1,12 @@
-"""The member area: the freelancer card, and what its owner may change once in.
+"""The member area: the freelancer card, the referente's own company request, and
+what each owner may change once in.
 
 The way in -- the magic link, sessions, `resolve` -- moved to `rebase_core.users`
 (REB-278) and is tested in `test_users.py`; this file keeps what is specific to the
-freelancer card.
+freelancer card and, since REB-314, to a company contact's own most-recent request.
 """
 
+from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
@@ -14,12 +16,20 @@ from sqlalchemy import Engine, select, text
 from sqlalchemy.orm import Session
 
 from rebase_core.comments import CommentService
+from rebase_core.companies import CompanyService
 from rebase_core.config import Settings
 from rebase_core.errors import NotFound, ValidationFailed
 from rebase_core.freelancers import FreelancerService
 from rebase_core.members import MemberService
 from rebase_core.models import Freelancer
-from rebase_core.schemas import FreelancerCreate, MemberProfile, MemberUpdate, StatusChange
+from rebase_core.schemas import (
+    CompanyCreate,
+    CompanyUpdate,
+    FreelancerCreate,
+    MemberProfile,
+    MemberUpdate,
+    StatusChange,
+)
 from rebase_core.users import UserService
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
@@ -33,6 +43,24 @@ GOOD = {
     "remoto": "remoto",
     "links": ["https://github.com/ada", " "],
 }
+
+GOOD_COMPANY = {
+    "progetto": "Serve un backend developer per tre mesi, da ottobre.",
+    "periodo_da": date(2026, 10, 1),
+    "durata": "3 mesi",
+    "budget_giornaliero": Decimal("500"),
+}
+
+
+def test_company_update_accepts_only_the_four_project_answers() -> None:
+    update = CompanyUpdate(**GOOD_COMPANY)
+    assert update.budget_giornaliero == Decimal("500") and update.durata == "3 mesi"
+    with pytest.raises(ValidationError):
+        CompanyUpdate(**{**GOOD_COMPANY, "stato": "chiuso"})  # type: ignore[arg-type]
+    with pytest.raises(ValidationError):
+        CompanyUpdate(**{**GOOD_COMPANY, "note": "qualcosa"})  # type: ignore[arg-type]
+    with pytest.raises(ValidationError):
+        CompanyUpdate(**{**GOOD_COMPANY, "nome_azienda": "ACME"})  # type: ignore[arg-type]
 
 
 def test_member_update_applies_the_wizards_rules_and_nothing_else() -> None:
@@ -56,7 +84,7 @@ def test_member_profile_carries_no_admin_field() -> None:
 def members(hub_engine: Engine, hub_session: Session) -> MemberService:
     yield MemberService(hub_session)
     hub_session.rollback()
-    for table in ("sessions", "magic_link_tokens", "comments", "freelancers", "users"):
+    for table in ("sessions", "magic_link_tokens", "comments", "companies", "freelancers", "users"):
         hub_session.execute(text(f"DELETE FROM {table}"))
     hub_session.commit()
 
@@ -91,6 +119,18 @@ def _draft_card(session: Session, email: str = "ada@studio.it") -> UUID:
         fonti=["https://www.linkedin.com/in/ada"],
     )
     return FreelancerService(session).draft_from_signup(signup.id, draft, "Claude").id
+
+
+def _request_company(session: Session, email: str = "wile@acme.it", **extra: object) -> UUID:
+    payload: dict[str, object] = {
+        "nome_azienda": "ACME Srl",
+        "referente_nome": "Wile",
+        "referente_cognome": "E.",
+        "email": email,
+        **GOOD_COMPANY,
+    }
+    payload.update(extra)
+    return CompanyService(session).request(CompanyCreate(**payload)).id  # type: ignore[arg-type]
 
 
 def test_an_update_changes_the_row_and_leaves_one_comment_naming_what_moved(
@@ -189,6 +229,86 @@ def test_me_read_answers_the_identity_and_the_card_together(
     )
     assert bare_read.completa is False
     assert freelancer_id  # the fixture's card is untouched by the bare read
+
+
+def test_a_person_can_carry_both_a_card_and_a_company_at_once(
+    members: MemberService, hub_session: Session
+) -> None:
+    """REB-314: the two are independent, and either or both may be there."""
+    _apply(hub_session, email="ada@studio.it")
+    _request_company(hub_session, email="ada@studio.it")
+    user = UserService(hub_session).by_email("ada@studio.it")
+    assert user is not None
+    me = members.me_read(user.id)
+    assert me.ha_scheda is True and me.ha_azienda is True
+
+
+def test_me_read_answers_the_identity_and_the_most_recent_company_together(
+    members: MemberService, hub_session: Session
+) -> None:
+    """REB-314 decision: self-edit, and `me_read`, reach only the newest of a
+    company's several requests."""
+    _request_company(hub_session, durata="1 mese")
+    newest_id = _request_company(hub_session, durata="3 mesi")
+    user = UserService(hub_session).by_email("wile@acme.it")
+    assert user is not None
+    me = members.me_read(user.id)
+    assert me.ha_azienda is True and me.durata == "3 mesi"
+    assert members.require_company(user.id).id == newest_id
+
+    bare = UserService(hub_session).get_or_create("ivan@rebase.it", "Ivan", "Fiore")
+    bare_read = members.me_read(bare.id)
+    assert bare_read.ha_azienda is False
+    assert (
+        bare_read.progetto,
+        bare_read.periodo_da,
+        bare_read.durata,
+        bare_read.budget_giornaliero,
+    ) == (None, None, None, None)
+
+
+def test_a_company_update_changes_the_most_recent_row_and_leaves_one_comment(
+    members: MemberService, hub_session: Session
+) -> None:
+    older_id = _request_company(hub_session, durata="1 mese")
+    newest_id = _request_company(hub_session, durata="3 mesi")
+    CompanyService(hub_session).set_status(
+        newest_id, StatusChange(stato="in_corso", note="da richiamare")
+    )
+    user = UserService(hub_session).by_email("wile@acme.it")
+    assert user is not None
+
+    unchanged = members.update_company(user.id, CompanyUpdate(**GOOD_COMPANY))
+    assert unchanged.durata == "3 mesi"
+    assert CommentService(hub_session).list("company", newest_id) == []
+
+    changed = members.update_company(
+        user.id,
+        CompanyUpdate(**{**GOOD_COMPANY, "durata": "4 mesi", "budget_giornaliero": Decimal("600")}),
+    )
+    assert changed.durata == "4 mesi" and changed.budget_giornaliero == Decimal("600")
+    thread = CommentService(hub_session).list("company", newest_id)
+    assert len(thread) == 1
+    assert thread[0].testo == "Richiesta aggiornata dal referente: durata, budget giornaliero"
+    assert thread[0].autore == "Wile E."
+
+    # `stato`/`note` are the admin's, and the older request is untouched.
+    admin_view = CompanyService(hub_session).get(newest_id)
+    assert (admin_view.stato, admin_view.note) == ("in_corso", "da richiamare")
+    older_view = CompanyService(hub_session).get(older_id)
+    assert older_view.durata == "1 mese"
+
+
+def test_a_signed_in_person_with_no_company_gets_a_named_404(
+    members: MemberService, hub_session: Session
+) -> None:
+    user = UserService(hub_session).get_or_create("ivan@rebase.it", "Ivan", "Fiore")
+    assert members.company_for_user(user.id) is None
+    with pytest.raises(NotFound) as refused:
+        members.require_company(user.id)
+    assert refused.value.details["entity"] == "azienda"
+    with pytest.raises(NotFound):
+        members.update_company(user.id, CompanyUpdate(**GOOD_COMPANY))
 
 
 # ---- completing a card an admin wrote from a signup (ORB-155) -------------------------

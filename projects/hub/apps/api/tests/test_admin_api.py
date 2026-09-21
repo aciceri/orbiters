@@ -209,6 +209,101 @@ def test_a_signed_in_member_hitting_talenti_is_403_not_401(
     assert client.get("/api/hub/talenti").status_code == 403
 
 
+# ---- search, cursor pagination and filters over HTTP (REB-285) -----------------------
+
+
+def test_talenti_search_hits_a_partial_surname_and_an_email_domain_over_http(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    response = client.post(
+        "/api/hub/freelancers",
+        data={
+            "nome": "Bob",
+            "cognome": "Rossi",
+            "email": "bob@rossilab.it",
+            "tariffa_giornaliera": "450",
+            "posizione": "Backend developer",
+            "remoto": "remoto",
+        },
+        files={"cv": ("Bob CV.pdf", PDF, "application/pdf")},
+    )
+    assert response.status_code == 201, response.text
+    _apply(client, "carol@other.it")
+    _login(client, sender)
+
+    by_surname = client.get("/api/hub/talenti", params={"q": "oss"}).json()
+    assert [item["email"] for item in by_surname["items"]] == ["bob@rossilab.it"]
+
+    by_domain = client.get("/api/hub/talenti", params={"q": "rossilab.it"}).json()
+    assert [item["email"] for item in by_domain["items"]] == ["bob@rossilab.it"]
+
+
+def test_talenti_filters_are_wired_through_the_router(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    _login(client, sender)
+    for email, remoto in (("remote@studio.it", "remoto"), ("onsite@studio.it", "in_sede")):
+        response = client.post(
+            "/api/hub/freelancers",
+            data={
+                "nome": "Worker",
+                "cognome": "Bee",
+                "email": email,
+                "tariffa_giornaliera": "450",
+                "posizione": "Backend developer",
+                "remoto": remoto,
+            },
+            files={"cv": ("cv.pdf", PDF, "application/pdf")},
+        )
+        assert response.status_code == 201, response.text
+
+    only_remote = client.get("/api/hub/talenti", params={"remoto": "remoto"}).json()
+    assert [item["email"] for item in only_remote["items"]] == ["remote@studio.it"]
+
+
+def test_companies_search_hits_a_partial_referente_surname(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    _login(client, sender)
+    response = client.post(
+        "/api/hub/companies",
+        json={
+            "nome_azienda": "Rossi Labs",
+            "referente_nome": "Wile",
+            "referente_cognome": "Rossi",
+            "email": "wile@rossilab.it",
+            "progetto": "Un backend developer.",
+            "periodo_da": "2026-10-01",
+            "durata": "3 mesi",
+            "budget_giornaliero": "500",
+        },
+    )
+    assert response.status_code == 201, response.text
+
+    by_surname = client.get("/api/hub/companies", params={"q": "oss"}).json()
+    assert [item["email"] for item in by_surname["items"]] == ["wile@rossilab.it"]
+
+
+def test_a_malformed_cursor_is_a_422_on_both_lists(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    _login(client, sender)
+    for path in ("/api/hub/talenti", "/api/hub/companies"):
+        response = client.get(path, params={"cursor": "not-a-valid-cursor"})
+        assert response.status_code == 422, (path, response.text)
+
+
+def test_admindep_is_enforced_before_the_new_search_params_are_even_read(
+    client: TestClient, admin: None
+) -> None:
+    """An unauthenticated request carrying every new REB-285 parameter, including a
+    cursor that would otherwise be refused as malformed, still answers 401: `AdminDep`
+    runs before the query is ever built."""
+    params = {"q": "ada", "cursor": "not-a-valid-cursor", "tariffa_min": "100"}
+    assert client.get("/api/hub/talenti", params=params).status_code == 401
+    assert client.get("/api/hub/companies", params=params).status_code == 401
+
+
 # ---- comments --------------------------------------------------------------------------
 
 MISSING = "00000000-0000-7000-8000-000000000000"

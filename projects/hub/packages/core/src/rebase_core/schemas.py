@@ -666,14 +666,18 @@ class TalentoRead(BaseModel):
 
 
 class TalentoList(BaseModel):
-    """Newest first across both tables (REB-282), at most `limit` rows. `totale` counts
-    every row the `stato` filter selects, not only the page returned; `per_stato` counts
-    the whole list per state, `lead` included, whatever `stato` was asked for -- the
-    numbers the admin area's tabs need beside the page itself."""
+    """Newest-or-best-match first across both tables (REB-282; REB-285 adds search and
+    the cursor), at most `limit` rows. `totale` counts every row every active filter
+    selects, `stato` included, not only the page returned; `per_stato` is the same
+    count broken down by state with every filter but `stato` applied -- the numbers
+    the admin area's tabs need beside the page itself, answering "how many if I picked
+    this one" rather than "how many exist at all". `next_cursor` is `None` on the last
+    page."""
 
     totale: int
     items: list[TalentoRead]
     per_stato: dict[str, int]
+    next_cursor: str | None = None
 
 
 class CompanyRead(BaseModel):
@@ -703,8 +707,15 @@ class CompanyRead(BaseModel):
 
 
 class CompanyList(BaseModel):
+    """Newest-or-best-match first (REB-285 adds search, filters and the cursor beside
+    `stato`). `totale` and `per_stato` follow `TalentoList`'s own reasoning; both are
+    additive to the shape `GET /api/hub/companies` already answered, so an older caller
+    that ignores unknown fields sees nothing change."""
+
     totale: int
     items: list[CompanyRead]
+    per_stato: dict[str, int]
+    next_cursor: str | None = None
 
 
 class StatusChange(BaseModel):

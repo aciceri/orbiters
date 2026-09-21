@@ -51,18 +51,20 @@ adding the next one.
 
 `flake.nix` also builds every deployable as a package from the same two locks
 (`pigrocrm-api`, `pigrocrm-web`, `hub-api`, `hub-web`, `website`) and ships one NixOS
-module per product: `services.pigrocrm`, `services.orbiters-hub`,
-`services.orbiters-website`. Each restates its compose file and its `deploy/` nginx
+module per product: `services.pigrocrm`, `services.rebase-hub`,
+`services.rebase-website`. Each restates its compose file and its `deploy/` nginx
 configuration in NixOS terms: a local PostgreSQL reached over the socket, the
-migration before the API starts, nginx serving the SPA and proxying the API. Secrets
-never go in the store: `services.pigrocrm.environmentFile` is a file of
-`PIGROCRM_*=value` lines and must define `PIGROCRM_JWT_SECRET`.
+migration (and, for the CRM, `pigrocrm ensure-space-defaults`) before the API starts,
+the MCP server as a second unit behind its `/mcp` locations, nginx serving the SPA and
+proxying the API with the security headers the production vhost carries. Secrets never
+go in the store: `services.pigrocrm.environmentFile` is a file of `PIGROCRM_*=value`
+lines and must define `PIGROCRM_JWT_SECRET`.
 
 ```nix
 {
-  inputs.orbiters.url = "github:joinorbiters/orbiters";
+  inputs.rebase.url = "github:letsrebase/rebase";
   # ...
-  imports = [ orbiters.nixosModules.pigrocrm ];
+  imports = [ rebase.nixosModules.pigrocrm ];
   services.pigrocrm = {
     enable = true;
     domain = "crm.example.com";
@@ -73,8 +75,10 @@ never go in the store: `services.pigrocrm.environmentFile` is a file of
 ```
 
 Each module is booted in a VM by `nix flake check` and probed through nginx, which is
-the evidence the copy has not drifted from the compose stack. These modules are how a
-third party runs the software; Orbiters' own environments are deployed by CI from the
+the evidence the copy has not drifted from the compose stack. The flake declares
+`x86_64-linux` only; from a Mac with a Linux builder in `nix.conf`, name the system
+(`nix build .#packages.x86_64-linux.pigrocrm-api`). These modules are how a third
+party runs the software; rebase's own environments are deployed by CI from the
 compose files and never from here (`docs/design/DECISIONS.md`, 2026-09-09).
 
 ## Contributing

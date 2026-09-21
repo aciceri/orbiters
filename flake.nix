@@ -1,5 +1,5 @@
 {
-  description = "Orbiters monorepo: development shell, packages, NixOS modules and their tests";
+  description = "rebase monorepo: development shell, packages, NixOS modules and their tests";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -36,6 +36,8 @@
       # The two renderer binaries below are fetched as the upstream x86_64 Linux
       # releases, so that is the one system this shell is known to work on. Another
       # system needs its own tarball and hash in the two derivations, nothing else.
+      # From a Mac with an x86_64-linux builder in nix.conf, name the system:
+      # `nix build .#packages.x86_64-linux.pigrocrm-api`, as preflight.json does.
       systems = [ "x86_64-linux" ];
 
       perSystem =
@@ -156,7 +158,7 @@
           # updated by hand: every change to pnpm-lock.yaml changes it, the build
           # fails naming the hash it got, and that hash goes here.
           pnpmDeps = pkgs.fetchPnpmDeps {
-            pname = "orbiters-pnpm-deps";
+            pname = "rebase-pnpm-deps";
             version = "0";
             fetcherVersion = 4;
             src = lib.fileset.toSource {
@@ -169,16 +171,19 @@
                 (lib.fileset.fileFilter (f: f.name == "package.json") ./shared)
               ];
             };
-            hash = "sha256-zrY3YcbIYYaWv+Q172besqRt2FhQuh0Ep0OacbKQYhY=";
+            hash = "sha256-1kCSCpJX2yi8/DphGqDQy5NzoEnKv4XzCM9LxmnDqE8=";
           };
 
           # A Vite deployable: the `dist/` of one workspace package, built the way its
           # Dockerfile builds it (`pnpm install --filter <name>...`, then `pnpm --filter
-          # <name> build`) from the same files that Dockerfile copies.
+          # <name> build`) from the same files that Dockerfile copies: the package's
+          # own directory and the `shared/` libraries its Dockerfile lists, no more, so
+          # a change to a library one app does not use does not rebuild it.
           viteApp =
             {
               name,
               dir,
+              shared,
             }:
             let
               manifest = builtins.fromJSON (builtins.readFile (dir + "/package.json"));
@@ -188,13 +193,15 @@
               inherit (manifest) version;
               src = lib.fileset.toSource {
                 root = ./.;
-                fileset = lib.fileset.unions [
-                  ./package.json
-                  ./pnpm-workspace.yaml
-                  ./pnpm-lock.yaml
-                  ./shared/brand
-                  dir
-                ];
+                fileset = lib.fileset.unions (
+                  [
+                    ./package.json
+                    ./pnpm-workspace.yaml
+                    ./pnpm-lock.yaml
+                    dir
+                  ]
+                  ++ shared
+                );
               };
               nativeBuildInputs = [
                 nodejs
@@ -214,13 +221,20 @@
                 runHook postInstall
               '';
             };
+          # What the two applications' Dockerfile.web copy beside the app itself.
+          appShared = [
+            ./shared/brand
+            ./shared/analytics
+            ./shared/ui
+          ];
         in
         {
           packages = {
             pigrocrm-api = pythonApp {
               name = "pigrocrm-api";
-              # The MCP server ships inside the API's environment, on demand over
-              # stdio, exactly as it does in the image: `python -m pigrocrm_mcp`.
+              # The MCP server ships inside the API's environment, as it does in the
+              # image: the compose `mcp` service runs `pigrocrm_mcp.http:app` from the
+              # same build.
               members = [
                 "pigrocrm-api"
                 "pigrocrm-mcp"
@@ -230,22 +244,25 @@
             hub-api = pythonApp {
               name = "hub-api";
               members = [
-                "orbiters-api"
-                "orbiters-mcp"
+                "rebase-api"
+                "rebase-mcp"
               ];
               core = ./projects/hub/packages/core;
             };
             pigrocrm-web = viteApp {
               name = "web";
               dir = ./projects/pigrocrm/apps/web;
+              shared = appShared;
             };
             hub-web = viteApp {
               name = "hub";
               dir = ./projects/hub/apps/web;
+              shared = appShared;
             };
             website = viteApp {
               name = "website";
               dir = ./projects/website;
+              shared = [ ./shared/brand ];
             };
             # The renderer pair, exported so the PigroCRM module can hand the API the
             # same binaries the image and the shell carry.
@@ -284,6 +301,8 @@
               testScript = ''
                 machine.wait_for_unit("pigrocrm-api.service")
                 machine.wait_for_open_port(8000)
+                machine.wait_for_unit("pigrocrm-mcp.service")
+                machine.wait_for_open_port(8001)
                 machine.wait_for_unit("nginx.service")
 
                 # The probe, through nginx, exact path (spa.conf: not under /api/).
@@ -300,8 +319,22 @@
                 # The API answers behind /api/: an unauthenticated request is refused
                 # by the application, not by nginx.
                 machine.succeed("curl -sS -o /dev/null -w '%{http_code}' http://localhost/api/auth/me | grep -Ex '401'")
+                # The MCP server is its own process on its own port, reached at /mcp
+                # and under a space's prefix (spa.conf, ORB-170), and it is the one
+                # answering: a call with no bearer is refused with the challenge, and
+                # a space nobody registered is «spazio non trovato», the API's own
+                # wording, never nginx's HTML.
+                machine.succeed("curl -sS -o /dev/null -D - -X POST http://localhost/mcp | grep -i '^www-authenticate: Bearer'")
+                machine.succeed("curl -sS -X POST http://localhost/studiorossi/mcp | grep -F 'spazio non trovato'")
+                machine.succeed("curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' http://localhost/mcp/ | grep -Fx '308 http://localhost/mcp'")
+                # A document upload may weigh 105 MB (spa.conf); anything else 1 MB.
+                machine.succeed("head -c 2000000 /dev/zero | curl -sS -o /dev/null -w '%{http_code}' -X POST --data-binary @- http://localhost/api/documents/from-template | grep -Ex '401'")
+                machine.succeed("head -c 2000000 /dev/zero | curl -sS -o /dev/null -w '%{http_code}' -X POST --data-binary @- http://localhost/api/auth/me | grep -Ex '413'")
                 # Nothing else is served: no SPA fallback outside /app/.
                 machine.succeed("curl -sS -o /dev/null -w '%{http_code}' http://localhost/nothing/here | grep -Ex '404'")
+                # The headers the host's vhost carries in production (security-headers.conf).
+                machine.succeed("curl -sSI http://localhost/app/ | grep -ic '^referrer-policy: strict-origin' | grep -Fx 1")
+                machine.succeed("curl -sSI http://localhost/app/ | grep -i '^x-content-type-options: nosniff'")
                 # The migration ran against the local database before the API started.
                 machine.succeed("su postgres -s /bin/sh -c \"psql -d pigrocrm -tAc 'select version_num from alembic_version'\" | grep -E '.'")
                 # A space is a database the API creates: the role may.
@@ -315,27 +348,29 @@
               '';
             };
 
-            # The hub beside the website on one name, which is joinorbiters.com's own
+            # The hub beside the website on one name, which is letsrebase.com's own
             # layout: two modules adding locations to the same virtual host.
             hub = pkgs.testers.runNixOSTest {
               name = "hub";
               nodes.machine = {
                 imports = [
-                  self.nixosModules.orbiters-hub
-                  self.nixosModules.orbiters-website
+                  self.nixosModules.rebase-hub
+                  self.nixosModules.rebase-website
                 ];
-                services.orbiters-hub = {
+                services.rebase-hub = {
                   enable = true;
                   domain = "hub.test";
                 };
-                services.orbiters-website = {
+                services.rebase-website = {
                   enable = true;
                   domain = "hub.test";
                 };
               };
               testScript = ''
-                machine.wait_for_unit("orbiters-hub-api.service")
+                machine.wait_for_unit("rebase-hub-api.service")
                 machine.wait_for_open_port(8000)
+                machine.wait_for_unit("rebase-hub-mcp.service")
+                machine.wait_for_open_port(8001)
                 machine.wait_for_unit("nginx.service")
 
                 # The hub's probe touches the database on purpose, so a 200 here is
@@ -349,11 +384,16 @@
                 # empty POST is a 422 with FastAPI's JSON body, which nginx's own
                 # errors never are. (`Server:` is no discriminator, nginx rewrites it.)
                 machine.succeed("curl -sS -X POST http://localhost/api/hub/companies | grep -F '\"detail\"'")
-                machine.succeed("curl -sS -X POST http://localhost/api/orbiters/signups | grep -F '\"detail\"'")
-                # The magic link's token travels in the SPA's URL and in no Referer.
-                machine.succeed("curl -sS -o /dev/null -D - http://localhost/hub/ | grep -i '^referrer-policy: strict-origin'")
+                machine.succeed("curl -sS -X POST http://localhost/api/community/signups | grep -F '\"detail\"'")
+                # The admin's MCP server behind /api/hub/mcp (REB-213): the process
+                # itself refuses a call with no token.
+                machine.succeed("curl -sS -o /dev/null -D - -X POST http://localhost/api/hub/mcp | grep -i '^www-authenticate: Bearer'")
+                # The magic link's token travels in the SPA's URL and in no Referer,
+                # and the header is set once although two modules share the name.
+                machine.succeed("curl -sSI http://localhost/hub/ | grep -ic '^referrer-policy: strict-origin' | grep -Fx 1")
+                machine.succeed("curl -sSI http://localhost/ | grep -ic '^x-content-type-options: nosniff' | grep -Fx 1")
                 # The website's front door on the same name, untouched by the hub.
-                machine.succeed("curl -fsS http://localhost/ | grep -Fi 'orbiters'")
+                machine.succeed("curl -fsS http://localhost/ | grep -Fi 'rebase'")
                 machine.succeed("curl -sS -o /dev/null -w '%{http_code}' http://localhost/nothing | grep -Ex '404'")
               '';
             };
@@ -361,28 +401,33 @@
             website = pkgs.testers.runNixOSTest {
               name = "website";
               nodes.machine = {
-                imports = [ self.nixosModules.orbiters-website ];
-                services.orbiters-website = {
+                imports = [ self.nixosModules.rebase-website ];
+                services.rebase-website = {
                   enable = true;
                   domain = "website.test";
                 };
               };
               testScript = ''
                 machine.wait_for_unit("nginx.service")
-                # The path map of projects/website/deploy/nginx.conf, page by page:
-                # the landing at the root, the community page under its name, the
-                # old landing address home.
-                machine.succeed("curl -fsS http://localhost/ | grep -Fi 'orbiters'")
-                machine.succeed("curl -fsS http://localhost/orbiters | grep -Fi 'orbiters'")
+                # The path map of projects/website/deploy/nginx.conf, page by page,
+                # which is `PAGES` and `REDIRECTS` in src/path-map-plugin.ts.
+                machine.succeed("curl -fsS http://localhost/ | grep -Fi 'rebase'")
+                machine.succeed("curl -fsS http://localhost/pigrocrm | grep -Fi 'pigrocrm'")
+                machine.succeed("curl -fsS http://localhost/community | grep -Fi 'rebase'")
                 machine.succeed("curl -fsS http://localhost/privacy >/dev/null")
                 machine.succeed("curl -fsS http://localhost/termini >/dev/null")
                 machine.succeed("curl -fsS http://localhost/pitch >/dev/null")
-                machine.succeed("curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' http://localhost/pigrocrm | grep -Fx '301 http://localhost/'")
+                # The community page's old name, with its query string kept.
+                machine.succeed("curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' 'http://localhost/orbiters?x=1' | grep -Fx '301 http://localhost/community?x=1'")
+                # The two files the build generates from the same map.
+                machine.succeed("curl -fsS http://localhost/robots.txt | grep -F 'Sitemap:'")
+                machine.succeed("curl -fsS http://localhost/sitemap.xml | grep -F '<urlset'")
                 # The hashed assets the pages link to are served under /assets/.
                 machine.succeed("curl -fsS http://localhost/ | grep -oE '/assets/[^\"]+' | head -1 | xargs -I{} curl -fsS http://localhost{} >/dev/null")
                 # No fallback: a file nobody linked is a 404, as is the bare html name.
                 machine.succeed("curl -sS -o /dev/null -w '%{http_code}' http://localhost/nothing | grep -Ex '404'")
                 machine.succeed("curl -sS -o /dev/null -w '%{http_code}' http://localhost/privacy.html | grep -Ex '404'")
+                machine.succeed("curl -sSI http://localhost/ | grep -i '^x-content-type-options: nosniff'")
               '';
             };
           };
@@ -430,7 +475,7 @@
       # ---- Self-hosting: one NixOS module per deployable ---------------------------
       #
       # These are for whoever self-hosts a product under the AGPL, on NixOS. They are
-      # not how Orbiters' own environments are deployed, which stays the compose stack
+      # not how rebase's own environments are deployed, which stays the compose stack
       # and `_deploy-compose.yml` (docs/design/DECISIONS.md, 2026-09-09), so a
       # preview or a production of ours is never brought up from here.
       #
@@ -461,8 +506,8 @@
                 lib.types.int
               ]
             );
-          # The systemd sandbox the two APIs share: a static user for the state that
-          # must outlive the unit, a read-only view of everything else.
+          # The systemd sandbox the API and MCP units share: a static user for the
+          # state that must outlive the unit, a read-only view of everything else.
           hardening = {
             NoNewPrivileges = true;
             PrivateTmp = true;
@@ -500,8 +545,58 @@
           proxyLocation = port: {
             proxyPass = "http://127.0.0.1:${toString port}";
           };
+          # The MCP transport is Streamable HTTP: one request may stream for as long
+          # as a tool runs, so no buffering and a long read timeout (spa.conf, the
+          # `/mcp` locations).
+          mcpLocation = port: {
+            proxyPass = "http://127.0.0.1:${toString port}";
+            extraConfig = ''
+              proxy_http_version 1.1;
+              proxy_buffering off;
+              proxy_read_timeout 300s;
+            '';
+          };
         in
         {
+          # The response headers the host's nginx adds for the whole origin in
+          # production (projects/*/deploy/**/security-headers.conf, REB-275), minus the
+          # two that are the host's TLS and third-party decisions (HSTS and the
+          # report-only CSP). Here the module is the host, so it carries them. A
+          # module names its domain and the headers are added once per name, however
+          # many modules share it: the `key` is what deduplicates this module when
+          # the hub and the website import it on the same machine, and the hub's VM
+          # test counts the header to prove it.
+          nginx-headers = {
+            key = "rebase/nginx-headers";
+            imports = [
+              (
+                { config, lib, ... }:
+                {
+                  options.services.rebase-nginx-headers.domains = lib.mkOption {
+                    type = lib.types.listOf lib.types.str;
+                    default = [ ];
+                    internal = true;
+                    description = "The virtual hosts that carry the origin-wide security headers.";
+                  };
+                  config.services.nginx.virtualHosts =
+                    lib.genAttrs (lib.unique config.services.rebase-nginx-headers.domains)
+                      (_: {
+                        extraConfig = ''
+                          add_header X-Content-Type-Options nosniff always;
+                          # `strict-origin`, not `strict-origin-when-cross-origin`: the
+                          # magic link's token is in the SPA's URL and must not travel in a
+                          # Referer to anything.
+                          add_header Referrer-Policy strict-origin always;
+                          add_header X-Frame-Options DENY always;
+                          add_header Content-Security-Policy "frame-ancestors 'none';" always;
+                          add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+                        '';
+                      });
+                }
+              )
+            ];
+          };
+
           pigrocrm =
             {
               config,
@@ -523,24 +618,48 @@
                 exec ${cfg.package}/bin/alembic upgrade head
               '';
               # The SPA reads a space's prefix from the URL (spa.conf, "Spaces"):
-              # `/<slug>/app/...` is the same shell, `/<slug>/api/...` and
-              # `/<slug>/health` reach the API with the full path, whose middleware
-              # strips the prefix.
+              # `/<slug>/app/...` is the same shell, `/<slug>/api/...`, `/<slug>/health`
+              # and `/<slug>/mcp` reach the API or the MCP server with the full path,
+              # whose middleware strips the prefix.
               slug = "[a-z0-9][a-z0-9-]{1,30}[a-z0-9]";
+              # The compose file's `x-api-environment`: one block, both services.
+              environment = {
+                PIGROCRM_STORAGE_LOCAL_ROOT = cfg.documentsDir;
+                # `tenants.service.default_alembic_ini` walks up from the package
+                # to a checkout layout that a virtualenv in the store does not
+                # have; this is the setting that exists for exactly that.
+                PIGROCRM_TENANTS_ALEMBIC_INI = "${cfg.package}/share/pigrocrm-api/alembic.ini";
+                PIGROCRM_PANDOC_BINARY = lib.getExe' cfg.renderer.pandoc "pandoc";
+                PIGROCRM_TYPST_BINARY = lib.getExe' cfg.renderer.typst "typst";
+              }
+              // lib.optionalAttrs cfg.database.createLocally {
+                PIGROCRM_DATABASE_URL = socketUrl "pigrocrm";
+              }
+              // settingsToEnv "PIGROCRM_" cfg.settings;
+              serviceConfig = hardening // {
+                User = "pigrocrm";
+                Group = "pigrocrm";
+                EnvironmentFile = cfg.environmentFile;
+                StateDirectory = "pigrocrm";
+                ReadWritePaths = [ cfg.documentsDir ];
+                Restart = "on-failure";
+              };
             in
             {
+              imports = [ self.nixosModules.nginx-headers ];
+
               options.services.pigrocrm = {
-                enable = lib.mkEnableOption "PigroCRM, the API behind nginx with its SPA";
+                enable = lib.mkEnableOption "PigroCRM, the API and its MCP server behind nginx with the SPA";
                 package = lib.mkOption {
                   type = lib.types.package;
                   default = own.pigrocrm-api;
-                  defaultText = "orbiters.packages.<system>.pigrocrm-api";
-                  description = "The API's environment, with Alembic and the migrations under share/.";
+                  defaultText = "rebase.packages.<system>.pigrocrm-api";
+                  description = "The API's environment, with the MCP server, Alembic and the migrations under share/.";
                 };
                 web = lib.mkOption {
                   type = lib.types.package;
                   default = own.pigrocrm-web;
-                  defaultText = "orbiters.packages.<system>.pigrocrm-web";
+                  defaultText = "rebase.packages.<system>.pigrocrm-web";
                   description = "The SPA's `dist/`.";
                 };
                 domain = lib.mkOption {
@@ -557,13 +676,24 @@
                   type = lib.types.port;
                   default = 8000;
                 };
+                mcp = {
+                  enable = lib.mkOption {
+                    type = lib.types.bool;
+                    default = true;
+                    description = "Run the MCP server (the compose stack's `mcp` service) at `/mcp` and `/<slug>/mcp`, for the «Connect an agent» button. It shares the API's environment and reads the same database.";
+                  };
+                  port = lib.mkOption {
+                    type = lib.types.port;
+                    default = 8001;
+                  };
+                };
                 environmentFile = lib.mkOption {
                   type = lib.types.path;
                   example = "/run/secrets/pigrocrm.env";
                   description = ''
                     The secrets, as `PIGROCRM_*=value` lines, never in the store. It must
-                    define `PIGROCRM_JWT_SECRET` (32 characters or more); the Google
-                    variables and a non-local `PIGROCRM_DATABASE_URL` go here too.
+                    define `PIGROCRM_JWT_SECRET` (32 characters or more); the Google and
+                    Resend variables and a non-local `PIGROCRM_DATABASE_URL` go here too.
                   '';
                 };
                 settings = lib.mkOption {
@@ -572,6 +702,7 @@
                   example = {
                     timezone = "Europe/Rome";
                     root_slug = "studiorossi";
+                    public_url = "https://pigro.example.com";
                     mcp_full_access = false;
                   };
                   description = "Non-secret settings by their field name in `pigrocrm.core.config.Settings`, exported as `PIGROCRM_<NAME>`.";
@@ -590,13 +721,13 @@
                   pandoc = lib.mkOption {
                     type = lib.types.package;
                     default = own.pandoc;
-                    defaultText = "orbiters.packages.<system>.pandoc";
+                    defaultText = "rebase.packages.<system>.pandoc";
                     description = "Pinned with the API image; see projects/pigrocrm/Dockerfile.api.";
                   };
                   typst = lib.mkOption {
                     type = lib.types.package;
                     default = own.typst;
-                    defaultText = "orbiters.packages.<system>.typst";
+                    defaultText = "rebase.packages.<system>.typst";
                   };
                 };
               };
@@ -605,6 +736,8 @@
                 lib.mkMerge [
                   (lib.mkIf cfg.database.createLocally (localPostgres "pigrocrm"))
                   {
+                    services.rebase-nginx-headers.domains = [ cfg.domain ];
+
                     # A space is a database of its own, created by the API beside the
                     # root's (`tenants.service.TenantService.provision`), and so is the
                     # registry `pigrocrm_tenants`. The compose stack's user is Postgres'
@@ -633,29 +766,28 @@
                       ]
                       ++ lib.optional cfg.database.createLocally "postgresql-setup.service";
                       requires = lib.optional cfg.database.createLocally "postgresql-setup.service";
-                      environment = {
-                        PIGROCRM_STORAGE_LOCAL_ROOT = cfg.documentsDir;
-                        # `tenants.service.default_alembic_ini` walks up from the package
-                        # to a checkout layout that a virtualenv in the store does not
-                        # have; this is the setting that exists for exactly that.
-                        PIGROCRM_TENANTS_ALEMBIC_INI = "${cfg.package}/share/pigrocrm-api/alembic.ini";
-                        PIGROCRM_PANDOC_BINARY = lib.getExe' cfg.renderer.pandoc "pandoc";
-                        PIGROCRM_TYPST_BINARY = lib.getExe' cfg.renderer.typst "typst";
-                      }
-                      // lib.optionalAttrs cfg.database.createLocally {
-                        PIGROCRM_DATABASE_URL = socketUrl "pigrocrm";
-                      }
-                      // settingsToEnv "PIGROCRM_" cfg.settings;
-                      serviceConfig = hardening // {
-                        User = "pigrocrm";
-                        Group = "pigrocrm";
-                        EnvironmentFile = cfg.environmentFile;
-                        StateDirectory = "pigrocrm";
-                        ReadWritePaths = [ cfg.documentsDir ];
-                        # Migrations first, then serve: one instance, as in the image.
-                        ExecStartPre = migrate;
+                      inherit environment;
+                      serviceConfig = serviceConfig // {
+                        # The image's CMD, in order: the root's migration, then every
+                        # registered space brought to the same schema and given its
+                        # defaults (ORB-189), then uvicorn. One instance, as in the image.
+                        ExecStartPre = [
+                          "${migrate}"
+                          "${cfg.package}/bin/pigrocrm ensure-space-defaults"
+                        ];
                         ExecStart = "${cfg.package}/bin/uvicorn pigrocrm_api.main:app --host ${cfg.address} --port ${toString cfg.port}";
-                        Restart = "on-failure";
+                      };
+                    };
+                    # The compose `mcp` service: the same build and environment, a
+                    # second process, started after the API the way `depends_on` says.
+                    systemd.services.pigrocrm-mcp = lib.mkIf cfg.mcp.enable {
+                      description = "PigroCRM MCP server";
+                      wantedBy = [ "multi-user.target" ];
+                      after = [ "pigrocrm-api.service" ];
+                      wants = [ "pigrocrm-api.service" ];
+                      inherit environment;
+                      serviceConfig = serviceConfig // {
+                        ExecStart = "${cfg.package}/bin/uvicorn pigrocrm_mcp.http:app --host ${cfg.address} --port ${toString cfg.mcp.port}";
                       };
                     };
                     systemd.tmpfiles.rules = [ "d ${cfg.documentsDir} 0750 pigrocrm pigrocrm -" ];
@@ -669,19 +801,37 @@
                         root = webRoot;
                         # A relative Location on every redirect: an absolute one drops
                         # a non-default port (measured against the image, spa.conf).
-                        extraConfig = "absolute_redirect off;";
+                        extraConfig = ''
+                          absolute_redirect off;
+                          client_max_body_size 1m;
+                        '';
                         locations = {
                           "= /".return = "302 /app/";
                           "= /app".return = "302 /app/";
                           "= /login".return = "302 /app/login";
                           "^~ /app/".tryFiles = "$uri /app/index.html";
                           "~ \"^/${slug}/app(/|$)\"".tryFiles = "/app/index.html =404";
+                          # nginx takes the first regex that matches in file order, and
+                          # the module writes them alphabetically: the documents one
+                          # must come before `(api|health)`, which would swallow it.
+                          "~ \"^/${slug}/api/documents(/|$)\"" = proxyLocation cfg.port // {
+                            priority = 900;
+                            extraConfig = "client_max_body_size 105m;";
+                          };
                           "~ \"^/${slug}/(api|health)(/|$)\"" = proxyLocation cfg.port;
                           "~ \"^/(${slug})$\"".return = "302 /$1/app/";
+                          "^~ /api/documents/" = proxyLocation cfg.port // {
+                            extraConfig = "client_max_body_size 105m;";
+                          };
                           "/api/" = proxyLocation cfg.port;
                           "= /health" = proxyLocation cfg.port;
                           # Anything else: a 404, never the SPA shell.
                           "/".tryFiles = "$uri =404";
+                        }
+                        // lib.optionalAttrs cfg.mcp.enable {
+                          "= /mcp/".return = "308 /mcp";
+                          "= /mcp" = mcpLocation cfg.mcp.port;
+                          "~ \"^/${slug}/mcp(/|$)\"" = mcpLocation cfg.mcp.port;
                         };
                       };
                     };
@@ -690,7 +840,7 @@
               );
             };
 
-          orbiters-hub =
+          rebase-hub =
             {
               config,
               lib,
@@ -698,34 +848,47 @@
               ...
             }:
             let
-              cfg = config.services.orbiters-hub;
+              cfg = config.services.rebase-hub;
               own = self.packages.${pkgs.stdenv.hostPlatform.system};
-              webRoot = pkgs.runCommand "orbiters-hub-web-root" { } ''
+              webRoot = pkgs.runCommand "rebase-hub-web-root" { } ''
                 mkdir -p "$out"
                 ln -s ${cfg.web} "$out/hub"
               '';
-              migrate = pkgs.writeShellScript "orbiters-hub-migrate" ''
+              migrate = pkgs.writeShellScript "rebase-hub-migrate" ''
                 cd ${cfg.package}/share/hub-api
                 exec ${cfg.package}/bin/alembic upgrade head
               '';
+              environment =
+                lib.optionalAttrs cfg.database.createLocally {
+                  REBASE_DATABASE_URL = socketUrl "rebase";
+                }
+                // settingsToEnv "REBASE_" cfg.settings;
+              serviceConfig = hardening // {
+                User = "rebase";
+                Group = "rebase";
+                EnvironmentFile = lib.optional (cfg.environmentFile != null) cfg.environmentFile;
+                Restart = "on-failure";
+              };
             in
             {
-              options.services.orbiters-hub = {
-                enable = lib.mkEnableOption "the Orbiters hub: the signup wizards, the admin area and their API";
+              imports = [ self.nixosModules.nginx-headers ];
+
+              options.services.rebase-hub = {
+                enable = lib.mkEnableOption "the rebase hub: the signup wizards, the member and admin areas, their API and the admin's MCP server";
                 package = lib.mkOption {
                   type = lib.types.package;
                   default = own.hub-api;
-                  defaultText = "orbiters.packages.<system>.hub-api";
+                  defaultText = "rebase.packages.<system>.hub-api";
                 };
                 web = lib.mkOption {
                   type = lib.types.package;
                   default = own.hub-web;
-                  defaultText = "orbiters.packages.<system>.hub-web";
+                  defaultText = "rebase.packages.<system>.hub-web";
                 };
                 domain = lib.mkOption {
                   type = lib.types.str;
                   example = "example.com";
-                  description = "The virtual host: the SPA under /hub/ and the API under /api/hub/ and /api/orbiters/signups, beside the website when both share a name.";
+                  description = "The virtual host: the SPA under /hub/, the API under /api/hub/ and /api/community/signups, the MCP server under /api/hub/mcp, beside the website when both share a name.";
                 };
                 address = lib.mkOption {
                   type = lib.types.str;
@@ -735,18 +898,30 @@
                   type = lib.types.port;
                   default = 8000;
                 };
+                mcp = {
+                  enable = lib.mkOption {
+                    type = lib.types.bool;
+                    default = true;
+                    description = "Run the admin's MCP server (the compose stack's `mcp` service) behind /api/hub/mcp (REB-213).";
+                  };
+                  port = lib.mkOption {
+                    type = lib.types.port;
+                    default = 8001;
+                  };
+                };
                 environmentFile = lib.mkOption {
                   type = lib.types.nullOr lib.types.path;
                   default = null;
-                  description = "`ORBITERS_*=value` lines for the secrets: the conversions API key, a non-local database URL.";
+                  description = "`REBASE_*=value` lines for the secrets: the Resend key, the conversions API key, the CRM's registry token, a non-local database URL.";
                 };
                 settings = lib.mkOption {
                   type = settingsType lib;
                   default = { };
                   example = {
                     signup_url = "https://example.com/";
+                    hub_url = "https://example.com/hub";
                   };
-                  description = "Non-secret settings by their field name in `orbiters_core.config.Settings`, exported as `ORBITERS_<NAME>`.";
+                  description = "Non-secret settings by their field name in `rebase_core.config.Settings`, exported as `REBASE_<NAME>`.";
                 };
                 database.createLocally = lib.mkOption {
                   type = lib.types.bool;
@@ -756,54 +931,53 @@
 
               config = lib.mkIf cfg.enable (
                 lib.mkMerge [
-                  (lib.mkIf cfg.database.createLocally (localPostgres "orbiters"))
+                  (lib.mkIf cfg.database.createLocally (localPostgres "rebase"))
                   {
-                    users.users.orbiters = {
-                      isSystemUser = true;
-                      group = "orbiters";
-                    };
-                    users.groups.orbiters = { };
+                    services.rebase-nginx-headers.domains = [ cfg.domain ];
 
-                    systemd.services.orbiters-hub-api = {
-                      description = "Orbiters hub API";
+                    users.users.rebase = {
+                      isSystemUser = true;
+                      group = "rebase";
+                    };
+                    users.groups.rebase = { };
+
+                    systemd.services.rebase-hub-api = {
+                      description = "rebase hub API";
                       wantedBy = [ "multi-user.target" ];
                       after = [
                         "network.target"
                       ]
                       ++ lib.optional cfg.database.createLocally "postgresql-setup.service";
                       requires = lib.optional cfg.database.createLocally "postgresql-setup.service";
-                      environment =
-                        lib.optionalAttrs cfg.database.createLocally {
-                          ORBITERS_DATABASE_URL = socketUrl "orbiters";
-                        }
-                        // settingsToEnv "ORBITERS_" cfg.settings;
-                      serviceConfig = hardening // {
-                        User = "orbiters";
-                        Group = "orbiters";
-                        EnvironmentFile = lib.optional (cfg.environmentFile != null) cfg.environmentFile;
+                      inherit environment;
+                      serviceConfig = serviceConfig // {
                         ExecStartPre = migrate;
-                        ExecStart = "${cfg.package}/bin/uvicorn orbiters_api.main:app --host ${cfg.address} --port ${toString cfg.port}";
-                        Restart = "on-failure";
+                        ExecStart = "${cfg.package}/bin/uvicorn rebase_api.main:app --host ${cfg.address} --port ${toString cfg.port}";
+                      };
+                    };
+                    systemd.services.rebase-hub-mcp = lib.mkIf cfg.mcp.enable {
+                      description = "rebase hub MCP server";
+                      wantedBy = [ "multi-user.target" ];
+                      after = [ "rebase-hub-api.service" ];
+                      wants = [ "rebase-hub-api.service" ];
+                      inherit environment;
+                      serviceConfig = serviceConfig // {
+                        ExecStart = "${cfg.package}/bin/uvicorn rebase_mcp.http:app --host ${cfg.address} --port ${toString cfg.mcp.port}";
                       };
                     };
 
-                    # projects/hub/deploy/nginx.conf for the SPA, and the two API
-                    # locations the host's joinorbiters.conf routes to the hub.
+                    # projects/hub/deploy/nginx.conf for the SPA, and the API locations
+                    # the host's letsrebase.conf routes to the hub.
                     services.nginx = {
                       enable = true;
                       recommendedProxySettings = true;
                       virtualHosts.${cfg.domain} = {
-                        # No vhost-level `root`: the website's module may share this
-                        # name, and every location below names its own.
-                        # Only headers at server level: a directive set here twice, by
-                        # this module and the website's on the same name, is a
-                        # duplicate nginx refuses to start on. `absolute_redirect`
-                        # therefore sits on the one location that redirects.
-                        extraConfig = ''
-                          # The magic link's token is in the SPA's URL and must not
-                          # travel in a Referer to anything (deploy/nginx.conf).
-                          add_header Referrer-Policy strict-origin always;
-                        '';
+                        # No vhost-level `root` and no server-level directive of any
+                        # kind: the website's module may share this name, and a
+                        # directive set twice on one server (`absolute_redirect`, say)
+                        # is a duplicate nginx refuses to start on. Every location
+                        # names its own root, and the one redirect carries its own
+                        # `absolute_redirect`.
                         locations = {
                           "= /hub" = {
                             return = "302 /hub/";
@@ -821,12 +995,19 @@
                             root = webRoot;
                             tryFiles = "$uri /hub/index.html";
                           };
-                          "= /api/orbiters/signups" = proxyLocation cfg.port;
+                          "= /api/community/signups" = proxyLocation cfg.port;
                           "^~ /api/hub/" = proxyLocation cfg.port // {
                             extraConfig = "client_max_body_size 6M;";
                           };
                           "= /health" = proxyLocation cfg.port;
                           "/".return = lib.mkDefault "404";
+                        }
+                        // lib.optionalAttrs cfg.mcp.enable {
+                          # `/api/hub/mcp` is `/mcp` to the process, prefix and all
+                          # (letsrebase.conf). `^~` so it wins over `^~ /api/hub/`.
+                          "^~ /api/hub/mcp" = mcpLocation cfg.mcp.port // {
+                            proxyPass = "http://127.0.0.1:${toString cfg.mcp.port}/mcp";
+                          };
                         };
                       };
                     };
@@ -835,7 +1016,7 @@
               );
             };
 
-          orbiters-website =
+          rebase-website =
             {
               config,
               lib,
@@ -843,16 +1024,22 @@
               ...
             }:
             let
-              cfg = config.services.orbiters-website;
+              cfg = config.services.rebase-website;
               own = self.packages.${pkgs.stdenv.hostPlatform.system};
+              page = file: {
+                root = cfg.package;
+                tryFiles = "/${file} =404";
+              };
             in
             {
-              options.services.orbiters-website = {
-                enable = lib.mkEnableOption "the Orbiters website: four static pages and their assets";
+              imports = [ self.nixosModules.nginx-headers ];
+
+              options.services.rebase-website = {
+                enable = lib.mkEnableOption "the rebase website: the landing, the product and community pages, the policies and the pitch";
                 package = lib.mkOption {
                   type = lib.types.package;
                   default = own.website;
-                  defaultText = "orbiters.packages.<system>.website";
+                  defaultText = "rebase.packages.<system>.website";
                 };
                 domain = lib.mkOption {
                   type = lib.types.str;
@@ -862,41 +1049,31 @@
 
               # projects/website/deploy/nginx.conf: which extensionless path is which
               # page, and nothing invented. The website's own unit test parses that
-              # file's `location =` lines; the VM test walks these.
+              # file's `location =` lines against src/path-map-plugin.ts; the VM test
+              # walks these.
               config = lib.mkIf cfg.enable {
+                services.rebase-nginx-headers.domains = [ cfg.domain ];
                 services.nginx = {
                   enable = true;
                   virtualHosts.${cfg.domain} = {
                     locations = {
-                      # The landing is the front door (ORB-145, 2026-09-11); the
-                      # community page keeps its name, and `/pigrocrm` follows it home.
-                      "= /" = {
-                        root = cfg.package;
-                        tryFiles = "/index.html =404";
-                      };
-                      # A relative Location, on the location itself rather than the
-                      # server: the hub's module may share this name (see there).
-                      "= /pigrocrm" = {
-                        return = "301 /";
+                      "= /" = page "index.html";
+                      "= /pigrocrm" = page "pigrocrm.html";
+                      "= /community" = page "community.html";
+                      # The community page's old name (ORB-194). A relative Location,
+                      # on the location itself rather than the server: the hub's
+                      # module may share this name (see there).
+                      "= /orbiters" = {
+                        return = "301 /community$is_args$args";
                         extraConfig = "absolute_redirect off;";
                       };
-                      "= /orbiters" = {
-                        root = cfg.package;
-                        tryFiles = "/orbiters.html =404";
-                      };
-                      "= /privacy" = {
-                        root = cfg.package;
-                        tryFiles = "/privacy.html =404";
-                      };
-                      "= /termini" = {
-                        root = cfg.package;
-                        tryFiles = "/termini.html =404";
-                      };
                       # The pitch deck, a page shared by link (ORB-153).
-                      "= /pitch" = {
-                        root = cfg.package;
-                        tryFiles = "/pitch.html =404";
-                      };
+                      "= /pitch" = page "pitch.html";
+                      "= /privacy" = page "privacy.html";
+                      "= /termini" = page "termini.html";
+                      # Generated by the build from the same map as the pages.
+                      "= /robots.txt" = page "robots.txt";
+                      "= /sitemap.xml" = page "sitemap.xml";
                       "/assets/" = {
                         root = cfg.package;
                         tryFiles = "$uri =404";

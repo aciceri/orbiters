@@ -153,12 +153,16 @@ Three edits to `flake.nix`, all in the pattern the existing projects set, and no
 version anywhere: a Python deployable is `pythonApp { name; members; core; }` (the
 workspace members its Dockerfile `--package`s, and the `packages/core` directory
 whose `alembic.ini` and `migrations/` ship beside the venv), a Vite deployable is
-`viteApp { name; dir; }` (the pnpm package name and its directory). Then a NixOS
-module under `flake.nixosModules` that restates the project's compose file and its
-`deploy/` nginx configuration, and a `checks.<name>` VM test that boots it and probes
-what the host's nginx would: the health path, the SPA on a deep link, the API behind
-its prefix. A `pnpm-lock.yaml` change moves the pnpm store hash in `flake.nix`; the
-`nix-packages` preflight check fails naming the new one, and that is where it goes.
+`viteApp { name; dir; shared; }` (the pnpm package name, its directory, and the
+`shared/*` libraries its Dockerfile copies). Then a NixOS module under
+`flake.nixosModules` that restates the project's compose file and its `deploy/` nginx
+configuration, one systemd unit per compose service (the API, its MCP server), the
+`nginx-headers` module imported for the origin's security headers, and a
+`checks.<name>` VM test that boots it and probes what the host's nginx would: the
+health path, the SPA on a deep link, the API behind its prefix, the MCP server refusing
+a call with no token. A `pnpm-lock.yaml` change moves the pnpm store hash in
+`flake.nix`; the `nix-packages` preflight check fails naming the new one, and that is
+where it goes.
 
 A project that ships nothing (a library, a shared asset) adds nothing here.
 

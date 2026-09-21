@@ -1,5 +1,6 @@
 """The two wizards' rows: what is kept, what is refused, what an admin may change."""
 
+import json
 from datetime import date
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -10,9 +11,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from rebase_core.companies import CompanyService
+from rebase_core.config import Settings
 from rebase_core.errors import NotFound, ValidationFailed
 from rebase_core.freelancers import FreelancerService, check_cv
-from rebase_core.models import CV_MAX_BYTES
+from rebase_core.models import CV_MAX_BYTES, Freelancer, Login
+from rebase_core.perks import PerkService
 from rebase_core.schemas import (
     CompanyCreate,
     FreelancerCreate,
@@ -392,3 +395,92 @@ def test_signups_without_a_card_are_the_leads_beside_the_cards(clean: Session) -
     ]
     only_new = service.list_recent(stato="nuovo")
     assert len(only_new.items) == 1 and only_new.lead == [] and only_new.totale_lead == 0
+
+
+# ---- the enriched detail: sign-up, logins, downloads, Pigro space (REB-284) -----------
+
+
+def test_the_detail_carries_the_origin_signups_own_utm_when_one_exists(clean: Session) -> None:
+    """The sign-up's own attribution, never the card's: an admin-drafted card copies
+    the signup's UTM at creation but a wizard card carries its own, and here they
+    genuinely differ, so the detail must read the sign-up's row, not the card's."""
+    service = FreelancerService(clean)
+    _signup(clean, "ada@studio.it", utm=SignupUtm(utm_source="newsletter", utm_medium="email"))
+    with_signup, _ = service.apply(
+        _application("ada@studio.it", utm=SignupUtm(utm_source="linkedin")),
+        PDF,
+        "cv.pdf",
+        "application/pdf",
+    )
+    detail = service.get(with_signup.id)
+    assert detail.iscrizione_utm is not None
+    assert (detail.iscrizione_utm.utm_source, detail.iscrizione_utm.utm_medium) == (
+        "newsletter",
+        "email",
+    )
+    # The card's own attribution above is untouched.
+    assert detail.utm_source == "linkedin"
+
+    no_signup, _ = service.apply(_application("solo@studio.it"), PDF, "cv.pdf", "application/pdf")
+    assert service.get(no_signup.id).iscrizione_utm is None
+
+
+def test_the_detail_carries_the_last_logins_and_guide_downloads(clean: Session) -> None:
+    """Both short lists read off the person's own `user_id`, newest first, and empty
+    rather than absent when the address never did either (REB-284)."""
+    service = FreelancerService(clean)
+    active, _ = service.apply(_application("ada@studio.it"), PDF, "cv.pdf", "application/pdf")
+    row = clean.get(Freelancer, active.id)
+    assert row is not None
+    for _ in range(2):
+        clean.add(Login(user_id=row.user_id))
+    clean.commit()
+    PerkService(clean).record_guide_download(row.user_id)
+
+    detail = service.get(active.id)
+    assert len(detail.ultimi_accessi) == 2
+    assert len(detail.ultimi_download_guida) == 1
+    assert detail.ultimi_accessi[0].logged_at >= detail.ultimi_accessi[1].logged_at
+
+    inactive, _ = service.apply(_application("mai@studio.it"), PDF, "cv.pdf", "application/pdf")
+    quiet = service.get(inactive.id)
+    assert quiet.ultimi_accessi == [] and quiet.ultimi_download_guida == []
+
+
+def test_the_detail_carries_the_pigro_slug_when_the_address_owns_a_space(clean: Session) -> None:
+    """`pigro_slug` comes off the same registry `PigroRegistry.list_spaces` reads
+    (REB-284), matched to this one address; `None` without a token configured, never
+    an outbound request nobody asked for."""
+    service = FreelancerService(clean)
+    owner, _ = service.apply(_application("ada@studio.it"), PDF, "cv.pdf", "application/pdf")
+    settings = Settings(
+        pigro_api_url="https://pigro.test",
+        pigro_registry_token="un-token",
+        _env_file=None,  # type: ignore[call-arg]
+    )
+    body = json.dumps(
+        [{"slug": "studio-ada", "owner_email": "ada@studio.it", "created_at": "2026-09-10T09:00:00Z"}]
+    ).encode()
+
+    def fake_http(method: str, url: str, headers: dict[str, str], payload: bytes) -> tuple[int, bytes]:
+        return 200, body
+
+    with_pigro = FreelancerService(clean, settings, fake_http).get(owner.id)
+    assert with_pigro.pigro_slug == "studio-ada"
+
+    # Without a configured token, the same card answers `None`: no request attempted.
+    assert service.get(owner.id).pigro_slug is None
+
+
+def test_the_detail_has_sensible_empty_values_with_none_of_the_four_sources(
+    clean: Session,
+) -> None:
+    """A card with no matching sign-up, no logins, no downloads and no Pigro space
+    answers absent/empty values, never an error (REB-284)."""
+    service = FreelancerService(clean)
+    plain, _ = service.apply(_application("nessuno@studio.it"), PDF, "cv.pdf", "application/pdf")
+    detail = service.get(plain.id)
+    assert detail.iscrizione_utm is None
+    assert detail.ultimi_accessi == []
+    assert detail.ultimi_download_guida == []
+    assert detail.pigro_slug is None

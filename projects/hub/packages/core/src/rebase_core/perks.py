@@ -34,6 +34,9 @@ def guide_bytes() -> bytes:
 
 
 RECENT_DOWNLOADS = 20
+# The short list a card's own detail shows (REB-284), well below the admin's own
+# guide page: an admin reading one person does not need their last twenty.
+RECENT_DOWNLOADS_FOR_CARD = 5
 
 
 class PerkService:
@@ -87,3 +90,26 @@ class PerkService:
                 for download, person in rows
             ],
         )
+
+    def recent_for_user(self, user_id: UUID, limit: int = RECENT_DOWNLOADS_FOR_CARD) -> list[GuideDownloadRead]:
+        """The last few times this one person downloaded the guide (REB-284's
+        freelancer detail): the same shape `guide_stats` reads for everybody, scoped
+        to a single `user_id` instead of grouped across the whole hub."""
+        rows = self.session.execute(
+            select(GuideDownload, User)
+            .join(User, User.id == GuideDownload.user_id)
+            .where(GuideDownload.user_id == user_id)
+            .order_by(GuideDownload.downloaded_at.desc(), GuideDownload.id.desc())
+            .limit(limit)
+        ).all()
+        return [
+            GuideDownloadRead(
+                id=download.id,
+                user_id=download.user_id,
+                nome=person.nome,
+                cognome=person.cognome,
+                email=person.email,
+                downloaded_at=download.downloaded_at,
+            )
+            for download, person in rows
+        ]

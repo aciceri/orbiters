@@ -773,6 +773,21 @@ class GuideStats(BaseModel):
     recenti: list[GuideDownloadRead]
 
 
+class FreelancerDetail(FreelancerRead):
+    """`FreelancerRead` plus every other place the hub already knows this address
+    (REB-284): the sign-up's own UTM set (`iscrizione_utm`, never the card's own utm
+    fields above -- an admin-drafted card copies the signup's UTM at creation but a
+    wizard card carries its own, and the two can differ), the last handful of logins
+    and guide downloads, and the PigroCRM space slug when the address owns one. Only
+    `FreelancerService.get` fills these: the list stays `FreelancerRead` alone, since
+    two hundred people are not two hundred fan-outs to four sources."""
+
+    iscrizione_utm: SignupUtm | None = None
+    ultimi_accessi: list[LoginRead] = Field(default_factory=list)
+    ultimi_download_guida: list[GuideDownloadRead] = Field(default_factory=list)
+    pigro_slug: str | None = None
+
+
 class CvFile(BaseModel):
     """The bytes and the two headers a download needs."""
 

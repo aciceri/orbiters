@@ -13,7 +13,7 @@ from rebase_api.deps import get_http_call, get_sender
 from rebase_core.config import Settings, get_settings
 from rebase_core.http import MAX_BODY_BYTES
 from rebase_core.mail import RecordingSender
-from rebase_core.models import Freelancer, User
+from rebase_core.models import Freelancer, Login, User
 from rebase_core.perks import PerkService
 
 PDF = b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n"
@@ -550,6 +550,91 @@ def test_when_the_crm_refuses_or_falls_over_the_answer_is_a_502_sentence(
     down = client.get("/api/hub/pigro/istanze")
     assert down.status_code == 502, down.text
     assert down.json()["detail"] == "Pigro non risponde."
+
+
+# ---- the enriched detail: sign-up, logins, downloads, Pigro space (REB-284) -----------
+
+
+def test_the_detail_shows_the_origin_signups_own_utm(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    """The sign-up's own attribution, separate from the card's own `utm_source`
+    above: an address can leave its email on the landing with one campaign and apply
+    through the wizard with another, and the detail must tell the two apart."""
+    _login(client, sender)
+    signed_up = client.post(
+        "/api/community/signups",
+        json={
+            "email": "ada@studio.it",
+            "nome": "Ada",
+            "cognome": "Lovelace",
+            "utm": {"utm_source": "newsletter", "utm_medium": "email"},
+        },
+    )
+    assert signed_up.status_code in (200, 201), signed_up.text
+    _apply(client, "ada@studio.it")
+    freelancer_id = client.get("/api/hub/freelancers").json()["items"][0]["id"]
+    detail = client.get(f"/api/hub/freelancers/{freelancer_id}").json()
+    assert detail["iscrizione_utm"] == {
+        "utm_source": "newsletter",
+        "utm_medium": "email",
+        "utm_campaign": None,
+        "utm_content": None,
+        "utm_term": None,
+        "utm_id": None,
+        "origine": None,
+    }
+
+
+def test_the_detail_shows_the_last_logins_and_guide_downloads(
+    client: TestClient, admin: None, api_session: Session, sender: RecordingSender
+) -> None:
+    """The two short lists come off the person's own `user_id`, written straight to
+    `logins`/`guide_downloads` here rather than through the magic-link flow, which
+    shares the hub's one rate limiter with every other public write and is already
+    exercised end to end elsewhere (ORB-158, ORB-156)."""
+    _login(client, sender)
+    _apply(client, "ada@studio.it")
+    freelancer_id = client.get("/api/hub/freelancers").json()["items"][0]["id"]
+    ada_user_id = api_session.scalar(
+        select(Freelancer.user_id)
+        .join(User, User.id == Freelancer.user_id)
+        .where(User.email == "ada@studio.it")
+    )
+    api_session.add(Login(user_id=ada_user_id))
+    api_session.commit()
+    PerkService(api_session).record_guide_download(ada_user_id)
+
+    detail = client.get(f"/api/hub/freelancers/{freelancer_id}").json()
+    assert len(detail["ultimi_accessi"]) == 1
+    assert len(detail["ultimi_download_guida"]) == 1
+    # The field REB-278 already exposed keeps counting the same table.
+    assert detail["accessi"] == 1
+
+
+def test_the_detail_shows_the_pigro_slug_only_with_a_configured_token(
+    client: TestClient, admin: None, pigro: FakePigro, sender: RecordingSender
+) -> None:
+    _login(client, sender)
+    _apply(client, "ada@studio.it")
+    freelancer_id = client.get("/api/hub/freelancers").json()["items"][0]["id"]
+    detail = client.get(f"/api/hub/freelancers/{freelancer_id}").json()
+    assert detail["pigro_slug"] == "studio-ada"
+
+
+def test_the_detail_has_sensible_empty_values_with_none_of_the_four_sources(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    """No sign-up, no logins, no downloads, no Pigro token configured: absent and
+    empty values, never an error (REB-284)."""
+    _login(client, sender)
+    _apply(client, "sola@studio.it")
+    freelancer_id = client.get("/api/hub/freelancers").json()["items"][0]["id"]
+    detail = client.get(f"/api/hub/freelancers/{freelancer_id}").json()
+    assert detail["iscrizione_utm"] is None
+    assert detail["ultimi_accessi"] == []
+    assert detail["ultimi_download_guida"] == []
+    assert detail["pigro_slug"] is None
 
 
 # ---- a card from a signup (ORB-155) --------------------------------------------------

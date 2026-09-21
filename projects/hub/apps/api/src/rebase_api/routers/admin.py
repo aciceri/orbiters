@@ -22,7 +22,7 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Query, Response, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from rebase_api.deps import AdminDep, SenderDep, SessionDep, SettingsDep
+from rebase_api.deps import AdminDep, HttpCallDep, SenderDep, SessionDep, SettingsDep
 from rebase_api.downloads import cv_response
 from rebase_core.admin_tokens import AdminRead
 from rebase_core.comments import CommentService
@@ -38,6 +38,7 @@ from rebase_core.schemas import (
     CommentRead,
     CompanyList,
     CompanyRead,
+    FreelancerDetail,
     FreelancerDraft,
     FreelancerList,
     FreelancerRead,
@@ -139,9 +140,18 @@ def list_freelancers(
     return FreelancerService(session).list_recent(limit=limit, stato=stato)
 
 
-@router.get("/freelancers/{freelancer_id}", response_model=FreelancerRead)
-def get_freelancer(_: AdminDep, session: SessionDep, freelancer_id: UUID) -> FreelancerRead:
-    return FreelancerService(session).get(freelancer_id)
+@router.get("/freelancers/{freelancer_id}", response_model=FreelancerDetail)
+def get_freelancer(
+    _: AdminDep,
+    session: SessionDep,
+    settings: SettingsDep,
+    http: HttpCallDep,
+    freelancer_id: UUID,
+) -> FreelancerDetail:
+    """The card, its state and comments, and since REB-284 everywhere else the hub
+    already knows this address: the sign-up's own UTM, the last logins and guide
+    downloads, and the PigroCRM space when it owns one -- one call, not four."""
+    return FreelancerService(session, settings, http).get(freelancer_id)
 
 
 @router.get("/freelancers/{freelancer_id}/cv")

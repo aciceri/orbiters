@@ -75,14 +75,19 @@ class PigroRegistry:
         self.settings = settings
         self.http = http
 
-    def list_spaces(self, session: Session) -> PigroSpaceList:
-        base = self.settings.pigro_api_url.rstrip("/")
+    def _base_url(self) -> str:
+        return self.settings.pigro_api_url.rstrip("/")
+
+    def _fetch_rows(self) -> list[RegistryRow]:
+        """The registry's raw rows, exactly as `GET /api/tenants/` answers them: what
+        `list_spaces` and `find_by_email` (REB-284) both read before matching it to the
+        hub's own members, so the request and its error handling are typed once."""
         headers = {
             "Authorization": f"Bearer {self.settings.pigro_registry_token}",
             "Accept": "application/json",
         }
         try:
-            status, body = self.http("GET", base + REGISTRY_PATH, headers, b"")
+            status, body = self.http("GET", self._base_url() + REGISTRY_PATH, headers, b"")
         except Exception as exc:  # noqa: BLE001 - a refused connection, a DNS miss, a timeout
             raise PigroUnavailable("Pigro non risponde.") from exc
         if status != 200:
@@ -90,9 +95,12 @@ class PigroRegistry:
         if len(body) > MAX_BODY_BYTES:
             raise PigroUnavailable("Pigro ha risposto qualcosa di troppo lungo.")
         try:
-            rows = _ROWS.validate_python(json.loads(body))
+            return _ROWS.validate_python(json.loads(body))
         except (ValueError, ValidationError) as exc:
             raise PigroUnavailable("Pigro ha risposto qualcosa che non è un elenco.") from exc
+
+    def list_spaces(self, session: Session) -> PigroSpaceList:
+        rows = self._fetch_rows()
         members = self._members({row.owner_email.lower() for row in rows}, session)
         return PigroSpaceList(
             totale=len(rows),
@@ -101,11 +109,29 @@ class PigroRegistry:
                     slug=row.slug,
                     owner_email=row.owner_email,
                     created_at=row.created_at,
-                    url=f"{base}/{row.slug}/app/",
+                    url=f"{self._base_url()}/{row.slug}/app/",
                     membro=members.get(row.owner_email.lower()),
                 )
                 for row in rows
             ],
+        )
+
+    def find_by_email(self, email: str, session: Session) -> PigroSpace | None:
+        """Whether one address owns a space (REB-284's freelancer detail): the same
+        registry `list_spaces` reads, matched case-insensitively to one address
+        instead of listed whole. `None` for an address with no space, never an
+        error -- the CRM not knowing about somebody is not a hub failure."""
+        target = email.strip().lower()
+        row = next((r for r in self._fetch_rows() if r.owner_email.lower() == target), None)
+        if row is None:
+            return None
+        members = self._members({target}, session)
+        return PigroSpace(
+            slug=row.slug,
+            owner_email=row.owner_email,
+            created_at=row.created_at,
+            url=f"{self._base_url()}/{row.slug}/app/",
+            membro=members.get(target),
         )
 
     @staticmethod

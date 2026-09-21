@@ -67,3 +67,9 @@ import {
   id       = "904a60b42314c819a66340ae8c1a0e88/3cfca8fc2e15a4783ca3c3c3064cfa84"
   provider = cloudflare.rebase
 }
+
+import {
+  to       = cloudflare_dns_record.rebase_links_cname
+  id       = "904a60b42314c819a66340ae8c1a0e88/cbc5c024006eb542f958e3490cb2c564"
+  provider = cloudflare.rebase
+}

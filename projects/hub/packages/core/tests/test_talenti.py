@@ -104,7 +104,8 @@ def test_counts_per_state_include_the_leads_and_are_not_bounded_by_the_limit(
     listed = TalentiService(clean).list_recent(limit=1)
     assert listed.per_stato == {"nuovo": 2, "contattato": 1, "attivo": 0, "scartato": 0, "lead": 2}
     assert len(listed.items) == 1  # the page is bounded, the counts are not
-    assert [item.email for item in listed.items] == ["lead2@studio.it"]  # and the merge kept the newest row across both sources
+    # and the merge kept the newest row across both sources
+    assert [item.email for item in listed.items] == ["lead2@studio.it"]
 
 
 def test_the_list_is_newest_first_across_both_tables(clean: Session) -> None:

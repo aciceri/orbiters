@@ -43,9 +43,9 @@ describe('the api client', () => {
   it('has a sentence for a 429 and for an unexplained failure', async () => {
     const spy = vi.spyOn(globalThis, 'fetch')
     spy.mockResolvedValueOnce(new Response('', { status: 429 }))
-    await expect(admin.signups()).rejects.toMatchObject({ status: 429, message: /Riprova/ })
+    await expect(admin.talenti()).rejects.toMatchObject({ status: 429, message: /Riprova/ })
     spy.mockResolvedValueOnce(new Response('boom', { status: 500 }))
-    await expect(admin.signups()).rejects.toMatchObject({ status: 500, message: /500/ })
+    await expect(admin.talenti()).rejects.toMatchObject({ status: 500, message: /500/ })
   })
 
   it('sends the freelancer as multipart with the UTM and without empty optionals', async () => {

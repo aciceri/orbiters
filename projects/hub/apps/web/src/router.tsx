@@ -3,6 +3,7 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  redirect,
 } from '@tanstack/react-router'
 import { Shell } from '@/components/Shell'
 import { Chooser } from '@/pages/Chooser'
@@ -20,8 +21,8 @@ import {
   AdminCompanies,
   AdminCompanyDetail,
   AdminFreelancerDetail,
-  AdminFreelancers,
-  AdminSignups,
+  AdminTalenti,
+  AdminTalentoLead,
 } from '@/pages/admin/lists'
 import { Accedi } from '@/pages/member/Accedi'
 import { Area } from '@/pages/member/Area'
@@ -110,26 +111,37 @@ const ioIndex = createRoute({
 const ioModifica = createRoute({ getParentRoute: () => io, path: '/modifica', component: Modifica })
 
 const adminArea = createRoute({ getParentRoute: () => signedInLayout, path: '/admin', component: AdminGuard })
-const adminFreelance = createRoute({
+const adminTalenti = createRoute({
   getParentRoute: () => adminArea,
-  path: '/freelance',
-  component: AdminFreelancers,
+  path: '/talenti',
+  component: AdminTalenti,
+})
+const adminTalentoLead = createRoute({
+  getParentRoute: () => adminArea,
+  path: '/talenti/$id',
+  component: AdminTalentoLead,
 })
 const adminFreelanceDetail = createRoute({
   getParentRoute: () => adminArea,
   path: '/freelance/$id',
   component: AdminFreelancerDetail,
 })
+// The website's footer links to /hub/admin/freelance (ORB-106: the hub router has no
+// index route under /admin, so a signed-in admin sent to a bare /admin would see the
+// frame with an empty panel). Talenti replaced the list this used to be (REB-283); the
+// redirect keeps that one documented door open rather than 404ing it.
+const adminFreelanceRedirect = createRoute({
+  getParentRoute: () => adminArea,
+  path: '/freelance',
+  beforeLoad: () => {
+    throw redirect({ to: '/admin/talenti' })
+  },
+})
 const adminAziende = createRoute({ getParentRoute: () => adminArea, path: '/aziende', component: AdminCompanies })
 const adminAziendeDetail = createRoute({
   getParentRoute: () => adminArea,
   path: '/aziende/$id',
   component: AdminCompanyDetail,
-})
-const adminIscrizioni = createRoute({
-  getParentRoute: () => adminArea,
-  path: '/iscrizioni',
-  component: AdminSignups,
 })
 const adminPigro = createRoute({ getParentRoute: () => adminArea, path: '/pigro', component: AdminPigro })
 const adminGuida = createRoute({ getParentRoute: () => adminArea, path: '/guida', component: AdminGuida })
@@ -147,11 +159,12 @@ const routeTree = root.addChildren([
   signedInLayout.addChildren([
     io.addChildren([ioIndex, ioModifica]),
     adminArea.addChildren([
-      adminFreelance,
+      adminTalenti,
+      adminTalentoLead,
       adminFreelanceDetail,
+      adminFreelanceRedirect,
       adminAziende,
       adminAziendeDetail,
-      adminIscrizioni,
       adminPigro,
       adminGuida,
       adminAccessi,

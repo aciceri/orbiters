@@ -261,16 +261,38 @@ export interface LoginRead {
   logged_at: string
 }
 
-export interface Signup {
+/** One row of `talenti` (REB-282/283): every freelancer card and every bare sign-up
+ *  as one row, `stato` `lead` for the bare ones and the freelancer's own state
+ *  otherwise, as `GET /api/hub/talenti` answers -- the single list that replaced
+ *  «Developer e CTO» and «Iscrizioni». `origine` names how the row came to be:
+ *  `form` for a bare sign-up, `wizard` for a card the person filled in themselves,
+ *  `admin` for one an admin drafted from research (ORB-155). */
+export interface Talento {
   id: string
-  email: string
   nome: string | null
   cognome: string | null
+  email: string
   linkedin_url: string | null
+  stato: string
+  origine: 'form' | 'wizard' | 'admin'
   utm_source: string | null
   created_at: string
-  /** The card with the same address, if one exists (ORB-155). */
-  freelancer_id: string | null
+}
+
+/** What an admin found about a signup on the public web (ORB-155): a name, maybe a
+ *  LinkedIn profile, a position, some links, and at least one source, since a card
+ *  written from research with no source is a card nobody can check. The body
+ *  `POST /api/hub/signups/{id}/scheda` expects -- the same `draft_from_signup` the
+ *  MCP tool `create_freelancer_from_signup` calls. */
+export interface FreelancerDraft {
+  nome: string
+  cognome: string
+  linkedin_url?: string
+  posizione?: string
+  tariffa_giornaliera?: string
+  remoto?: Remoto
+  links?: string[]
+  fonti: string[]
 }
 
 /** A personal token of the admin, as `GET /api/hub/tokens` lists it (REB-213): never the value. */
@@ -289,12 +311,6 @@ export interface CreatedToken extends AdminToken {
 }
 
 export const admin = {
-  /** Cards and, beside them, the leads: signups whose address has no card yet (ORB-163).
-   *  `stato: 'lead'` answers leads alone; another state answers cards alone. */
-  freelancers: (stato?: string) =>
-    request<{ totale: number; items: Freelancer[]; totale_lead: number; lead: Signup[] }>(
-      `/api/hub/freelancers?limit=500${stato ? `&stato=${encodeURIComponent(stato)}` : ''}`,
-    ),
   freelancer: (id: string) => request<Freelancer>(`/api/hub/freelancers/${id}`),
   cvUrl: (id: string) => `/api/hub/freelancers/${id}/cv`,
   moveFreelancer: (id: string, stato: string, note: string | null) =>
@@ -314,7 +330,19 @@ export const admin = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stato, note }),
     }),
-  signups: () => request<{ totale: number; iscrizioni: Signup[] }>('/api/hub/signups?limit=500'),
+  /** Every card and every bare sign-up as one list (REB-282/283), `stato` `lead` for
+   *  the bare ones alone -- the read model «Talenti» replaced «Developer e CTO» and
+   *  «Iscrizioni» with. */
+  talenti: (stato?: string) =>
+    request<{ totale: number; items: Talento[]; per_stato: Record<string, number> }>(
+      `/api/hub/talenti?limit=500${stato ? `&stato=${encodeURIComponent(stato)}` : ''}`,
+    ),
+  /** Drafts a card from a bare sign-up in place (ORB-155): the same `draft_from_signup`
+   *  the MCP tool `create_freelancer_from_signup` calls, here behind the admin's
+   *  cookie. 201 with the new (incomplete) card, or a 422 naming `email` when the
+   *  person has already filled their own. */
+  draftFromSignup: (signupId: string, data: FreelancerDraft) =>
+    request<Freelancer>(`/api/hub/signups/${signupId}/scheda`, json(data)),
   /** PigroCRM's spaces, read by the hub's API with the token it holds: the browser
    *  never talks to the CRM (ORB-142). A 503 carries the sentence the page shows. */
   pigroSpaces: () => request<{ totale: number; items: PigroSpace[] }>('/api/hub/pigro/istanze'),

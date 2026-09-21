@@ -1,11 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from '@tanstack/react-router'
+import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { ArrowLeft, Download } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Badge } from '@rebase/ui/badge'
 import { Button } from '@rebase/ui/button'
+import { Input } from '@rebase/ui/input'
+import { Label } from '@rebase/ui/label'
 import { Textarea } from '@rebase/ui/textarea'
-import { admin, type Comment, type Company, type Freelancer, type Signup } from '@/lib/api'
+import {
+  admin,
+  ApiError,
+  type Comment,
+  type Company,
+  type Freelancer,
+  type FreelancerDraft,
+  type Remoto,
+  type Talento,
+} from '@/lib/api'
 import {
   COMPANY_STATES,
   FREELANCER_LIST_STATES,
@@ -110,80 +121,40 @@ export function Figure({ label, value, note }: { label: string; value: number; n
   )
 }
 
-// ---- freelancers -----------------------------------------------------------------------
+// ---- talenti -----------------------------------------------------------------------------
 
-/** One row of the freelancer table: a card, or a lead (a signup with no card, ORB-163),
- *  ordered together by when they arrived. */
-type FreelancerRow = { kind: 'card'; at: string; card: Freelancer } | { kind: 'lead'; at: string; lead: Signup }
-
-function mergeRows(items: Freelancer[], leads: Signup[]): FreelancerRow[] {
-  const rows: FreelancerRow[] = [
-    ...items.map((card): FreelancerRow => ({ kind: 'card', at: card.created_at, card })),
-    ...leads.map((lead): FreelancerRow => ({ kind: 'lead', at: lead.created_at, lead })),
-  ]
-  return rows.sort((a, b) => b.at.localeCompare(a.at))
-}
-
-export function AdminFreelancers() {
+/** «Talenti»: every freelancer card and every bare sign-up as one list (REB-282/283),
+ *  `stato` `lead` for the bare ones and the freelancer's own state otherwise -- the
+ *  single list that replaced «Developer e CTO» and «Iscrizioni». A card row opens the
+ *  existing freelancer detail; a lead row opens the page that offers to draft one. */
+export function AdminTalenti() {
   const [stato, setStato] = useState<string | undefined>(undefined)
-  const list = useQuery({ queryKey: ['freelancers', stato], queryFn: () => admin.freelancers(stato) })
-  const rows = list.data ? mergeRows(list.data.items, list.data.lead) : []
+  const list = useQuery({ queryKey: ['talenti', stato], queryFn: () => admin.talenti(stato) })
   return (
     <>
-      <Header title="Developer e CTO" count={list.data ? list.data.totale + list.data.totale_lead : undefined}>
+      <Header title="Talenti" count={list.data?.totale}>
         <StateFilter states={FREELANCER_LIST_STATES} value={stato} onChange={setStato} />
       </Header>
       {list.isError ? (
         <Empty>Non riesco a leggere la lista.</Empty>
       ) : list.isPending ? (
         <Empty>Caricamento…</Empty>
-      ) : rows.length === 0 ? (
+      ) : list.data.items.length === 0 ? (
         <Empty>Nessun profilo qui.</Empty>
       ) : (
         <table className="w-full text-sm">
           <thead className="text-left text-xs text-muted-foreground">
             <tr className="border-b">
               <th className="px-6 py-2 font-medium">Chi</th>
-              <th className="px-3 py-2 font-medium">Provenienza</th>
-              <th className="px-3 py-2 font-medium">Posizione</th>
-              <th className="px-3 py-2 text-right font-medium">Tariffa</th>
-              <th className="px-3 py-2 font-medium">Dove</th>
               <th className="px-3 py-2 font-medium">Stato</th>
-              <th className="px-3 py-2 font-medium">Ultimo accesso</th>
+              <th className="px-3 py-2 font-medium">Provenienza</th>
               <th className="px-6 py-2 text-right font-medium">Quando</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) =>
-              row.kind === 'lead' ? (
-                <LeadRow key={`lead-${row.lead.id}`} lead={row.lead} />
-              ) : (
-              <tr key={row.card.id} className="border-b last:border-0 hover:bg-muted">
-                <td className="px-6 py-2.5">
-                  <Link to="/admin/freelance/$id" params={{ id: row.card.id }} className="font-medium hover:underline">
-                    {row.card.nome} {row.card.cognome}
-                  </Link>
-                  <p className="text-xs text-muted-foreground">{row.card.email}</p>
-                </td>
-                <td className="px-3 py-2.5 text-muted-foreground">{row.card.provenienza}</td>
-                <td className="px-3 py-2.5">{row.card.posizione ?? '—'}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums">
-                  {row.card.tariffa_giornaliera === null ? '—' : formatEuro(row.card.tariffa_giornaliera)}
-                </td>
-                <td className="px-3 py-2.5">{row.card.remoto ? REMOTO_LABELS[row.card.remoto] : '—'}</td>
-                <td className="px-3 py-2.5">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <StatePill stato={row.card.stato} />
-                    {!row.card.completa && <IncompletePill />}
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-muted-foreground">
-                  {row.card.ultimo_accesso === null ? '—' : formatDateTime(row.card.ultimo_accesso)}
-                </td>
-                <td className="px-6 py-2.5 text-right text-muted-foreground">{formatDate(row.card.created_at)}</td>
-              </tr>
-              ),
-            )}
+            {list.data.items.map((item) => (
+              <TalentoRow key={item.id} item={item} />
+            ))}
           </tbody>
         </table>
       )}
@@ -191,24 +162,244 @@ export function AdminFreelancers() {
   )
 }
 
-/** A signup with no card (ORB-163): what the landing knows, a «Lead» pill, dashes for
- *  everything a card would carry, and no link, since there is no card to open. */
-function LeadRow({ lead }: { lead: Signup }) {
-  const name = [lead.nome, lead.cognome].filter(Boolean).join(' ')
+function TalentoRow({ item }: { item: Talento }) {
+  const name = [item.nome, item.cognome].filter(Boolean).join(' ')
+  const to = item.stato === 'lead' ? '/admin/talenti/$id' : '/admin/freelance/$id'
   return (
     <tr className="border-b last:border-0 hover:bg-muted">
       <td className="px-6 py-2.5">
-        <p className="font-medium">{name || '—'}</p>
-        <p className="text-xs text-muted-foreground">{lead.email}</p>
+        <Link to={to} params={{ id: item.id }} className="font-medium hover:underline">
+          {name || '—'}
+        </Link>
+        <p className="text-xs text-muted-foreground">{item.email}</p>
       </td>
-      <td className="px-3 py-2.5 text-muted-foreground">form</td>
-      <td className="px-3 py-2.5">—</td>
-      <td className="px-3 py-2.5 text-right">—</td>
-      <td className="px-3 py-2.5">—</td>
-      <td className="px-3 py-2.5"><StatePill stato="lead" /></td>
-      <td className="px-3 py-2.5 text-muted-foreground">—</td>
-      <td className="px-6 py-2.5 text-right text-muted-foreground">{formatDate(lead.created_at)}</td>
+      <td className="px-3 py-2.5">
+        <StatePill stato={item.stato} />
+      </td>
+      <td className="px-3 py-2.5 text-muted-foreground">{item.origine}</td>
+      <td className="px-6 py-2.5 text-right text-muted-foreground">{formatDate(item.created_at)}</td>
     </tr>
+  )
+}
+
+interface LeadDraft {
+  nome: string
+  cognome: string
+  linkedin_url: string
+  posizione: string
+  tariffa_giornaliera: string
+  remoto: Remoto | ''
+  links: string
+  fonti: string
+}
+
+const LEAD_DRAFT_EMPTY: LeadDraft = {
+  nome: '',
+  cognome: '',
+  linkedin_url: '',
+  posizione: '',
+  tariffa_giornaliera: '',
+  remoto: '',
+  links: '',
+  fonti: '',
+}
+
+/** A bare sign-up (ORB-163, REB-283): what the landing knows, and the form that turns
+ *  it into a card in place, through the same `draft_from_signup` the MCP tool
+ *  `create_freelancer_from_signup` calls (ORB-155). One line per URL for «Link» and
+ *  «Fonti»; at least one source is required, since a card written from research with
+ *  no source is a card nobody can check. The row itself comes from the `talenti` list
+ *  (`stato: 'lead'`): there is no single-sign-up fetch, so a direct visit refetches
+ *  that page and reads its own row out of it. */
+export function AdminTalentoLead() {
+  const { id } = useParams({ from: '/signedIn/admin/talenti/$id' })
+  const navigate = useNavigate()
+  const client = useQueryClient()
+  const leads = useQuery({ queryKey: ['talenti', 'lead'], queryFn: () => admin.talenti('lead') })
+  const lead = leads.data?.items.find((item) => item.id === id)
+  const [draft, setDraft] = useState(LEAD_DRAFT_EMPTY)
+  const seeded = useRef(false)
+  useEffect(() => {
+    if (lead && !seeded.current) {
+      seeded.current = true
+      setDraft((current) => ({
+        ...current,
+        nome: lead.nome ?? current.nome,
+        cognome: lead.cognome ?? current.cognome,
+        linkedin_url: lead.linkedin_url ?? current.linkedin_url,
+      }))
+    }
+  }, [lead])
+
+  const draftCard = useMutation({
+    mutationFn: (data: FreelancerDraft) => admin.draftFromSignup(id, data),
+    onSuccess: (created) => {
+      void client.invalidateQueries({ queryKey: ['talenti'] })
+      void navigate({ to: '/admin/freelance/$id', params: { id: created.id } })
+    },
+  })
+  const failure = draftCard.error instanceof ApiError ? draftCard.error : null
+  const message = failure ? failure.message : draftCard.error ? 'Non riesco a creare la scheda.' : null
+  const wrong = (field: string) => failure?.fields.includes(field) || undefined
+
+  function field(name: keyof LeadDraft) {
+    return (value: string) => setDraft((current) => ({ ...current, [name]: value }))
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    draftCard.mutate({
+      nome: draft.nome.trim(),
+      cognome: draft.cognome.trim(),
+      linkedin_url: draft.linkedin_url.trim() || undefined,
+      posizione: draft.posizione.trim() || undefined,
+      tariffa_giornaliera: draft.tariffa_giornaliera.replace(',', '.').trim() || undefined,
+      remoto: draft.remoto || undefined,
+      links: draft.links.split('\n').map((line) => line.trim()).filter(Boolean),
+      fonti: draft.fonti.split('\n').map((line) => line.trim()).filter(Boolean),
+    })
+  }
+
+  if (leads.isError) return <Empty>Non riesco a leggere questo lead.</Empty>
+  if (leads.isPending) return <Empty>Caricamento…</Empty>
+  if (!lead) return <Empty>Lead non trovato.</Empty>
+  return (
+    <>
+      <Header title={[lead.nome, lead.cognome].filter(Boolean).join(' ') || lead.email}>
+        <StatePill stato="lead" />
+      </Header>
+      <div className="grid gap-6 p-6 lg:grid-cols-3">
+        <dl className="space-y-3 text-sm lg:col-span-2">
+          <Row label="Email">
+            <a className="underline underline-offset-2" href={`mailto:${lead.email}`}>
+              {lead.email}
+            </a>
+          </Row>
+          <Row label="LinkedIn">
+            {lead.linkedin_url ? (
+              <a className="underline underline-offset-2" href={lead.linkedin_url} target="_blank" rel="noreferrer">
+                {lead.linkedin_url}
+              </a>
+            ) : (
+              '—'
+            )}
+          </Row>
+          <Row label="Arrivato">
+            {formatDate(lead.created_at)}
+            {lead.utm_source ? ` · da ${lead.utm_source}` : ''}
+          </Row>
+        </dl>
+        <form onSubmit={submit} className="space-y-3 rounded-2xl border bg-muted/40 p-4">
+          <p className="text-sm font-medium">Scrivi la scheda</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="lead-nome">Nome</Label>
+              <Input
+                id="lead-nome"
+                required
+                maxLength={120}
+                value={draft.nome}
+                onChange={(event) => field('nome')(event.target.value)}
+                aria-invalid={wrong('nome')}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="lead-cognome">Cognome</Label>
+              <Input
+                id="lead-cognome"
+                required
+                maxLength={120}
+                value={draft.cognome}
+                onChange={(event) => field('cognome')(event.target.value)}
+                aria-invalid={wrong('cognome')}
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="lead-linkedin">LinkedIn</Label>
+            <Input
+              id="lead-linkedin"
+              value={draft.linkedin_url}
+              onChange={(event) => field('linkedin_url')(event.target.value)}
+              aria-invalid={wrong('linkedin_url')}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="lead-posizione">Posizione</Label>
+            <Input
+              id="lead-posizione"
+              value={draft.posizione}
+              onChange={(event) => field('posizione')(event.target.value)}
+              aria-invalid={wrong('posizione')}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="lead-tariffa">Tariffa a giornata</Label>
+              <Input
+                id="lead-tariffa"
+                inputMode="decimal"
+                value={draft.tariffa_giornaliera}
+                onChange={(event) => field('tariffa_giornaliera')(event.target.value)}
+                aria-invalid={wrong('tariffa_giornaliera')}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="lead-remoto">Modalità</Label>
+              <select
+                id="lead-remoto"
+                value={draft.remoto}
+                onChange={(event) => field('remoto')(event.target.value)}
+                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <option value="">—</option>
+                {(Object.keys(REMOTO_LABELS) as Remoto[]).map((value) => (
+                  <option key={value} value={value}>
+                    {REMOTO_LABELS[value]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="lead-links">Link</Label>
+            <Textarea
+              id="lead-links"
+              rows={2}
+              placeholder="Un URL per riga"
+              value={draft.links}
+              onChange={(event) => field('links')(event.target.value)}
+              aria-invalid={wrong('links')}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="lead-fonti">Fonti</Label>
+            <Textarea
+              id="lead-fonti"
+              required
+              rows={2}
+              placeholder="Da dove viene questa scheda: un URL per riga"
+              value={draft.fonti}
+              onChange={(event) => field('fonti')(event.target.value)}
+              aria-invalid={wrong('fonti')}
+            />
+          </div>
+          <Button type="submit" size="sm" disabled={draftCard.isPending}>
+            {draftCard.isPending ? 'Creo…' : 'Crea scheda'}
+          </Button>
+          {message && (
+            <p role="alert" className="text-sm text-destructive">
+              {message}
+            </p>
+          )}
+        </form>
+      </div>
+      <p className="px-6 pb-6">
+        <Link to="/admin/talenti" className="inline-flex items-center gap-1 text-sm underline-offset-2 hover:underline">
+          <ArrowLeft className="size-4" /> Tutti i talenti
+        </Link>
+      </p>
+    </>
   )
 }
 
@@ -321,8 +512,8 @@ export function AdminFreelancerDetail() {
       </div>
       <Comments kind="freelancers" id={f.id} comments={f.commenti} onAdded={onCommentAdded} />
       <p className="px-6 pb-6">
-        <Link to="/admin/freelance" className="inline-flex items-center gap-1 text-sm underline-offset-2 hover:underline">
-          <ArrowLeft className="size-4" /> Tutti i developer e CTO
+        <Link to="/admin/talenti" className="inline-flex items-center gap-1 text-sm underline-offset-2 hover:underline">
+          <ArrowLeft className="size-4" /> Tutti i talenti
         </Link>
       </p>
     </>
@@ -433,56 +624,6 @@ export function AdminCompanyDetail() {
           <ArrowLeft className="size-4" /> Tutte le aziende
         </Link>
       </p>
-    </>
-  )
-}
-
-// ---- signups ---------------------------------------------------------------------------
-
-export function AdminSignups() {
-  const list = useQuery({ queryKey: ['signups'], queryFn: () => admin.signups() })
-  return (
-    <>
-      <Header title="Iscrizioni" count={list.data?.totale} />
-      {list.isError ? (
-        <Empty>Non riesco a leggere la lista.</Empty>
-      ) : list.isPending ? (
-        <Empty>Caricamento…</Empty>
-      ) : (
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted-foreground">
-            <tr className="border-b">
-              <th className="px-6 py-2 font-medium">Chi</th>
-              <th className="px-3 py-2 font-medium">LinkedIn</th>
-              <th className="px-3 py-2 font-medium">Scheda</th>
-              <th className="px-3 py-2 font-medium">Da</th>
-              <th className="px-6 py-2 text-right font-medium">Quando</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.data.iscrizioni.map((item) => (
-              <tr key={item.id} className="border-b last:border-0 hover:bg-muted">
-                <td className="px-6 py-2.5">
-                  <p className="font-medium">{[item.nome, item.cognome].filter(Boolean).join(' ') || '—'}</p>
-                  <p className="text-xs text-muted-foreground">{item.email}</p>
-                </td>
-                <td className="px-3 py-2.5">
-                  {item.linkedin_url ? <a className="underline underline-offset-2" href={item.linkedin_url} target="_blank" rel="noreferrer">profilo</a> : '—'}
-                </td>
-                <td className="px-3 py-2.5">
-                  {item.freelancer_id ? (
-                    <Link to="/admin/freelance/$id" params={{ id: item.freelancer_id }} className="underline underline-offset-2">
-                      apri
-                    </Link>
-                  ) : '—'}
-                </td>
-                <td className="px-3 py-2.5 text-muted-foreground">{item.utm_source ?? '—'}</td>
-                <td className="px-6 py-2.5 text-right text-muted-foreground">{formatDate(item.created_at)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
     </>
   )
 }

@@ -32,7 +32,7 @@ Three public flows and the admin area behind them:
   count and its last login. The link request itself is not counted.
 - A freelancer card can also be born from a signup (ORB-155): an admin writes what the
   public web says about the person through `POST /api/hub/signups/{id}/scheda` or the
-  MCP tool `create_freelancer_from_signup`, «Iscrizioni» links to it, and the card stays
+  MCP tool `create_freelancer_from_signup`, «Talenti» links to it, and the card stays
   «da completare» until the person adds the CV, the rate and the rest from `/hub/io`.
   Research never overwrites a card the person filled. Spec:
   `docs/superpowers/specs/2026-09-11-freelancer-card-from-a-signup-design.md`.

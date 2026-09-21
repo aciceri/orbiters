@@ -67,6 +67,7 @@ def test_without_the_cookie_every_admin_route_is_a_401(client: TestClient, admin
         "/api/hub/freelancers",
         "/api/hub/companies",
         "/api/hub/signups",
+        "/api/hub/talenti",
         "/api/hub/admins",
         "/api/hub/pigro/istanze",
         "/api/hub/perks/guida",
@@ -145,6 +146,67 @@ def test_an_admin_manages_a_freelancer_card_through_the_lists(
     assert wrong.json()["detail"][0]["loc"][-1] == "stato"
     missing = client.get("/api/hub/companies/00000000-0000-7000-8000-000000000000")
     assert missing.status_code == 404
+
+
+# ---- talenti (REB-282): the freelancer cards and the bare sign-ups, as one list ------
+
+
+def test_talenti_merges_cards_and_leads_and_counts_per_state(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    """A card and a bare sign-up read as one list: the card carries its own `stato`
+    and `origine == "wizard"`, the bare sign-up reads `stato == "lead"` and
+    `origine == "form"`, and `per_stato` counts both whatever `stato` was asked for."""
+    signup_id = _signup(client, sender, "lead@studio.it")
+    _apply(client, "ada@studio.it")
+
+    listed = client.get("/api/hub/talenti").json()
+    assert listed["totale"] == 2
+    by_email = {item["email"]: item for item in listed["items"]}
+    assert by_email["ada@studio.it"]["stato"] == "nuovo"
+    assert by_email["ada@studio.it"]["origine"] == "wizard"
+    assert by_email["lead@studio.it"]["stato"] == "lead"
+    assert by_email["lead@studio.it"]["origine"] == "form"
+    assert by_email["lead@studio.it"]["id"] == signup_id
+    assert listed["per_stato"] == {
+        "nuovo": 1,
+        "contattato": 0,
+        "attivo": 0,
+        "scartato": 0,
+        "lead": 1,
+    }
+
+    only_leads = client.get("/api/hub/talenti", params={"stato": "lead"}).json()
+    assert [item["email"] for item in only_leads["items"]] == ["lead@studio.it"]
+    assert only_leads["totale"] == 1
+    # `per_stato` counts the whole list regardless of the filter asked for.
+    assert only_leads["per_stato"] == listed["per_stato"]
+
+    only_new = client.get("/api/hub/talenti", params={"stato": "nuovo"}).json()
+    assert [item["email"] for item in only_new["items"]] == ["ada@studio.it"]
+    assert only_new["totale"] == 1
+
+
+def test_a_card_drafted_from_research_reads_origine_admin_on_talenti(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    signup_id = _signup(client, sender, "ricerca@studio.it")
+    created = client.post(f"/api/hub/signups/{signup_id}/scheda", json=DRAFT)
+    assert created.status_code == 201, created.text
+    item = next(
+        item
+        for item in client.get("/api/hub/talenti").json()["items"]
+        if item["email"] == "ricerca@studio.it"
+    )
+    assert item["origine"] == "admin" and item["stato"] == "nuovo"
+
+
+def test_a_signed_in_member_hitting_talenti_is_403_not_401(
+    client: TestClient, admin: None, sender: RecordingSender
+) -> None:
+    _apply(client, "membro@studio.it")
+    _login(client, sender, "membro@studio.it")
+    assert client.get("/api/hub/talenti").status_code == 403
 
 
 # ---- comments --------------------------------------------------------------------------

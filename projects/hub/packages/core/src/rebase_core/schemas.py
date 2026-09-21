@@ -639,6 +639,43 @@ class FreelancerList(BaseModel):
     lead: list[SignupListItem] = Field(default_factory=list)
 
 
+TalentoOrigine = Literal["form", "wizard", "admin"]
+
+
+class TalentoRead(BaseModel):
+    """One row of `talenti` (REB-282): every freelancer card and every bare sign-up (a
+    `signups` row with no card, ORB-163) as one row, `stato` `lead` for the bare ones
+    and the freelancer's own state otherwise. `origine` names how the row came to be --
+    `form` for a bare sign-up (the landing's own sign-up form), `wizard` for a card the
+    person filled in themselves (`compilata_da == "persona"`), `admin` for one an admin
+    drafted from research (`compilata_da == "admin"`, ORB-155). Distinct from
+    `Freelancer.origine`/`Signup`'s own UTM columns, which name the page and the
+    campaign a submission started from, not the channel that created the row."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    nome: str | None = None
+    cognome: str | None = None
+    email: str
+    linkedin_url: str | None = None
+    stato: str
+    origine: TalentoOrigine
+    utm_source: str | None = None
+    created_at: datetime
+
+
+class TalentoList(BaseModel):
+    """Newest first across both tables (REB-282), at most `limit` rows. `totale` counts
+    every row the `stato` filter selects, not only the page returned; `per_stato` counts
+    the whole list per state, `lead` included, whatever `stato` was asked for -- the
+    numbers the admin area's tabs need beside the page itself."""
+
+    totale: int
+    items: list[TalentoRead]
+    per_stato: dict[str, int]
+
+
 class CompanyRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

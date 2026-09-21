@@ -1,5 +1,5 @@
 import { QueryErrorBanner } from '@/components/QueryErrorBanner'
-import { Button } from '@/components/ui/button'
+import { Button } from '@rebase/ui/button'
 
 /**
  * The affordance both `InvoicesList` and `InvoicesTab` show under a truncated page: a

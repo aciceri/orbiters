@@ -53,7 +53,10 @@ export function ModificaAzienda() {
       void navigate({ to: '/io' })
     } catch (error) {
       const refusal = error instanceof ApiError ? error : null
-      const known = refusal?.fields.filter((field) => fields.some((candidate) => candidate.id === field)) ?? []
+      // `durata` shares a field with `periodo_da` (CompanyWizard.tsx's own comment):
+      // the server names the model column, the form has one input for both.
+      const mapped = refusal?.fields.map((field) => (field === 'durata' ? 'periodo_da' : field)) ?? []
+      const known = mapped.filter((field) => fields.some((candidate) => candidate.id === field))
       if (known.length) {
         setErrors(Object.fromEntries(known.map((field) => [field, refusal!.message])))
       } else {

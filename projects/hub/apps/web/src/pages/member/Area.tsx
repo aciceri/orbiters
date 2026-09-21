@@ -41,7 +41,7 @@ export function Area() {
         </p>
       )}
 
-      <header className="flex flex-wrap items-start justify-between gap-4 pt-6">
+      <header className="flex flex-wrap items-start justify-between gap-4 pt-2">
         <div>
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">La tua area</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">

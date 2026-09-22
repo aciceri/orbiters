@@ -14,7 +14,8 @@ measured as zero rows written under concurrency.
 """
 
 from collections.abc import Callable, Sequence
-from decimal import Decimal
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
 
@@ -22,20 +23,24 @@ from mcp.server import MCPServer
 from mcp.server.context import ServerMiddleware
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from rebase_core.admin_tokens import AdminRead
 from rebase_core.comments import CommentService
 from rebase_core.companies import CompanyService
 from rebase_core.config import Settings
-from rebase_core.errors import DomainError
-from rebase_core.freelancers import FreelancerService
+from rebase_core.errors import DomainError, NotFound
+from rebase_core.freelancers import LEAD_STATE, FreelancerService
 from rebase_core.http import HttpCall
 from rebase_core.logins import LoginService
+from rebase_core.models import Freelancer, Signup, User
 from rebase_core.perks import PerkService
 from rebase_core.pigro import PigroRegistry, PigroUnavailable
-from rebase_core.schemas import FreelancerDraft, FreelancerRead, StatusChange
-from rebase_core.service import LIST_LIMIT_DEFAULT, SignupService
+from rebase_core.schemas import FreelancerDraft, FreelancerRead, StatusChange, TalentoRead
+from rebase_core.search import SEARCH_MAX_LENGTH
+from rebase_core.service import LIST_LIMIT_DEFAULT
+from rebase_core.talenti import TalentiService
 
 SessionFactory = sessionmaker[Session]
 # Who is calling: resolved by the transport, read by the tools that sign something.
@@ -54,6 +59,46 @@ INSTRUCTIONS = (
 PIGRO_NOT_CONFIGURED = "Il registro di Pigro non è configurato: manca REBASE_PIGRO_REGISTRY_TOKEN."
 
 
+def _number(value: str | None, field: str) -> Decimal | None:
+    """A decimal passed as a string, the way `create_freelancer_from_signup` already
+    takes it: JSON numbers lose the two-decimal exactness a tariffa or a budget needs."""
+    if value is None or not value.strip():
+        return None
+    try:
+        return Decimal(value.strip())
+    except InvalidOperation:
+        raise ToolError(f"{field}: «{value}» non è un numero") from None
+
+
+def _day(value: str | None, field: str) -> date | None:
+    """An ISO 8601 calendar date (`AAAA-MM-GG`), parsed here so the refusal is an
+    Italian sentence and not a traceback from the service."""
+    if value is None or not value.strip():
+        return None
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError:
+        raise ToolError(f"{field}: «{value}» non è una data ISO 8601 (AAAA-MM-GG)") from None
+
+
+def _moment(value: str | None, field: str) -> datetime | None:
+    """An ISO 8601 timestamp (a plain date is accepted too, at midnight)."""
+    if value is None or not value.strip():
+        return None
+    try:
+        return datetime.fromisoformat(value.strip())
+    except ValueError:
+        raise ToolError(f"{field}: «{value}» non è una data e ora ISO 8601") from None
+
+
+def _search_term(value: str | None) -> str | None:
+    """`q` bounded the way the API's `SearchQ` bounds it: an unbounded term reaching
+    `ILIKE` and `similarity()` on every row is a denial of service with extra steps."""
+    if value is not None and len(value) > SEARCH_MAX_LENGTH:
+        raise ToolError(f"la ricerca deve stare in {SEARCH_MAX_LENGTH} caratteri")
+    return value
+
+
 def build_server(
     factory: SessionFactory,
     admin: AdminProvider,
@@ -63,19 +108,11 @@ def build_server(
     middleware: Sequence[ServerMiddleware[Any]] | None = None,
 ) -> MCPServer:
     """`admin` answers the admin behind the current call; `settings` and `http` are what
-    `list_pigro_spaces` needs to reach the CRM, and without them the tool answers the
-    same sentence the admin area shows when the registry is not configured. `middleware`
+    reaches the CRM, for `list_pigro_spaces` and for the `pigro_slug` of `get_talento`,
+    and without them the registry's tools answer the same sentence the admin area shows
+    when it is not configured while the slug stays `None`. `middleware`
     is the HTTP transport's way of binding the request's admin around each call."""
     mcp = MCPServer("rebase", instructions=INSTRUCTIONS, middleware=middleware)
-
-    @mcp.tool()
-    def list_signups(limit: int = LIST_LIMIT_DEFAULT) -> dict[str, Any]:
-        """Chi ha lasciato nome, cognome ed email su letsrebase.com per entrare nella
-        community rebase, dal più recente, con il profilo LinkedIn quando l'ha dato.
-        Solo lettura. `nome` e `cognome` sono vuoti solo per le iscrizioni raccolte
-        quando il form chiedeva la sola email. `totale` conta tutta la lista anche
-        quando `limit` ne restituisce una parte."""
-        return _run(lambda s: SignupService(s).list_recent(limit=limit))
 
     @mcp.tool()
     def create_freelancer_from_signup(
@@ -112,9 +149,9 @@ def build_server(
         )
         # `draft_from_signup` returns through `get()`, which now answers a
         # `FreelancerDetail` for the admin HTTP route (REB-284); this tool keeps the
-        # plain `FreelancerRead` shape it always had, since it has neither the
-        # `settings`/`http` the Pigro lookup needs nor a documented reason to grow
-        # the sign-up/login/download fields the admin's screen alone asked for.
+        # plain `FreelancerRead` shape it always had. The card was just drafted, so it
+        # has no logins, downloads or signup UTM to report yet, and the thread comes
+        # back on the write anyway. `get_talento` is the tool for the full detail.
         return _run(
             lambda s: FreelancerRead.model_validate(
                 FreelancerService(s)
@@ -124,17 +161,105 @@ def build_server(
         )
 
     @mcp.tool()
-    def list_freelancers(
-        limit: int = LIST_LIMIT_DEFAULT, stato: str | None = None
+    def list_talenti(
+        limit: int = LIST_LIMIT_DEFAULT,
+        stato: str | None = None,
+        q: str | None = None,
+        cursor: str | None = None,
+        posizione: str | None = None,
+        remoto: str | None = None,
+        tariffa_min: str | None = None,
+        tariffa_max: str | None = None,
+        origine: str | None = None,
+        utm_source: str | None = None,
+        has_cv: bool | None = None,
+        con_accessi: bool | None = None,
+        creato_da: str | None = None,
+        creato_a: str | None = None,
     ) -> dict[str, Any]:
-        """I freelance che hanno compilato il profilo sull'hub, dal più recente: nome,
-        email, posizione, tariffa a giornata, disponibilità (remoto/ibrido/in_sede), link,
-        stato della candidatura (nuovo, contattato, attivo, scartato) e note. Mai i byte
-        del CV: il testo lo legge `read_freelancer_cv`, il file si scarica dall'area
-        admin. `stato` filtra; `totale` conta tutto. `lead` sono le iscrizioni senza
-        scheda (nome se c'è, email, quando), `totale_lead` quante:
-        piene senza filtro o con `stato="lead"`, vuote con un altro stato."""
-        return _run(lambda s: FreelancerService(s).list_recent(limit=limit, stato=stato))
+        """I talenti come li vede la schermata «Talenti» dell'area admin: le schede
+        freelance e le iscrizioni senza scheda in un'unica lista, `stato` `lead` per
+        le seconde, ognuna con id, nome, cognome, email, LinkedIn, stato, origine e
+        data. Dal più recente, o dal più pertinente quando `q` restringe. L'`id` di
+        una riga va a `get_talento`, che per un lead risponde la riga stessa; la
+        scheda di un lead si crea con `create_freelancer_from_signup`.
+        `q` cerca nome, cognome, email e posizione; `posizione` filtra per ruolo,
+        `remoto` per disponibilità (remoto/ibrido/in_sede), `tariffa_min` e
+        `tariffa_max` per tariffa a giornata (stringa decimale col punto, «500» o
+        «450.50»); `origine` per canale della riga (form/wizard/admin), `utm_source` per
+        campagna, `has_cv` per le schede con o senza CV, `con_accessi` per chi è
+        entrato almeno una volta nella sua area, `creato_da` e `creato_a` per data di
+        creazione (ISO 8601, anche solo `AAAA-MM-GG`). I filtri che una riga nuda non
+        ha (posizione, remoto, tariffa, origine, `has_cv=true`) escludono i lead.
+        `per_stato` conta con ogni filtro tranne `stato`, `totale` con tutti.
+        `next_cursor` è il cursore opaco della pagina successiva, `None` all'ultima:
+        ripassalo in `cursor` insieme agli stessi parametri, un cursore nato con
+        un'altra `q` è rifiutato. Solo lettura."""
+        term = _search_term(q)
+        created_from = _moment(creato_da, "creato_da")
+        created_to = _moment(creato_a, "creato_a")
+        rate_from = _number(tariffa_min, "tariffa_min")
+        rate_to = _number(tariffa_max, "tariffa_max")
+        return _run(
+            lambda s: TalentiService(s).list_recent(
+                limit=limit,
+                stato=stato,
+                q=term,
+                cursor=cursor,
+                posizione=posizione,
+                remoto=remoto,
+                tariffa_min=rate_from,
+                tariffa_max=rate_to,
+                origine=origine,
+                utm_source=utm_source,
+                has_cv=has_cv,
+                con_accessi=con_accessi,
+                creato_da=created_from,
+                creato_a=created_to,
+            )
+        )
+
+    @mcp.tool()
+    def get_talento(talento_id: str) -> dict[str, Any]:
+        """Un talento, per id: la riga che `list_talenti` mostra, letta una per una.
+        Per una scheda freelance risponde il dettaglio completo della schermata admin
+        (REB-284), lo stesso che legge «Dettaglio talento»: i dati della persona con
+        lo stato, le note e il thread dei `commenti`, l'attribuzione dell'iscrizione
+        `iscrizione_utm`, gli ultimi accessi e gli ultimi download della guida, e lo
+        spazio Pigro quando l'indirizzo ne ha uno. Per un'iscrizione senza scheda
+        risponde la riga nuda, `stato` `lead`, da cui la scheda si crea con
+        `create_freelancer_from_signup`; un id la cui email ha ormai una scheda
+        risponde la scheda, come la lista. Solo lettura."""
+        key = UUID(talento_id)
+
+        def call(session: Session) -> BaseModel:
+            if session.get(Freelancer, key) is not None:
+                return FreelancerService(session, settings, http).get(key)
+            signup = session.get(Signup, key)
+            if signup is None:
+                raise NotFound("talento", key)
+            # A sign-up whose address gained a card since the list was read is the
+            # card's person: answer the card, which is what «Talenti» shows for them.
+            holder = session.execute(
+                select(Freelancer.id)
+                .join(User, User.id == Freelancer.user_id)
+                .where(func.lower(User.email) == signup.email.lower())
+            ).first()
+            if holder is not None:
+                return FreelancerService(session, settings, http).get(holder[0])
+            return TalentoRead(
+                id=signup.id,
+                nome=signup.nome,
+                cognome=signup.cognome,
+                email=signup.email,
+                linkedin_url=signup.linkedin_url,
+                stato=LEAD_STATE,
+                origine="form",
+                utm_source=signup.utm_source,
+                created_at=signup.created_at,
+            )
+
+        return _run(call)
 
     @mcp.tool()
     def get_freelancer(freelancer_id: str) -> dict[str, Any]:
@@ -183,11 +308,51 @@ def build_server(
         )
 
     @mcp.tool()
-    def list_companies(limit: int = LIST_LIMIT_DEFAULT, stato: str | None = None) -> dict[str, Any]:
-        """Le aziende che hanno descritto un progetto sull'hub, dal più recente: azienda,
-        referente, email, progetto, da quando e per quanto, budget a giornata, stato
-        (nuovo, contattato, in_corso, chiuso) e note."""
-        return _run(lambda s: CompanyService(s).list_recent(limit=limit, stato=stato))
+    def list_aziende(
+        limit: int = LIST_LIMIT_DEFAULT,
+        stato: str | None = None,
+        q: str | None = None,
+        cursor: str | None = None,
+        budget_min: str | None = None,
+        budget_max: str | None = None,
+        periodo_da: str | None = None,
+        origine: str | None = None,
+        creato_da: str | None = None,
+        creato_a: str | None = None,
+    ) -> dict[str, Any]:
+        """Le aziende che hanno descritto un progetto sull'hub, come la schermata
+        «Aziende»: ogni riga porta azienda, referente, email, progetto, da quando e
+        per quanto, budget a giornata, stato e note. Dal più recente, o dal più
+        pertinente quando `q` restringe.
+        `q` cerca nome azienda, referente, email e progetto; `stato` filtra (nuovo,
+        contattato, in_corso, chiuso) e `per_stato` conta con ogni filtro tranne
+        `stato`; `budget_min` e `budget_max` sul budget a giornata (stringa decimale
+        col punto, «500» o «450.50»), `periodo_da` sull'inizio del progetto (ISO
+        8601), `origine` sulla pagina da cui è arrivata la richiesta, `creato_da` e
+        `creato_a` sulla data di creazione (ISO 8601, anche solo `AAAA-MM-GG`).
+        `next_cursor` è il cursore opaco della pagina successiva, `None` all'ultima:
+        ripassalo in `cursor` insieme agli stessi parametri, un cursore nato con
+        un'altra `q` è rifiutato. Solo lettura."""
+        term = _search_term(q)
+        budget_from = _number(budget_min, "budget_min")
+        budget_to = _number(budget_max, "budget_max")
+        period_from = _day(periodo_da, "periodo_da")
+        created_from = _moment(creato_da, "creato_da")
+        created_to = _moment(creato_a, "creato_a")
+        return _run(
+            lambda s: CompanyService(s).list_recent(
+                limit=limit,
+                stato=stato,
+                q=term,
+                cursor=cursor,
+                budget_min=budget_from,
+                budget_max=budget_to,
+                periodo_da=period_from,
+                origine=origine,
+                creato_da=created_from,
+                creato_a=created_to,
+            )
+        )
 
     @mcp.tool()
     def get_company(company_id: str) -> dict[str, Any]:
@@ -249,7 +414,7 @@ def build_server(
         """Chi è entrato nella sua area e quando: `totale` gli accessi con il link via
         email, `membri` le persone diverse dietro, `membri_totali` quante hanno una
         scheda, `ultimi_7_giorni` gli accessi dell'ultima settimana e `recenti` gli
-        ultimi con nome ed email. Ogni scheda in `list_freelancers` e `get_freelancer`
+        ultimi con nome ed email. Ogni scheda letta da `get_talento` e da `get_freelancer`
         porta anche `accessi` e `ultimo_accesso`."""
         return _run(lambda s: LoginService(s).stats())
 

@@ -44,6 +44,19 @@ export function DealStageBar({
           const isCurrent = stage.id === deal.pipeline_stage_id
           // Everything up to the current stage is done; on a closed deal all of it is.
           const reached = outcome !== null || (currentIndex >= 0 && index <= currentIndex)
+          // The hover steps the chip without touching its text, and how it can step
+          // depends on the fill (REB-324): a solid ink ground takes the same /80 the
+          // primary button's hover takes, but a quiet chip cannot deepen its own
+          // ground without pulling its text below AA, so it raises a border instead,
+          // the destructive button's idiom from #232. The old whole-element
+          // `hover:opacity-80` composited text and fill together and dropped the
+          // lost chip to 3.73:1 and the unreached one to 4.32:1 while hovered.
+          const hover =
+            outcome === 'lost'
+              ? 'hover:border-destructive'
+              : reached
+                ? 'hover:bg-foreground/80'
+                : 'hover:border-muted-foreground'
           return (
             <li key={stage.id} className="min-w-0 flex-1">
               <button
@@ -53,25 +66,27 @@ export function DealStageBar({
                 disabled={!canMove || busy || isCurrent}
                 onClick={() => onMove(stage.id)}
                 className={cn(
-                  'flex h-9 w-full items-center justify-center truncate rounded-md px-2 text-xs font-medium transition-colors',
+                  'flex h-9 w-full items-center justify-center truncate rounded-md border border-transparent px-2 text-xs font-medium transition-colors',
                   'disabled:cursor-default',
                   // Ink for what is done, the ink faded for what is not: a stage is a
                   // settled fact, not a call to action, so it does not wear the primary
                   // red -- a won deal drawn as four red blocks read as an alarm. Only a
-                  // lost deal changes colour, and to the tone every «Perso» pill has.
+                  // lost deal changes colour, and to the tone every «Perso» pill has:
+                  // the 10% ceiling (REB-307), the border weight carrying the step up
+                  // rather than a deeper tint, which would drop the text below AA.
                   outcome === 'lost'
-                    ? 'bg-destructive/15 text-destructive'
+                    ? 'bg-destructive/10 border-destructive/50 text-destructive'
                     : reached
                       ? 'bg-foreground text-background'
                       : 'bg-muted text-muted-foreground',
-                  canMove && !isCurrent && !busy && 'hover:opacity-80',
+                  canMove && !isCurrent && !busy && hover,
                   isCurrent && 'ring-2 ring-foreground/30 ring-offset-1 ring-offset-card',
                 )}
               >
                 <span className="truncate">{stage.nome}</span>
               </button>
             </li>
-          )
+          );
         })}
       </ol>
       <p className="text-xs text-muted-foreground">

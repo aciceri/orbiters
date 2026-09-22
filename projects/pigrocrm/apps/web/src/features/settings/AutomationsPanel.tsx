@@ -63,15 +63,15 @@ function RuleSwitch({
       disabled={disabled}
       onClick={() => onToggle(!checked)}
       className={cn(
-        'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50',
+        'relative inline-flex h-5 w-9 shrink-0 items-center border border-input transition-colors disabled:opacity-50',
         checked ? 'bg-primary' : 'bg-muted',
       )}
     >
       <span
         aria-hidden="true"
         className={cn(
-          'inline-block size-4 rounded-full bg-card transition-transform',
-          checked ? 'translate-x-4' : 'translate-x-0.5',
+          'inline-block size-4 transition-transform',
+          checked ? 'translate-x-4 bg-card' : 'translate-x-0.5 bg-foreground',
         )}
       />
     </button>
@@ -101,7 +101,7 @@ export function AutomationsPanel() {
         {data.regole.map((rule) => {
           const field = FIELD_BY_RULE[rule.codice]
           return (
-            <div key={rule.codice} className="flex items-start gap-4 rounded-lg border p-4">
+            <div key={rule.codice} className="flex items-start gap-4 border p-4">
               <RuleSwitch
                 label={rule.titolo}
                 checked={rule.attiva}

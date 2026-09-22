@@ -86,6 +86,12 @@ HAND_MAINTAINED_INDEXES = {
     # with the fifth search branch. Same partial-GIN-over-an-operator-class shape as the
     # nine of 0021, and picked up automatically by `TRGM_INDEX_NAMES` below.
     "ix_invoices_causale_trgm",
+    # REB-290, migration 0036. Functional (over `lower(email)`) and partial at once --
+    # the two shapes autogenerate omits, stacked: a functional index it drops silently
+    # re-opens the case-insensitive duplicate, a partial predicate it drops silently
+    # makes an accepted or revoked invitation block the address forever. Its declared
+    # shape is asserted on `indexdef` text below.
+    "uq_invitations_email_lower_open",
 }
 
 TRGM_INDEX_NAMES = frozenset(n for n in HAND_MAINTAINED_INDEXES if n.endswith("_trgm"))
@@ -117,6 +123,7 @@ def test_migrations_produce_exactly_the_models_schema() -> None:
 def test_every_table_the_slice_needs_exists() -> None:
     expected = {
         "users",
+        "invitations",
         "personal_access_tokens",
         "refresh_tokens",
         "field_definitions",
@@ -197,6 +204,18 @@ def test_hand_maintained_indexes_survive_the_migration() -> None:
         f"{cost_categories_nome_def}"
     )
 
+    invitations_email_open_def = indexes["uq_invitations_email_lower_open"]
+    assert "UNIQUE" in invitations_email_open_def, (
+        "uq_invitations_email_lower_open must be a unique index"
+    )
+    assert "lower(" in invitations_email_open_def and "email" in invitations_email_open_def, (
+        f"uq_invitations_email_lower_open is not a functional index over lower(email): "
+        f"{invitations_email_open_def}"
+    )
+    assert "accepted_at IS NULL" in invitations_email_open_def, (
+        "uq_invitations_email_lower_open lost its pending predicate, so an accepted or "
+        f"revoked invitation would block the address forever: {invitations_email_open_def}"
+    )
     anno_numero_def = indexes["uq_invoices_anno_numero"]
     assert "UNIQUE" in anno_numero_def, "uq_invoices_anno_numero must be a unique index"
     assert "WHERE" in anno_numero_def and "numero IS NOT NULL" in anno_numero_def, (
@@ -359,6 +378,43 @@ def test_env_falls_back_to_settings_when_config_has_no_url(monkeypatch: pytest.M
     # (0025, then 0026) before this was changed to ask Alembic itself.
     expected_head = ScriptDirectory.from_config(config).get_current_head()
     assert revision == expected_head
+
+
+def test_a_migration_leaves_the_host_process_loggers_emitting() -> None:
+    """REB-190: `env.py` calls Alembic's `fileConfig`, whose default
+    `disable_existing_loggers=True` is right for `alembic upgrade` from a shell and
+    wrong inside the API process, where `migrate_to_head` runs on every signup and at
+    every boot: it disabled every logger the ini does not name (root, sqlalchemy,
+    alembic) -- uvicorn's and `pigrocrm.core.mail`'s among them. CI showed it the day
+    the route matrix shifted the xdist distribution and `test_mail.py` landed on the
+    worker that had just migrated: `caplog` stayed empty. A handler of our own on a
+    pre-existing logger, not `caplog`: `fileConfig` rebuilds the ROOT handler list
+    too, so a root-attached capture would go blind for the fix-independent reason.
+    """
+    import logging
+
+    grabbed: list[str] = []
+
+    class Grab(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            grabbed.append(record.getMessage())
+
+    witness = logging.getLogger("pigrocrm.witness-for-reb-190")
+    handler = Grab()
+    witness.addHandler(handler)
+    witness.setLevel(logging.WARNING)
+    try:
+        with PostgresContainer("postgres:17-alpine", driver="psycopg") as container:
+            upgrade(_alembic_config(container.get_connection_url()), "head")
+            witness.warning("ancora viva")
+    finally:
+        witness.removeHandler(handler)
+        witness.setLevel(logging.NOTSET)
+
+    assert "ancora viva" in grabbed, (
+        "a migration disabled an existing logger: the first signup in the API process "
+        "would silence uvicorn's and the application's own log lines"
+    )
 
 
 def test_stato_dal_is_backfilled_from_the_timeline_and_chiuso_il_is_not() -> None:

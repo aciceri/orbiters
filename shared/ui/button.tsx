@@ -19,7 +19,11 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20",
+          /* The 10% ceiling again (REB-309): at 20% the text-drop is 3.80:1 on Paper,
+             so the hover raises a border instead of deepening the fill. The full slot,
+             not the focus ring's /40: the border is the hover's only cue (focus also
+             has the ring), and /40 over Paper is 2.07:1, below the 3:1 non-text bar. */
+          "bg-destructive/10 text-destructive hover:border-destructive focus-visible:border-destructive/40 focus-visible:ring-destructive/20",
         link: "text-primary underline-offset-4 hover:underline",
       },
       /* 36px at the default size and 32px at sm (design spec §4), one step taller

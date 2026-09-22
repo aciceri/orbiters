@@ -346,6 +346,8 @@
                 machine.succeed("curl -fsS 'http://localhost/app/verify?t=secret-token' | grep -F '/app/assets/'")
                 machine.succeed("curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' 'http://localhost/app/entra?t=secret-token' | grep -Fx '301 http://localhost/app/verify?t=secret-token'")
                 machine.succeed("curl -fsS 'http://localhost/studiorossi/app/verify?t=secret-token' | grep -F '/app/assets/'")
+                machine.succeed("curl -fsS 'http://localhost/app/invite?t=secret-token' | grep -F '/app/assets/'")
+                machine.succeed("curl -fsS 'http://localhost/studiorossi/app/invite?t=secret-token' | grep -F '/app/assets/'")
                 machine.succeed("curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' 'http://localhost/studiorossi/app/entra?t=secret-token' | grep -Fx '301 http://localhost/studiorossi/app/verify?t=secret-token'")
                 machine.succeed("curl -fsS http://localhost/app/ >/dev/null && grep -c 'GET /app/ ' /var/log/nginx/access.log")
                 machine.fail("grep -r 'secret-token' /var/log/nginx/")
@@ -605,9 +607,11 @@
         in
         {
           # The response headers the host's nginx adds for the whole origin in
-          # production (projects/*/deploy/**/security-headers.conf, REB-275), minus the
-          # two that are the host's TLS and third-party decisions (HSTS and the
-          # report-only CSP). Here the module is the host, so it carries them. A
+          # production (projects/*/deploy/**/security-headers.conf, REB-275), minus
+          # HSTS, which is the host's TLS decision, and minus the full CSP (enforcing
+          # since REB-306), which names the analytics and pixel hosts of our own
+          # deployment and not a self-hoster's; its `frame-ancestors 'none'` is the
+          # one directive kept, as a CSP of its own. Here the module is the host. A
           # module names its domain and the headers are added once per name, however
           # many modules share it: the `key` is what deduplicates this module when
           # the hub and the website import it on the same machine, and the hub's VM
@@ -877,6 +881,16 @@
                           };
                           "= /app/entra" = {
                             return = "301 /app/verify$is_args$args";
+                            extraConfig = "access_log off;";
+                          };
+                          # The invitation link is the same `?t=` shape (REB-291).
+                          "= /app/invite" = {
+                            tryFiles = "/app/index.html =404";
+                            extraConfig = "access_log off;";
+                          };
+                          "~ \"^/${slug}/app/invite$\"" = {
+                            priority = 900;
+                            tryFiles = "/app/index.html =404";
                             extraConfig = "access_log off;";
                           };
                           "~ \"^/${slug}/app/verify$\"" = {

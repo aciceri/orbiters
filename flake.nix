@@ -33,12 +33,16 @@
       ...
     }:
     flake-parts.lib.mkFlake { inherit inputs; } {
-      # The two renderer binaries below are fetched as the upstream x86_64 Linux
-      # releases, so that is the one system this shell is known to work on. Another
-      # system needs its own tarball and hash in the two derivations, nothing else.
-      # From a Mac with an x86_64-linux builder in nix.conf, name the system:
-      # `nix build .#packages.x86_64-linux.pigrocrm-api`, as preflight.json does.
-      systems = [ "x86_64-linux" ];
+      # The two renderer binaries below are the upstream Linux release tarballs, one
+      # per architecture in `rendererReleases`, so these are the systems the shell,
+      # the packages and the modules exist for. A Mac is not among them: from one,
+      # name the system and let a Linux builder in nix.conf do the work
+      # (`nix build .#packages.x86_64-linux.pigrocrm-api`, as preflight.json does).
+      # Only x86_64-linux is exercised by the VM tests today.
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
 
       perSystem =
         {
@@ -78,12 +82,30 @@
           pandocVersion = dockerfileArg "PANDOC_VERSION";
           typstVersion = dockerfileArg "TYPST_VERSION";
 
+          # The release asset per system, and its hash: the one place a new system
+          # is added. A version bump in the Dockerfile moves every hash here.
+          rendererReleases = {
+            x86_64-linux = {
+              pandocAsset = "linux-amd64.tar.gz";
+              pandocHash = "sha256-s2KBXiHYrTYpwSSqkrr1RVjaCGrXI3S09v3Ze58ydbA=";
+              typstTriple = "x86_64-unknown-linux-musl";
+              typstHash = "sha256-pgRMutKpVN65IRZ+JX4SCsChayAznsARIRlP+dOUmW0=";
+            };
+            aarch64-linux = {
+              pandocAsset = "linux-arm64.tar.gz";
+              pandocHash = "sha256-hS6JjCSQ+oQK51qLavimydbWO3fvFwwy7DoXlYRk2Sk=";
+              typstTriple = "aarch64-unknown-linux-musl";
+              typstHash = "sha256-SRsQGqQKOn6oKj+KYjLKu05qfiM4EAguWsgS1D/c1Ho=";
+            };
+          };
+          release = rendererReleases.${pkgs.stdenv.hostPlatform.system};
+
           pandoc = pkgs.stdenvNoCC.mkDerivation {
             pname = "pandoc-bin";
             version = pandocVersion;
             src = pkgs.fetchurl {
-              url = "https://github.com/jgm/pandoc/releases/download/${pandocVersion}/pandoc-${pandocVersion}-linux-amd64.tar.gz";
-              hash = "sha256-s2KBXiHYrTYpwSSqkrr1RVjaCGrXI3S09v3Ze58ydbA=";
+              url = "https://github.com/jgm/pandoc/releases/download/${pandocVersion}/pandoc-${pandocVersion}-${release.pandocAsset}";
+              hash = release.pandocHash;
             };
             dontBuild = true;
             installPhase = ''
@@ -99,8 +121,8 @@
             pname = "typst-bin";
             version = typstVersion;
             src = pkgs.fetchurl {
-              url = "https://github.com/typst/typst/releases/download/v${typstVersion}/typst-x86_64-unknown-linux-musl.tar.xz";
-              hash = "sha256-pgRMutKpVN65IRZ+JX4SCsChayAznsARIRlP+dOUmW0=";
+              url = "https://github.com/typst/typst/releases/download/v${typstVersion}/typst-${release.typstTriple}.tar.xz";
+              hash = release.typstHash;
             };
             dontBuild = true;
             installPhase = ''
@@ -163,13 +185,20 @@
             fetcherVersion = 4;
             src = lib.fileset.toSource {
               root = ./.;
-              fileset = lib.fileset.unions [
-                ./package.json
-                ./pnpm-workspace.yaml
-                ./pnpm-lock.yaml
-                (lib.fileset.fileFilter (f: f.name == "package.json") ./projects)
-                (lib.fileset.fileFilter (f: f.name == "package.json") ./shared)
-              ];
+              fileset = lib.fileset.unions (
+                [
+                  ./package.json
+                  ./pnpm-workspace.yaml
+                  ./pnpm-lock.yaml
+                  (lib.fileset.fileFilter (f: f.name == "package.json") ./projects)
+                  (lib.fileset.fileFilter (f: f.name == "package.json") ./shared)
+                ]
+                # pnpm-workspace.yaml names `tooling/*` too; empty today, and a
+                # fileset of a directory that does not exist is an error.
+                ++ lib.optional (builtins.pathExists ./tooling) (
+                  lib.fileset.fileFilter (f: f.name == "package.json") ./tooling
+                )
+              );
             };
             hash = "sha256-1kCSCpJX2yi8/DphGqDQy5NzoEnKv4XzCM9LxmnDqE8=";
           };
@@ -377,9 +406,9 @@
               };
               testScript = ''
                 machine.wait_for_unit("rebase-hub-api.service")
-                machine.wait_for_open_port(8000)
+                machine.wait_for_open_port(8084)
                 machine.wait_for_unit("rebase-hub-mcp.service")
-                machine.wait_for_open_port(8001)
+                machine.wait_for_open_port(8088)
                 machine.wait_for_unit("nginx.service")
 
                 # The hub's probe touches the database on purpose, so a 200 here is
@@ -552,14 +581,21 @@
             };
           };
           socketUrl = user: "postgresql+psycopg://${user}@/${user}?host=/run/postgresql";
-          proxyLocation = port: {
-            proxyPass = "http://127.0.0.1:${toString port}";
+          # Where uvicorn listens is where nginx proxies: the `address` option moves
+          # both, and an IPv6 literal is bracketed for nginx.
+          upstream =
+            address: port:
+            "http://${
+              if inputs.nixpkgs.lib.hasInfix ":" address then "[${address}]" else address
+            }:${toString port}";
+          proxyLocation = address: port: {
+            proxyPass = upstream address port;
           };
           # The MCP transport is Streamable HTTP: one request may stream for as long
           # as a tool runs, so no buffering and a long read timeout (spa.conf, the
           # `/mcp` locations).
-          mcpLocation = port: {
-            proxyPass = "http://127.0.0.1:${toString port}";
+          mcpLocation = address: port: {
+            proxyPass = upstream address port;
             extraConfig = ''
               proxy_http_version 1.1;
               proxy_buffering off;
@@ -652,8 +688,15 @@
                 EnvironmentFile = cfg.environmentFile;
                 StateDirectory = "pigrocrm";
                 ReadWritePaths = [ cfg.documentsDir ];
+                # The migration and every space's upgrade run before uvicorn, and
+                # systemd's 90 s would kill a long one halfway (the image's CMD has
+                # no such limit). Retries the way `restart: unless-stopped` does:
+                # without giving up after five in ten seconds.
+                TimeoutStartSec = "30min";
                 Restart = "on-failure";
+                RestartSec = 5;
               };
+              unitConfig.StartLimitIntervalSec = 0;
             in
             {
               imports = [ self.nixosModules.nginx-headers ];
@@ -754,7 +797,9 @@
                     # superuser; here it is a role that may create databases and no more.
                     # `postgresql-setup.service` is where nixpkgs creates the role and
                     # the database (`ensureUsers`); the grant goes on the end of it and
-                    # the API waits for it, not merely for the server.
+                    # the API waits for it, not merely for the server. A bare `psql`,
+                    # exactly as the statements nixpkgs writes above it: the unit's
+                    # environment carries the port.
                     systemd.services.postgresql-setup.script = lib.mkIf cfg.database.createLocally (
                       lib.mkAfter ''
                         psql -tAc 'ALTER ROLE pigrocrm CREATEDB'
@@ -770,6 +815,7 @@
 
                     systemd.services.pigrocrm-api = {
                       description = "PigroCRM API";
+                      inherit unitConfig;
                       wantedBy = [ "multi-user.target" ];
                       after = [
                         "network.target"
@@ -792,6 +838,7 @@
                     # second process, started after the API the way `depends_on` says.
                     systemd.services.pigrocrm-mcp = lib.mkIf cfg.mcp.enable {
                       description = "PigroCRM MCP server";
+                      inherit unitConfig;
                       wantedBy = [ "multi-user.target" ];
                       after = [ "pigrocrm-api.service" ];
                       wants = [ "pigrocrm-api.service" ];
@@ -846,24 +893,24 @@
                           # nginx takes the first regex that matches in file order, and
                           # the module writes them alphabetically: the documents one
                           # must come before `(api|health)`, which would swallow it.
-                          "~ \"^/${slug}/api/documents(/|$)\"" = proxyLocation cfg.port // {
+                          "~ \"^/${slug}/api/documents(/|$)\"" = proxyLocation cfg.address cfg.port // {
                             priority = 900;
                             extraConfig = "client_max_body_size 105m;";
                           };
-                          "~ \"^/${slug}/(api|health)(/|$)\"" = proxyLocation cfg.port;
+                          "~ \"^/${slug}/(api|health)(/|$)\"" = proxyLocation cfg.address cfg.port;
                           "~ \"^/(${slug})$\"".return = "302 /$1/app/";
-                          "^~ /api/documents/" = proxyLocation cfg.port // {
+                          "^~ /api/documents/" = proxyLocation cfg.address cfg.port // {
                             extraConfig = "client_max_body_size 105m;";
                           };
-                          "/api/" = proxyLocation cfg.port;
-                          "= /health" = proxyLocation cfg.port;
+                          "/api/" = proxyLocation cfg.address cfg.port;
+                          "= /health" = proxyLocation cfg.address cfg.port;
                           # Anything else: a 404, never the SPA shell.
                           "/".tryFiles = "$uri =404";
                         }
                         // lib.optionalAttrs cfg.mcp.enable {
                           "= /mcp/".return = "308 /mcp";
-                          "= /mcp" = mcpLocation cfg.mcp.port;
-                          "~ \"^/${slug}/mcp(/|$)\"" = mcpLocation cfg.mcp.port;
+                          "= /mcp" = mcpLocation cfg.address cfg.mcp.port;
+                          "~ \"^/${slug}/mcp(/|$)\"" = mcpLocation cfg.address cfg.mcp.port;
                         };
                       };
                     };
@@ -899,8 +946,13 @@
                 User = "rebase";
                 Group = "rebase";
                 EnvironmentFile = lib.optional (cfg.environmentFile != null) cfg.environmentFile;
+                # As in the CRM module: the migration may outlast 90 s, and a failing
+                # unit keeps retrying the way the compose stack does.
+                TimeoutStartSec = "30min";
                 Restart = "on-failure";
+                RestartSec = 5;
               };
+              unitConfig.StartLimitIntervalSec = 0;
             in
             {
               imports = [ self.nixosModules.nginx-headers ];
@@ -928,7 +980,10 @@
                 };
                 port = lib.mkOption {
                   type = lib.types.port;
-                  default = 8000;
+                  # The compose stack's host-side ports, and not the CRM's 8000 and
+                  # 8001: the two products run on one machine without a line of
+                  # configuration between them.
+                  default = 8084;
                 };
                 mcp = {
                   enable = lib.mkOption {
@@ -938,7 +993,7 @@
                   };
                   port = lib.mkOption {
                     type = lib.types.port;
-                    default = 8001;
+                    default = 8088;
                   };
                 };
                 environmentFile = lib.mkOption {
@@ -965,6 +1020,12 @@
                 lib.mkMerge [
                   (lib.mkIf cfg.database.createLocally (localPostgres "rebase"))
                   {
+                    assertions = [
+                      {
+                        assertion = cfg.database.createLocally || cfg.environmentFile != null;
+                        message = "services.rebase-hub: with database.createLocally off, environmentFile must carry REBASE_DATABASE_URL, or the API boots against the Settings default.";
+                      }
+                    ];
                     services.rebase-nginx-headers.domains = [ cfg.domain ];
 
                     users.users.rebase = {
@@ -975,6 +1036,7 @@
 
                     systemd.services.rebase-hub-api = {
                       description = "rebase hub API";
+                      inherit unitConfig;
                       wantedBy = [ "multi-user.target" ];
                       after = [
                         "network.target"
@@ -989,6 +1051,7 @@
                     };
                     systemd.services.rebase-hub-mcp = lib.mkIf cfg.mcp.enable {
                       description = "rebase hub MCP server";
+                      inherit unitConfig;
                       wantedBy = [ "multi-user.target" ];
                       after = [ "rebase-hub-api.service" ];
                       wants = [ "rebase-hub-api.service" ];
@@ -1027,18 +1090,21 @@
                             root = webRoot;
                             tryFiles = "$uri /hub/index.html";
                           };
-                          "= /api/community/signups" = proxyLocation cfg.port;
-                          "^~ /api/hub/" = proxyLocation cfg.port // {
+                          # letsrebase.conf also keeps `/api/orbiters/signups`, the
+                          # name before REB-204, for pages cached with it; a fresh
+                          # self-host has no such pages, so the alias is not carried.
+                          "= /api/community/signups" = proxyLocation cfg.address cfg.port;
+                          "^~ /api/hub/" = proxyLocation cfg.address cfg.port // {
                             extraConfig = "client_max_body_size 6M;";
                           };
-                          "= /health" = proxyLocation cfg.port;
+                          "= /health" = proxyLocation cfg.address cfg.port;
                           "/".return = lib.mkDefault "404";
                         }
                         // lib.optionalAttrs cfg.mcp.enable {
                           # `/api/hub/mcp` is `/mcp` to the process, prefix and all
                           # (letsrebase.conf). `^~` so it wins over `^~ /api/hub/`.
-                          "^~ /api/hub/mcp" = mcpLocation cfg.mcp.port // {
-                            proxyPass = "http://127.0.0.1:${toString cfg.mcp.port}/mcp";
+                          "^~ /api/hub/mcp" = mcpLocation cfg.address cfg.mcp.port // {
+                            proxyPass = "${upstream cfg.address cfg.mcp.port}/mcp";
                           };
                         };
                       };

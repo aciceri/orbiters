@@ -328,6 +328,7 @@
         "projects/*/apps/*/package.json",
         "projects/*/packages/*/package.json",
         "shared/*/package.json",
+        "tooling/*/package.json",
         "pyproject.toml",
         "projects/*/apps/*/pyproject.toml",
         "projects/*/packages/*/pyproject.toml",

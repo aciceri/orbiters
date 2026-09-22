@@ -76,7 +76,9 @@ lines and must define `PIGROCRM_JWT_SECRET`.
 
 Each module is booted in a VM by `nix flake check` and probed through nginx, which is
 the evidence the copy has not drifted from the compose stack. The flake declares
-`x86_64-linux` only; from a Mac with a Linux builder in `nix.conf`, name the system
+`x86_64-linux` and `aarch64-linux` (the renderer binaries are the upstream Linux
+release tarballs), and only the former is exercised by the VM tests; from a Mac with
+a Linux builder in `nix.conf`, name the system
 (`nix build .#packages.x86_64-linux.pigrocrm-api`). These modules are how a third
 party runs the software; rebase's own environments are deployed by CI from the
 compose files and never from here (`docs/design/DECISIONS.md`, 2026-09-09).
